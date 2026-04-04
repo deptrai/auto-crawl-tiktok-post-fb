@@ -1,6 +1,8 @@
-import requests
 import os
 import time
+from json import JSONDecodeError
+
+import requests
 
 GRAPH_API_BASE = "https://graph.facebook.com/v19.0"
 
@@ -25,7 +27,10 @@ def upload_video_to_facebook(file_path: str, caption: str, page_id: str, access_
             'access_token': access_token
         }
         res_init = requests.post(init_url, params=params, timeout=30)
-        res_init_data = res_init.json()
+        try:
+            res_init_data = res_init.json()
+        except (JSONDecodeError, ValueError):
+            return {'error': f"Facebook trả lỗi không phải JSON (HTTP {res_init.status_code}). Thử lại sau."}
         
         if 'video_id' not in res_init_data:
             print(f"FB LỖI (khởi tạo - toàn bộ JSON): {res_init_data}")
@@ -55,7 +60,10 @@ def upload_video_to_facebook(file_path: str, caption: str, page_id: str, access_
                 timeout=300 # Cho phép 5 phút để tải lên
             )
         
-        res_upload_data = res_upload.json()
+        try:
+            res_upload_data = res_upload.json()
+        except (JSONDecodeError, ValueError):
+            return {'error': f"RUpload trả lỗi không phải JSON (HTTP {res_upload.status_code}). Thử lại sau."}
         # Chú ý: RUpload có thể trả về thành công theo kiểu khác, nên kiểm tra 'id' hoặc 'success'
         if 'id' not in res_upload_data and not res_upload_data.get('success'):
             print(f"FB LỖI (RUpload - toàn bộ JSON): {res_upload_data}")
@@ -75,7 +83,10 @@ def upload_video_to_facebook(file_path: str, caption: str, page_id: str, access_
             'access_token': access_token
         }
         res_publish = requests.post(publish_url, params=publish_params, timeout=30)
-        res_publish_data = res_publish.json()
+        try:
+            res_publish_data = res_publish.json()
+        except (JSONDecodeError, ValueError):
+            return {'error': f"Lỗi công bố: Facebook trả lỗi không phải JSON (HTTP {res_publish.status_code})."}
 
         if 'success' in res_publish_data and res_publish_data['success']:
             print(f"FB THÀNH CÔNG: Đã đăng Reel thành công. Mã video: {video_id}")
@@ -98,7 +109,13 @@ def inspect_page_access(page_id: str, access_token: str):
     }
     try:
         response = requests.get(url, params=params, timeout=30)
-        data = response.json()
+        try:
+            data = response.json()
+        except (JSONDecodeError, ValueError):
+            return {
+                "ok": False,
+                "message": f"Facebook trả lỗi không phải JSON (HTTP {response.status_code}).",
+            }
     except Exception as exc:
         return {
             "ok": False,
@@ -129,7 +146,11 @@ def reply_to_comment(comment_id: str, message: str, access_token: str):
     }
     try:
         res = requests.post(url, data=data, timeout=30)
-        res_data = res.json()
+        try:
+            res_data = res.json()
+        except (JSONDecodeError, ValueError):
+            print(f"FB LỖI: Phản hồi không phải JSON (HTTP {res.status_code})")
+            return None
         if 'error' in res_data:
             print(f"FB LỖI GRAPH: {res_data['error'].get('message')}")
         return res_data

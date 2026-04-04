@@ -137,7 +137,7 @@ def fail_task(db: Session, task: TaskQueue, error_message: str, *, retry_delay_s
     task.completed_at = None
 
     if (task.attempts or 0) < (task.max_attempts or 1):
-        delay_seconds = retry_delay_seconds if retry_delay_seconds is not None else min(300, max(5, task.attempts * 15))
+        delay_seconds = retry_delay_seconds if retry_delay_seconds is not None else min(300, max(5, (task.attempts or 0) * 15))
         task.status = TaskStatus.queued
         task.available_at = datetime.utcnow() + timedelta(seconds=delay_seconds)
     else:
