@@ -1,5 +1,5 @@
 # generated: 2026-04-04T13:05:00+07:00
-# last_updated: 2026-04-04T13:05:00+07:00
+# last_updated: 2026-04-04T23:10:00+07:00
 # project: auto-crawl-tiktok-post-fb
 # project_key: NOKEY
 # tracking_system: file-system
@@ -35,7 +35,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 
 generated: 2026-04-04T13:05:00+07:00
-last_updated: 2026-04-04T13:05:00+07:00
+last_updated: 2026-04-04T23:10:00+07:00
 project: auto-crawl-tiktok-post-fb
 project_key: NOKEY
 tracking_system: file-system
@@ -69,3 +69,5 @@ development_status:
   5-2-khai-quat-log-ky-thuat-chuyen-sau: done
   5-3-cau-dao-tong-nhanh-chien-dich: done
   epic-5-retrospective: done
+  epic-6: in-progress
+  6-1-tich-hop-apify-tiktok-scraper: ready-for-dev
