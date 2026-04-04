@@ -15,7 +15,7 @@ services:
       POSTGRES_PASSWORD: adminpassword
       POSTGRES_DB: social_auto
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - ./database:/var/lib/postgresql/data
     healthcheck:
@@ -25,6 +25,7 @@ services:
       retries: 5
 
   backend:
+    profiles: ["app"]
     build: ./backend
     container_name: social_backend
     env_file:
@@ -64,6 +65,7 @@ services:
       - LOG_LEVEL=INFO
 
   worker:
+    profiles: ["app"]
     build: ./backend
     container_name: social_worker
     env_file:
@@ -102,6 +104,7 @@ services:
       - LOG_LEVEL=INFO
 
   frontend:
+    profiles: ["app"]
     build: ./frontend
     container_name: social_frontend
     restart: always
@@ -113,6 +116,7 @@ services:
       - /app/node_modules
 
   tunnel:
+    profiles: ["app"]
     image: cloudflare/cloudflared:latest
     container_name: social_tunnel
     restart: always

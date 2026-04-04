@@ -1,5 +1,9 @@
+from __future__ import annotations
 import os
 import warnings
+from dotenv import load_dotenv
+
+load_dotenv("runtime.env")
 
 DEFAULT_JWT_SECRET = "change-me-jwt-secret"
 DEFAULT_TOKEN_ENCRYPTION_SECRET = "change-me-token-secret"
