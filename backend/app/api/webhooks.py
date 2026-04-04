@@ -1,3 +1,4 @@
+import hmac
 import json
 from json import JSONDecodeError
 
@@ -38,7 +39,7 @@ def verify_webhook(request: Request, db: Session = Depends(get_db)):
     challenge = request.query_params.get("hub.challenge")
     verify_token = resolve_runtime_value("FB_VERIFY_TOKEN", db=db)
 
-    if mode == "subscribe" and token == verify_token:
+    if mode == "subscribe" and verify_token and hmac.compare_digest(token or "", verify_token):
         return PlainTextResponse(content=challenge)
     raise HTTPException(status_code=403, detail="Mã xác minh webhook không hợp lệ")
 
