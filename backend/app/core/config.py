@@ -3,7 +3,8 @@ import os
 import warnings
 from dotenv import load_dotenv
 
-load_dotenv("runtime.env")
+load_dotenv(".env")           # base config (local dev)
+load_dotenv("runtime.env", override=True)  # dashboard overrides
 
 DEFAULT_JWT_SECRET = "change-me-jwt-secret"
 DEFAULT_TOKEN_ENCRYPTION_SECRET = "change-me-token-secret"
