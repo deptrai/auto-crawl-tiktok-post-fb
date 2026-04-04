@@ -68,7 +68,7 @@ class Video(Base):
     )
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    campaign_id = Column(Uuid(as_uuid=True), ForeignKey("campaigns.id"))
+    campaign_id = Column(Uuid(as_uuid=True), ForeignKey("campaigns.id", ondelete="CASCADE"))
     original_id = Column(String, index=True)
     source_video_url = Column(String, nullable=True)
     file_path = Column(String, nullable=True)
@@ -82,7 +82,7 @@ class Video(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    campaign = relationship("Campaign", back_populates="videos")
+    campaign = relationship("Campaign", back_populates="videos", passive_deletes=True)
 
 
 class FacebookPage(Base):
@@ -100,7 +100,7 @@ class InteractionLog(Base):
     __tablename__ = "interactions_log"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    page_id = Column(String, ForeignKey("facebook_pages.page_id"))
+    page_id = Column(String, ForeignKey("facebook_pages.page_id", ondelete="SET NULL"), nullable=True)
     post_id = Column(String)
     comment_id = Column(String, unique=True)
     user_id = Column(String)
