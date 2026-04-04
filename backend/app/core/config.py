@@ -51,6 +51,7 @@ class Settings:
     BACKGROUND_JOBS_MODE: str = os.getenv("BACKGROUND_JOBS_MODE", "embedded")
     APP_ROLE: str = os.getenv("APP_ROLE", "api")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
+    TIKTOK_PROXY: str = os.getenv("TIKTOK_PROXY", "")
 
 
 settings = Settings()
@@ -61,9 +62,10 @@ _INSECURE_DEFAULTS = {
     "TOKEN_ENCRYPTION_SECRET": DEFAULT_TOKEN_ENCRYPTION_SECRET,
 }
 for _key, _default in _INSECURE_DEFAULTS.items():
-    if getattr(settings, _key) == _default:
+    _val = getattr(settings, _key)
+    if _val == _default or not _val:
         warnings.warn(
-            f"⚠️  BẢO MẬT: {_key} đang dùng giá trị mặc định! "
+            f"⚠️  BẢO MẬT: {_key} đang dùng giá trị mặc định hoặc trống! "
             f"Hãy set biến môi trường {_key} trước khi deploy production.",
             stacklevel=1,
         )
