@@ -87,6 +87,20 @@ def auto_post_job():
                     )
                     continue
 
+            if not vid.file_path or not os.path.exists(vid.file_path):
+                vid.status = VideoStatus.failed
+                vid.last_error = "Tệp video không tồn tại hoặc đã bị xóa."
+                vid.retry_count = (vid.retry_count or 0) + 1
+                db.commit()
+                record_event(
+                    "video",
+                    "warning",
+                    "Bỏ qua video do tệp không tồn tại.",
+                    db=db,
+                    details={"video_id": str(vid.id), "file_path": vid.file_path},
+                )
+                continue
+
             res = upload_video_to_facebook(
                 file_path=vid.file_path,
                 caption=vid.ai_caption,

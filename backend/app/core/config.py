@@ -1,4 +1,5 @@
 import os
+import warnings
 
 DEFAULT_JWT_SECRET = "change-me-jwt-secret"
 DEFAULT_TOKEN_ENCRYPTION_SECRET = "change-me-token-secret"
@@ -48,3 +49,22 @@ class Settings:
 
 
 settings = Settings()
+
+# --- Cảnh báo bảo mật khi khởi động ---
+_INSECURE_DEFAULTS = {
+    "JWT_SECRET": DEFAULT_JWT_SECRET,
+    "TOKEN_ENCRYPTION_SECRET": DEFAULT_TOKEN_ENCRYPTION_SECRET,
+}
+for _key, _default in _INSECURE_DEFAULTS.items():
+    if getattr(settings, _key) == _default:
+        warnings.warn(
+            f"⚠️  BẢO MẬT: {_key} đang dùng giá trị mặc định! "
+            f"Hãy set biến môi trường {_key} trước khi deploy production.",
+            stacklevel=1,
+        )
+if settings.ADMIN_PASSWORD == "admin123":
+    warnings.warn(
+        "⚠️  BẢO MẬT: ADMIN_PASSWORD vẫn là 'admin123'! "
+        "Hãy đổi mật khẩu admin ngay.",
+        stacklevel=1,
+    )
