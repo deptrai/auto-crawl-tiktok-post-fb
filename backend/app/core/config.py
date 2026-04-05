@@ -52,6 +52,9 @@ class Settings:
     APP_ROLE: str = os.getenv("APP_ROLE", "api")
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
     TIKTOK_PROXY: str = os.getenv("TIKTOK_PROXY", "")
+    APIFY_API_TOKEN: str = os.getenv("APIFY_API_TOKEN", "")
+    APIFY_ACTOR_ID: str = os.getenv("APIFY_ACTOR_ID", "kingscraper/tiktok-video-and-thumbnail-downloader")
+    TIKTOK_CRAWLER_MODE: str = os.getenv("TIKTOK_CRAWLER_MODE", "auto")  # apify | ytdlp | auto
 
 
 settings = Settings()

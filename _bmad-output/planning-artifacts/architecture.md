@@ -1,12 +1,13 @@
 ---
 stepsCompleted: ['step-01-init.md', 'step-02-context.md', 'step-03-starter.md', 'step-04-decisions.md', 'step-05-patterns.md', 'step-06-structure.md', 'step-07-validation.md', 'step-08-complete.md']
-inputDocuments: ['_bmad-output/planning-artifacts/prd.md', '_bmad-output/project-context.md']
+inputDocuments: ['_bmad-output/planning-artifacts/prd.md', '_bmad-output/project-context.md', '_bmad-output/planning-artifacts/epics.md']
 workflowType: 'architecture'
 project_name: 'auto-crawl-tiktok-post-fb'
 user_name: 'luisphan'
 lastStep: 8
 status: 'complete'
 completedAt: '2026-03-30'
+phase2AddedAt: '2026-04-05'
 ---
 
 # Architecture Decision Document
@@ -379,3 +380,451 @@ Tài liệu cung cấp cả ví dụ (Examples) và cảnh báo code rác (Anti-
 
 **First Implementation Priority:**
 Cấu hình Docker Compose để thông các luồng Services và dựng Backend Schema DB (SQLAlchemy) kết nối Alembic Migration.
+
+## Phase 2 Architecture Addendum
+
+_Bổ sung ngày 2026-04-05. Mở rộng kiến trúc Phase 1 cho Epic 7-14._
+
+### Phase 2 Context & Scope
+
+**Bài học từ Phase 1 vận hành thực tế:**
+- Token Facebook Graph API Explorer hết hạn sau ~2 giờ — gây gián đoạn liên tục (Gap G1)
+- Video lưu local disk mất khi container restart (Gap G3)
+- Không có lớp lọc nội dung — tải cả video spam/chất lượng thấp (Gap G4)
+- yt-dlp bị TikTok block IP → đã giải quyết bằng Apify (Epic 6)
+- Single-admin, không phân quyền chi tiết
+
+**Nguyên tắc mở rộng Phase 2:**
+1. **Backward Compatible** — Mọi thay đổi phải tương thích ngược, không break Phase 1 flow
+2. **Strategy Pattern** — Abstract hóa các điểm mở rộng (storage, publisher, crawler) bằng interface
+3. **Progressive Enhancement** — Mỗi epic có thể deploy độc lập, không phụ thuộc epic khác
+4. **Config-Driven** — Tính năng mới bật/tắt qua environment variables hoặc RuntimeSetting
+
+### D1: Crawler Architecture (Epic 6 — Đã Implement)
+
+**Quyết định:** Dual-mode crawler với auto-fallback.
+
+**Pattern: Strategy + Fallback Chain**
+```python
+# tiktok_crawler.py — Unified interface
+def extract_metadata(url: str) -> dict:
+    mode = settings.TIKTOK_CRAWLER_MODE  # "auto" | "apify" | "ytdlp"
+    if mode == "auto" and settings.APIFY_API_TOKEN:
+        try: return _extract_via_apify(url)
+        except: return _extract_via_ytdlp(url)  # fallback
+    elif mode == "apify": return _extract_via_apify(url)
+    else: return _extract_via_ytdlp(url)
+```
+
+**Apify Actor Support:**
+- `clockworks/tiktok-scraper` — profile, hashtag, postURLs; `shouldDownloadVideos=True` trả `mediaUrls[]` (Apify KV store URLs cần Bearer auth)
+- `kingscraper/tiktok-video-and-thumbnail-downloader` — videoUrls array; trả `noWatermarkHdUrl`
+- Auto-detect actor type qua `_is_clockworks_actor()` helper
+
+**Config vars:** `APIFY_API_TOKEN`, `APIFY_ACTOR_ID`, `TIKTOK_CRAWLER_MODE`
+
+### D2: Token Lifecycle Architecture (Epic 7)
+
+**Vấn đề:** Facebook token có 3 loại với lifecycle khác nhau:
+- **Short-lived User Token** (~2h) — Graph API Explorer, KHÔNG dùng cho production
+- **Long-lived User Token** (~60 ngày) — Có thể auto-refresh
+- **System User Token** (không hết hạn) — Khuyên dùng cho production
+
+**Quyết định kiến trúc:**
+
+**Schema mở rộng — `facebook_pages` table:**
+```
++ token_type: Enum("short_lived", "long_lived", "system_user") DEFAULT "long_lived"
++ token_expires_at: DateTime NULLABLE
++ token_last_refreshed_at: DateTime NULLABLE
++ token_refresh_error: String NULLABLE
+```
+
+**Token Monitor Service — `token_lifecycle_service.py`:**
+```
+Responsibility:
+  - check_token_health(page_id) → TokenStatus (valid/expiring_soon/expired/unknown)
+  - refresh_long_lived_token(page_id) → bool
+  - get_token_expiry_info(page_id) → {type, expires_at, days_remaining}
+
+Trigger:
+  - APScheduler cron job mỗi 24h gọi check_all_tokens()
+  - Nếu token_type="long_lived" AND expires_in < 7 ngày → auto refresh
+  - Nếu refresh fail HOẶC token đã hết hạn → ghi SystemEvent(level="warning")
+  - Nếu token hết hạn → auto-pause campaigns dùng page đó
+```
+
+**Graph API refresh endpoint:**
+```
+GET /oauth/access_token?grant_type=fb_exchange_token
+  &client_id={APP_ID}
+  &client_secret={APP_SECRET}
+  &fb_exchange_token={CURRENT_TOKEN}
+→ Trả về token mới (60 ngày nữa)
+```
+
+**UI Integration:**
+- Badge trên FacebookPage card: xanh Valid | vàng Expiring Soon (< 14 ngày) | đỏ Expired
+- Banner alert toàn dashboard khi có page token hết hạn
+- Hướng dẫn in-app tạo System User Token (link Business Manager)
+
+**Config vars mới:** `FB_APP_ID`, `FB_APP_SECRET` (cần cho token refresh flow)
+
+### D3: Storage Abstraction Architecture (Epic 8)
+
+**Quyết định:** Strategy Pattern cho storage backend, default = local (backward compatible).
+
+**Interface:**
+```python
+# storage_backend.py
+class StorageBackend(Protocol):
+    def save(self, local_path: str, remote_key: str) -> str: ...  # returns stored URL/path
+    def delete(self, stored_path: str) -> bool: ...
+    def exists(self, stored_path: str) -> bool: ...
+    def get_url(self, stored_path: str) -> str: ...  # presigned URL hoặc local path
+
+class LocalStorage(StorageBackend): ...      # Hiện tại, giữ nguyên logic
+class S3Storage(StorageBackend): ...          # boto3 — S3/R2/MinIO compatible
+```
+
+**Factory:**
+```python
+def get_storage() -> StorageBackend:
+    if settings.STORAGE_BACKEND == "s3":
+        return S3Storage(bucket=settings.S3_BUCKET, ...)
+    return LocalStorage(download_dir=settings.DOWNLOAD_DIR)
+```
+
+**Video file_path convention:**
+- Local: `./downloads/tiktok_abc123.mp4` (giữ nguyên Phase 1)
+- S3: `s3://bucket/videos/2026/04/tiktok_abc123.mp4` (key có date prefix)
+
+**Cleanup Job:**
+- APScheduler cron mỗi 6h
+- Query: `Video.status IN (posted, published) AND publish_time < now - 24h AND file_path IS NOT NULL`
+- Gọi `storage.delete(file_path)`, set `file_path = NULL`
+- Không xóa nếu video đang trong retry queue
+
+**Config vars mới:** `STORAGE_BACKEND` (local|s3), `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_ENDPOINT_URL` (cho R2/MinIO)
+
+### D4: Content Pipeline Architecture (Epic 9)
+
+**Quyết định:** Chain of Responsibility pattern cho content filtering.
+
+**Pipeline Flow:**
+```
+Apify/yt-dlp entries
+  → QualityFilter (min_views, min_likes)
+  → KeywordFilter (blocklist, allowlist)
+  → DeduplicationFilter (cross-campaign per page)
+  → Accepted entries → tạo Video record
+```
+
+**Schema mở rộng — `campaigns` table:**
+```
++ filter_min_views: Integer DEFAULT 0         (0 = không lọc)
++ filter_min_likes: Integer DEFAULT 0
++ filter_blocklist_keywords: JSON DEFAULT []   (array of strings)
++ filter_allowlist_hashtags: JSON DEFAULT []   (array of strings, rỗng = cho phép tất cả)
+```
+
+**Filter Service — `content_filter.py`:**
+```python
+class ContentFilter(Protocol):
+    def apply(self, entry: dict, campaign: Campaign) -> FilterResult: ...
+
+class FilterResult:
+    accepted: bool
+    reason: str | None  # "min_views_not_met", "blocklist_match:spam", etc.
+
+# Chain execution
+filters = [QualityFilter(), KeywordFilter(), CrossCampaignDedup(db)]
+for f in filters:
+    result = f.apply(entry, campaign)
+    if not result.accepted:
+        log_filtered(entry, result.reason)
+        break
+```
+
+**Cross-Campaign Dedup Logic:**
+```sql
+-- Kiểm tra video đã posted trên cùng target_page
+SELECT 1 FROM videos v
+JOIN campaigns c ON v.campaign_id = c.id
+WHERE c.target_page_id = :page_id
+  AND v.original_id = :original_id
+  AND v.status = 'posted'
+LIMIT 1
+```
+
+### D5: AI Caption Architecture (Epic 10)
+
+**Quyết định:** Mở rộng Gemini integration hiện tại, không thay thế.
+
+**Schema mở rộng:**
+```
+facebook_pages:
+  + brand_voice: String NULLABLE          # Custom prompt cho Gemini
+  + brand_voice_preset: String DEFAULT "casual"  # professional|casual|gen-z|corporate|viral
+
+campaigns:
+  + caption_language: String DEFAULT "auto"  # vi|en|auto
+  + hashtag_optimization: Boolean DEFAULT false
+```
+
+**AI Generator Enhancement — `ai_generator.py`:**
+```python
+def generate_caption(
+    original_caption: str,
+    brand_voice: str | None = None,
+    brand_voice_preset: str = "casual",
+    target_language: str = "auto",
+    optimize_hashtags: bool = False,
+) -> str:
+    system_prompt = _build_system_prompt(brand_voice, brand_voice_preset, target_language)
+    caption = gemini_response
+    if optimize_hashtags:
+        caption = _merge_hashtags(caption, original_caption, max_total=30)
+    return caption
+```
+
+**Brand Voice Presets:**
+
+| Preset | System Prompt Direction |
+|--------|----------------------|
+| professional | Formal, informative, dùng từ ngữ chuyên nghiệp |
+| casual | Thân thiện, gần gũi, dùng ngôn ngữ đời thường |
+| gen-z | Trendy, dùng emoji, slang, ngôn ngữ Gen Z |
+| corporate | Doanh nghiệp, chỉn chu, tập trung giá trị thương hiệu |
+| viral | Gây tò mò, hook mạnh, CTA rõ ràng |
+
+### D6: Multi-Platform Publisher Architecture (Epic 12)
+
+**Quyết định:** Publisher Interface với Strategy Pattern.
+
+**Interface:**
+```python
+# publisher_interface.py
+class VideoPublisher(Protocol):
+    platform: str
+    def upload(self, video: Video, access_token: str, caption: str) -> PublishResult: ...
+    def get_post_url(self, post_id: str) -> str: ...
+
+class PublishResult:
+    success: bool
+    post_id: str | None
+    platform: str
+    error: str | None
+
+class FacebookReelsPublisher(VideoPublisher): ...   # Hiện tại — fb_graph.py
+class YouTubeShortsPublisher(VideoPublisher): ...    # YouTube Data API v3
+class InstagramReelsPublisher(VideoPublisher): ...   # Instagram Graph API
+```
+
+**Schema mở rộng — Hỗ trợ multi-platform mapping:**
+```
+campaigns:
+  + target_platforms: JSON DEFAULT ["facebook"]   # ["facebook", "youtube", "instagram"]
+
+-- Bảng mới cho YouTube/Instagram credentials (tương tự facebook_pages)
+platform_accounts:
+  id: UUID PK
+  platform: Enum("youtube", "instagram")
+  account_id: String UNIQUE
+  account_name: String
+  access_token: String (encrypted)
+  refresh_token: String NULLABLE (encrypted)
+  token_expires_at: DateTime NULLABLE
+  created_at, updated_at
+```
+
+**Dispatcher:**
+```python
+def publish_video(video: Video, campaign: Campaign):
+    for platform in campaign.target_platforms:
+        publisher = get_publisher(platform)  # Factory
+        credentials = get_credentials(platform, campaign)
+        result = publisher.upload(video, credentials.token, caption)
+        save_publish_result(video, result)
+```
+
+### D7: Multi-Source Crawler Architecture (Epic 13)
+
+**Quyết định:** Mở rộng Strategy Pattern từ D1 cho nhiều source platforms.
+
+**Interface:**
+```python
+# crawler_interface.py
+class ContentCrawler(Protocol):
+    platform: str
+    def extract_metadata(self, source_url: str) -> dict: ...
+    def download_video(self, url: str, prefix: str) -> tuple[str|None, str|None]: ...
+
+class TikTokCrawler(ContentCrawler): ...     # Hiện tại — tiktok_crawler.py (Apify + yt-dlp)
+class YouTubeCrawler(ContentCrawler): ...     # yt-dlp (YouTube không block)
+class InstagramCrawler(ContentCrawler): ...   # Apify Instagram Scraper actor
+```
+
+**Auto-detect source platform:**
+```python
+def detect_platform(url: str) -> str:
+    if "tiktok.com" in url: return "tiktok"
+    if "youtube.com" in url or "youtu.be" in url: return "youtube"
+    if "instagram.com" in url: return "instagram"
+    raise ValueError(f"Unsupported source URL: {url}")
+```
+
+### D8: RBAC & Multi-Tenant Architecture (Epic 14)
+
+**Quyết định:** Mở rộng User model hiện tại, thêm Organization layer.
+
+**Schema mở rộng:**
+```
+-- Bảng mới
+organizations:
+  id: UUID PK
+  name: String
+  slug: String UNIQUE     # URL-safe identifier
+  created_at, updated_at
+
+-- Mở rộng users table
+users:
+  + organization_id: UUID FK → organizations.id NULLABLE
+  + role: Enum("owner", "editor", "viewer")  # Mở rộng từ admin/operator
+
+-- Thêm org_id vào các bảng chính
+campaigns:      + organization_id: UUID FK
+facebook_pages: + organization_id: UUID FK
+```
+
+**Permission Matrix:**
+
+| Action | Owner | Editor | Viewer |
+|--------|-------|--------|--------|
+| View campaigns | Yes | Yes | Yes |
+| Create/edit campaign | Yes | Yes | No |
+| Delete campaign | Yes | No | No |
+| View access tokens | Yes | No | No |
+| Manage users | Yes | No | No |
+| System settings | Yes | No | No |
+
+**Data Isolation:**
+- Mọi query phải filter theo `organization_id` từ JWT claims
+- Middleware inject `current_org_id` vào request context
+- Super Admin (organization_id = NULL) có thể switch organizations
+
+### D9: Analytics Data Model (Epic 11)
+
+**Schema mới:**
+```
+video_metrics:
+  id: UUID PK
+  video_id: UUID FK → videos.id
+  fb_post_id: String INDEX
+  views: Integer DEFAULT 0
+  likes: Integer DEFAULT 0
+  comments: Integer DEFAULT 0
+  shares: Integer DEFAULT 0
+  reach: Integer DEFAULT 0
+  fetched_at: DateTime     # Timestamp khi fetch metrics
+  created_at: DateTime
+
+  INDEX: (video_id, fetched_at)  # Time-series queries
+```
+
+**Metrics Collector Job:**
+```
+APScheduler cron mỗi 6h:
+  1. Query videos WHERE status = 'posted' AND fb_post_id IS NOT NULL
+  2. Batch Graph API calls: GET /{fb_post_id}?fields=likes.summary(true),comments.summary(true),shares
+  3. Upsert vào video_metrics (append, không overwrite — time-series)
+  4. Rate limit: max 200 API calls/hour (Graph API limit)
+```
+
+**Dashboard Aggregation Queries:**
+```sql
+-- Campaign performance summary
+SELECT c.name, COUNT(v.id) as total_videos,
+  SUM(vm.views) as total_views, SUM(vm.likes) as total_likes,
+  AVG(vm.likes::float / NULLIF(vm.views, 0)) as avg_engagement_rate
+FROM campaigns c
+JOIN videos v ON v.campaign_id = c.id
+JOIN LATERAL (
+  SELECT * FROM video_metrics WHERE video_id = v.id ORDER BY fetched_at DESC LIMIT 1
+) vm ON true
+GROUP BY c.id
+```
+
+### Phase 2 Project Structure Updates
+
+```text
+backend/app/
+├── services/
+│   ├── token_lifecycle.py        # NEW — Epic 7
+│   ├── storage_backend.py        # NEW — Epic 8
+│   ├── content_filter.py         # NEW — Epic 9
+│   ├── crawler_interface.py      # NEW — Epic 13 (refactor tiktok_crawler)
+│   ├── publisher_interface.py    # NEW — Epic 12 (refactor fb_graph)
+│   ├── youtube_publisher.py      # NEW — Epic 12
+│   ├── instagram_publisher.py    # NEW — Epic 12
+│   ├── youtube_crawler.py        # NEW — Epic 13
+│   ├── instagram_crawler.py      # NEW — Epic 13
+│   ├── metrics_collector.py      # NEW — Epic 11
+│   └── (existing services unchanged)
+├── models/
+│   └── models.py                 # EXTEND — thêm Organization, PlatformAccount, VideoMetrics
+├── api/
+│   ├── analytics.py              # NEW — Epic 11
+│   ├── organizations.py          # NEW — Epic 14
+│   └── (existing routers unchanged)
+└── worker/
+    └── cron.py                   # EXTEND — thêm token_check_job, cleanup_job, metrics_job
+```
+
+### Phase 2 Implementation Sequence
+
+```
+Sprint 1 (Epic 7): Token Lifecycle
+  → Alembic migration: facebook_pages + token fields
+  → token_lifecycle_service.py
+  → APScheduler cron: token_check_job
+  → UI: token status badges + alert banner
+
+Sprint 2 (Epic 9): Content Curation
+  → Alembic migration: campaigns + filter fields
+  → content_filter.py (3 filter classes)
+  → Integrate vào sync_campaign_content()
+  → UI: filter config per campaign
+
+Sprint 3 (Epic 8 + 10): Storage + AI Caption
+  → storage_backend.py + S3Storage class
+  → Alembic migration: facebook_pages + brand_voice; campaigns + caption_language
+  → Enhance ai_generator.py
+  → APScheduler cron: cleanup_job
+
+Sprint 4 (Epic 11): Analytics
+  → Alembic migration: video_metrics table
+  → metrics_collector.py
+  → analytics.py router
+  → UI: analytics dashboard tab
+
+Sprint 5 (Epic 12 + 13): Multi-Platform
+  → publisher_interface.py + youtube/instagram publishers
+  → crawler_interface.py + youtube/instagram crawlers
+  → Alembic migration: platform_accounts, campaigns.target_platforms
+
+Sprint 6 (Epic 14): Multi-Tenant
+  → Alembic migration: organizations table, FK additions
+  → RBAC middleware
+  → organizations.py router
+  → Data isolation layer
+```
+
+### Phase 2 Validation Checklist
+
+- [x] Backward compatible — tất cả tính năng Phase 1 không bị ảnh hưởng
+- [x] Progressive enhancement — mỗi epic deploy độc lập
+- [x] Config-driven — tính năng mới bật/tắt qua env vars
+- [x] Strategy Pattern — storage, publisher, crawler đều có interface rõ ràng
+- [x] Database migrations — mọi schema change qua Alembic, không break existing data
+- [x] Security maintained — token mới mã hóa AES-256, RBAC check mọi endpoint

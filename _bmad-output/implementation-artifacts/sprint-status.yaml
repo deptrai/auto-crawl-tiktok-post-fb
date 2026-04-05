@@ -1,5 +1,5 @@
 # generated: 2026-04-04T13:05:00+07:00
-# last_updated: 2026-04-04T23:10:00+07:00
+# last_updated: 2026-04-05T02:00:00+07:00
 # project: auto-crawl-tiktok-post-fb
 # project_key: NOKEY
 # tracking_system: file-system
@@ -33,20 +33,38 @@
 # - Stories can be worked in parallel if team capacity allows
 # - SM typically creates next story after previous one is 'done' to incorporate learnings
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+#
+# PHASE 2 ROADMAP:
+# ================
+# Sprint 1: Epic 7 — Token Lifecycle Management (FIX CRITICAL: Facebook token expiry)
+# Sprint 2: Epic 9 — Smart Content Curation (content quality filtering)
+# Sprint 3: Epic 8 + Epic 10 — Cloud Storage + AI Caption Brand Voice
+# Sprint 4: Epic 11 — Post-Publish Analytics
+# Sprint 5: Epic 12 + Epic 13 — Multi-Platform Publishing + Multi-Source Crawl
+# Sprint 6: Epic 14 — Multi-Tenant User Management
+#
+# QUICK WINS (< 1 day each, can be done anytime):
+# QW1: Video cleanup cron — xóa local MP4 sau 24h khi posted (Story 8.2 preview)
+# QW2: Token expiry badge trên UI — hiển thị warning khi token sắp hết hạn (Story 7.3 preview)
+# QW3: Min views filter — một dòng config ngưỡng view trong campaign (Story 9.1 preview)
+# QW4: Brand voice field — thêm text field brand_voice vào FacebookPage model (Story 10.1 preview)
+# QW5: Blocklist keywords — array config đơn giản trong campaign settings (Story 9.2 preview)
 
 generated: 2026-04-04T13:05:00+07:00
-last_updated: 2026-04-04T23:10:00+07:00
+last_updated: 2026-04-05T02:00:00+07:00
 project: auto-crawl-tiktok-post-fb
 project_key: NOKEY
 tracking_system: file-system
 story_location: /Users/luisphan/Documents/GitHub/auto-crawl-tiktok-post-fb/_bmad-output/implementation-artifacts
 
 development_status:
+  # ─── PHASE 1 (COMPLETE) ───────────────────────────────────────────────────
   epic-1: done
   1-1-quan-ly-danh-sach-nguon-kenh-tiktok: done
   1-2-luu-tru-access-token-facebook-cap-quyen-dich: done
   1-3-cau-hinh-ghep-cap-phan-phoi: done
   epic-1-retrospective: done
+
   epic-2: done
   2-1-nhan-dien-video-moi-loc-chong-trung-lap-bang-apscheduler: done
   2-2-tai-xuong-video-khong-watermark: done
@@ -54,20 +72,78 @@ development_status:
   2-4-bom-hang-doi-upload-co-gian-cach: done
   2-5-dang-video-len-dich-facebook-graph-api: done
   epic-2-retrospective: done
+
   epic-3: done
   3-1-xac-thuc-cong-giao-dai: done
   3-2-lang-nghe-trang-thai-hoan-tat-post-published: done
   epic-3-retrospective: done
+
   epic-4: done
   4-1-be-gay-ngoai-le-api-rate-limits: done
   4-2-phanh-gap-khan-cap: done
   4-3-tong-tram-bom-proxy: done
   4-4-hoi-sinh-vet-gay: done
   epic-4-retrospective: done
+
   epic-5: done
   5-1-bang-dieu-khien-bang-chuyen-video: done
   5-2-khai-quat-log-ky-thuat-chuyen-sau: done
   5-3-cau-dao-tong-nhanh-chien-dich: done
   epic-5-retrospective: done
+
+  # ─── PHASE 1.5 — EPIC 6 (IN PROGRESS) ───────────────────────────────────
   epic-6: in-progress
-  6-1-tich-hop-apify-tiktok-scraper: ready-for-dev
+  6-1-tich-hop-apify-tiktok-scraper: review
+  epic-6-retrospective: optional
+
+  # ─── PHASE 2 — SPRINT 1 ──────────────────────────────────────────────────
+  # Priority: CRITICAL — Fix Facebook token expiry
+  epic-7: in-progress
+  7-1-ho-tro-system-user-token-khong-het-han: ready-for-dev
+  7-2-tu-dong-lam-moi-long-lived-token: ready-for-dev
+  7-3-canh-bao-giam-sat-han-token: ready-for-dev
+  epic-7-retrospective: optional
+
+  # ─── PHASE 2 — SPRINT 2 ──────────────────────────────────────────────────
+  # Priority: HIGH — Smart content filtering
+  epic-9: in-progress
+  9-1-cham-diem-chat-luong-video-tu-dong: ready-for-dev
+  9-2-bo-loc-hashtag-tu-khoa: ready-for-dev
+  9-3-phat-hien-noi-dung-trung-lap: ready-for-dev
+  epic-9-retrospective: optional
+
+  # ─── PHASE 2 — SPRINT 3 ──────────────────────────────────────────────────
+  epic-8: backlog
+  8-1-tich-hop-cloud-object-storage: backlog
+  8-2-tu-dong-don-dep-local-cache: backlog
+  epic-8-retrospective: optional
+
+  epic-10: backlog
+  10-1-cau-hinh-brand-voice-profile: backlog
+  10-2-caption-da-ngon-ngu: backlog
+  10-3-toi-uu-hashtag-tu-dong: backlog
+  epic-10-retrospective: optional
+
+  # ─── PHASE 2 — SPRINT 4 ──────────────────────────────────────────────────
+  epic-11: backlog
+  11-1-thu-thap-engagement-metrics: backlog
+  11-2-dashboard-phan-tich-hieu-suat: backlog
+  epic-11-retrospective: optional
+
+  # ─── PHASE 2 — SPRINT 5 ──────────────────────────────────────────────────
+  epic-12: backlog
+  12-1-upload-len-youtube-shorts: backlog
+  12-2-upload-len-instagram-reels: backlog
+  epic-12-retrospective: optional
+
+  epic-13: backlog
+  13-1-crawl-video-tu-youtube-shorts: backlog
+  13-2-crawl-video-tu-instagram-reels: backlog
+  epic-13-retrospective: optional
+
+  # ─── PHASE 2 — SPRINT 6 ──────────────────────────────────────────────────
+  epic-14: backlog
+  14-1-he-thong-quan-ly-nguoi-dung: backlog
+  14-2-role-based-access-control: backlog
+  14-3-workspace-to-chuc: backlog
+  epic-14-retrospective: optional

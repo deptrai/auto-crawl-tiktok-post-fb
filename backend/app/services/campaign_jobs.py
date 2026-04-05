@@ -13,7 +13,7 @@ from app.services.ai_generator import generate_reply
 from app.services.fb_graph import reply_to_comment
 from app.services.observability import record_event
 from app.services.security import decrypt_secret
-from app.services.ytdlp_crawler import download_video, extract_metadata
+from app.services.tiktok_crawler import download_video, extract_metadata
 
 
 def parse_uuid_or_none(raw_id: str):
@@ -165,6 +165,8 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
             video_url = entry.get("webpage_url", entry.get("url"))
             if not video_url:
                 continue
+            # Khi Apify trả về, dùng direct CDN URL để download thay vì TikTok URL
+            download_url = entry.get("_apify_download_url") or video_url
 
             original_id = entry.get("id", str(uuid.uuid4()))
             existing_vid = (
@@ -193,7 +195,7 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
             db.refresh(db_video)
             added_count += 1
 
-            out_path, _ = download_video(video_url, "tiktok")
+            out_path, _ = download_video(download_url, "tiktok")
             if out_path:
                 db_video.file_path = out_path
                 db_video.status = VideoStatus.ready

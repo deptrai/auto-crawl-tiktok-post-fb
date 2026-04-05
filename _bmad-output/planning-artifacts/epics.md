@@ -373,3 +373,344 @@ So that tôi ra lệnh thiết quân luật / can thiệp khẩn cấp vào toà
 **And** các luồng Worker đang chạy ngầm của **Epic 2** một khi check DB thấy bị khóa vòi sẽ ngay lập tức hủy phiên làm việc.
 
 <!-- End story repeat -->
+
+## Epic 6: Tích Hợp Apify TikTok Scraper (Anti-Block Crawler)
+
+Thay thế yt-dlp bằng Apify TikTok Scraper để bypass IP-level block của TikTok. Hỗ trợ cả `clockworks/tiktok-scraper` và kingscraper actor, có fallback về yt-dlp khi Apify không khả dụng.
+**Yêu cầu bao phủ:** Giải quyết vấn đề TikTok block IP datacenter/residential
+
+### Story 6.1: Tích Hợp Apify Client vào Backend (Apify Integration)
+
+As an Admin,
+I want to hệ thống sử dụng Apify TikTok Scraper thay vì yt-dlp,
+So that việc crawl TikTok không còn bị block IP và hoạt động ổn định 24/7.
+
+**Acceptance Criteria:**
+
+**Given** biến `APIFY_API_TOKEN` và `APIFY_ACTOR_ID` được cấu hình trong `.env`
+**When** hệ thống cần crawl video TikTok (profile, hashtag, single video)
+**Then** sử dụng `apify-client` Python SDK gọi Apify actor phù hợp
+**And** hỗ trợ `TIKTOK_CRAWLER_MODE=auto` — thử Apify trước, fallback yt-dlp khi Apify fail
+**And** tương thích ngược hoàn toàn với campaign sync flow hiện tại.
+
+<!-- End story repeat -->
+
+## Epic 7: Quản Lý Vòng Đời Token Facebook (Token Lifecycle Management)
+
+Giải quyết vấn đề token hết hạn liên tục bằng cách thiết lập System User Token không hết hạn và hệ thống tự động làm mới / cảnh báo sớm khi token sắp hết hạn.
+**Ưu tiên:** ⭐ CAO — Sprint 1 Phase 2
+
+### Story 7.1: Hỗ Trợ System User Token Không Hết Hạn (Never-Expiring Token)
+
+As an Admin,
+I want to khai báo Facebook System User Token (không hết hạn) thay vì dùng session-based Graph API Explorer token,
+So that hệ thống đăng bài hoạt động liên tục 24/7 mà không cần renew token thủ công mỗi 2 giờ.
+
+**Acceptance Criteria:**
+
+**Given** Admin truy cập trang cấu hình Facebook Page
+**When** Admin nhập System User Token thay vì User Access Token
+**Then** hệ thống lưu token an toàn (AES-256) và sử dụng để đăng bài bình thường
+**And** hiển thị rõ loại token (System User / User Access) và thời hạn ước tính trên UI
+**And** cung cấp hướng dẫn trong-app tạo System User Token qua Business Manager.
+
+### Story 7.2: Tự Động Làm Mới Long-Lived Token (Auto Token Refresh)
+
+As a Background Worker,
+I want to tự động làm mới Long-Lived User Access Token (60 ngày) trước khi hết hạn,
+So that không bị gián đoạn dịch vụ do quên renew token thủ công.
+
+**Acceptance Criteria:**
+
+**Given** Token loại Long-Lived User Access Token (hết hạn sau 60 ngày)
+**When** còn 7 ngày trước khi hết hạn
+**Then** APScheduler job tự động gọi Graph API `oauth/access_token?grant_type=fb_exchange_token` để lấy token mới
+**And** cập nhật token mã hóa trong DB và ghi log sự kiện làm mới.
+
+### Story 7.3: Cảnh Báo & Giám Sát Hạn Token (Token Expiry Monitor)
+
+As an Admin,
+I want to nhận cảnh báo sớm khi token sắp hết hạn,
+So that có đủ thời gian can thiệp thủ công nếu auto-refresh thất bại.
+
+**Acceptance Criteria:**
+
+**Given** Scheduler check trạng thái token định kỳ mỗi 24h
+**When** token hết hạn trong vòng 14 ngày
+**Then** hệ thống ghi cảnh báo vào event log với mức độ `warning`
+**And** Dashboard hiển thị badge cảnh báo màu vàng/đỏ trên card Facebook Page tương ứng
+**And** nếu token đã hết hạn, tự động disable campaign và hiển thị banner error cho Admin.
+
+<!-- End story repeat -->
+
+## Epic 8: Lưu Trữ Đám Mây & Độ Bền (Cloud Storage & Resilience)
+
+Chuyển video storage từ local disk sang cloud (S3/GCS/R2) để tránh mất dữ liệu khi restart container, đồng thời tự động dọn dẹp local cache sau khi upload xong.
+**Ưu tiên:** TRUNG BÌNH — Sprint 3 Phase 2
+
+### Story 8.1: Tích Hợp Cloud Object Storage (Cloud Storage Integration)
+
+As a Background Worker,
+I want to lưu video MP4 đã tải vào S3-compatible object storage thay vì local filesystem,
+So that video không bị mất khi container restart hoặc disk đầy.
+
+**Acceptance Criteria:**
+
+**Given** biến `STORAGE_BACKEND=s3` và `AWS_S3_BUCKET` được cấu hình
+**When** download_video hoàn tất
+**Then** file MP4 được upload lên S3 bucket và `file_path` trong DB lưu S3 URL (s3://...)
+**And** fallback về local storage nếu `STORAGE_BACKEND=local` (mặc định, tương thích ngược).
+
+### Story 8.2: Tự Động Dọn Dẹp Local Cache (Auto Cleanup Local Storage)
+
+As a Background Worker,
+I want to tự động xóa file MP4 khỏi local disk sau khi video đã được upload lên Facebook thành công,
+So that disk không bị đầy theo thời gian và chi phí lưu trữ được kiểm soát.
+
+**Acceptance Criteria:**
+
+**Given** Video có trạng thái `posted` hoặc `published`
+**When** Cleanup job chạy định kỳ mỗi 6 giờ
+**Then** xóa file MP4 local của video đó nếu `publish_time` đã qua hơn 24 giờ
+**And** ghi log cleanup event; không xóa nếu video còn đang dùng bởi retry job.
+
+<!-- End story repeat -->
+
+## Epic 9: Lọc Nội Dung Thông Minh (Smart Content Curation)
+
+Thêm lớp lọc thông minh để chỉ tải và đăng những video chất lượng cao, tránh nội dung spam/vi phạm, và loại bỏ duplicate nội dung giữa các chiến dịch.
+**Ưu tiên:** ⭐ CAO — Sprint 2 Phase 2
+
+### Story 9.1: Chấm Điểm Chất Lượng Video Tự Động (Quality Score Filter)
+
+As a Campaign Manager,
+I want to thiết lập ngưỡng tối thiểu về views/likes/share cho video được phép tải về,
+So that chỉ những video viral/trending mới được đăng lên fanpage, tránh content rác.
+
+**Acceptance Criteria:**
+
+**Given** Campaign có cấu hình `min_views=1000`, `min_likes=100` (optional)
+**When** sync_campaign_content xử lý từng video entry từ Apify
+**Then** video không đạt ngưỡng bị skip (không tạo DB record) và log lý do
+**And** UI cho phép Admin cấu hình ngưỡng quality per campaign với giá trị default = 0 (không lọc).
+
+### Story 9.2: Bộ Lọc Hashtag & Từ Khóa (Content Filter Rules)
+
+As an Admin,
+I want to khai báo danh sách hashtag/từ khóa cần chặn hoặc chỉ cho phép,
+So that tránh đăng nội dung không phù hợp với thương hiệu hoặc vi phạm chính sách.
+
+**Acceptance Criteria:**
+
+**Given** Admin cấu hình `blocklist_keywords` và `allowlist_hashtags` per campaign
+**When** video entry được xử lý, parser kiểm tra `original_caption`
+**Then** video chứa từ khóa trong blocklist bị skip; nếu có allowlist thì video không chứa bất kỳ hashtag nào trong list cũng bị skip
+**And** báo cáo tổng số video bị lọc trong mỗi sync run.
+
+### Story 9.3: Phát Hiện Nội Dung Trùng Lặp (Cross-Campaign Dedup)
+
+As a Background Worker,
+I want to phát hiện và bỏ qua video đã được đăng bởi bất kỳ campaign nào khác trên cùng Facebook Page,
+So that không đăng cùng một video 2 lần lên cùng một fanpage dù đến từ các nguồn khác nhau.
+
+**Acceptance Criteria:**
+
+**Given** video với `original_id` X sắp được thêm vào campaign A
+**When** hệ thống kiểm tra duplicate
+**Then** query Video table filter theo `target_page_id` + `original_id` — nếu tồn tại record `posted` → skip
+**And** nếu tồn tại record `failed` → cho phép retry từ campaign mới.
+
+<!-- End story repeat -->
+
+## Epic 10: AI Caption Engine với Brand Voice (AI Caption Enhancement)
+
+Nâng cấp Gemini AI caption generator với khả năng tùy chỉnh giọng văn thương hiệu (brand voice) per page, hỗ trợ đa ngôn ngữ và tự động tối ưu hashtag.
+**Ưu tiên:** TRUNG BÌNH — Sprint 3 Phase 2
+
+### Story 10.1: Cấu Hình Brand Voice Profile (Brand Voice Config)
+
+As an Admin,
+I want to định nghĩa profile giọng văn thương hiệu cho từng Facebook Page,
+So that AI caption phản ánh đúng tông/phong cách giao tiếp của page thay vì generic.
+
+**Acceptance Criteria:**
+
+**Given** Admin vào trang cấu hình Facebook Page
+**When** Admin nhập `brand_voice` prompt (VD: "Viết theo phong cách trẻ trung, dùng emoji, ngôn ngữ Gen Z")
+**Then** Gemini nhận brand_voice prompt như system instruction khi generate caption
+**And** có 5 template preset (professional, casual, gen-z, corporate, viral) để chọn nhanh.
+
+### Story 10.2: Caption Đa Ngôn Ngữ (Multilingual Caption)
+
+As a Campaign Manager,
+I want to tự động generate caption theo ngôn ngữ của target audience,
+So that nội dung phù hợp với thị trường mục tiêu mà không cần dịch thủ công.
+
+**Acceptance Criteria:**
+
+**Given** Campaign có cấu hình `caption_language` (vi / en / auto)
+**When** Gemini generate caption
+**Then** caption được viết bằng ngôn ngữ đã cấu hình
+**And** `auto` mode phát hiện ngôn ngữ gốc của video và generate cùng ngôn ngữ đó.
+
+### Story 10.3: Tối Ưu Hashtag Tự Động (Auto Hashtag Optimization)
+
+As a Campaign Manager,
+I want to AI tự động thêm trending hashtag phù hợp vào caption,
+So that reach của post được tối đa hóa mà không cần research hashtag thủ công.
+
+**Acceptance Criteria:**
+
+**Given** AI caption đã được generate và `hashtag_optimization=enabled`
+**When** Gemini hoàn thành caption generation
+**Then** gợi ý thêm 3-5 trending hashtag phù hợp với nội dung video
+**And** hashtag từ original TikTok caption được giữ lại + merge với hashtag mới, dedup
+**And** tổng số hashtag không vượt quá 30 (Facebook recommendation).
+
+<!-- End story repeat -->
+
+## Epic 11: Analytics Sau Đăng Bài (Post-Publish Analytics)
+
+Thu thập và hiển thị metrics engagement (views, likes, shares, comments) từ Facebook Graph API sau khi video đăng, cho phép Admin đánh giá hiệu suất chiến dịch.
+**Ưu tiên:** THẤP — Sprint 4 Phase 2
+
+### Story 11.1: Thu Thập Engagement Metrics (Metrics Collector)
+
+As a Background Worker,
+I want to định kỳ fetch metrics engagement từ Facebook Graph API cho mỗi video đã đăng,
+So that có dữ liệu thực tế để đánh giá hiệu quả nội dung.
+
+**Acceptance Criteria:**
+
+**Given** Video có trạng thái `posted` và `fb_post_id` hợp lệ
+**When** Metrics collector job chạy mỗi 6 giờ
+**Then** gọi Graph API `/{fb_post_id}?fields=likes.summary,comments.summary,shares,video_insights`
+**And** lưu metrics vào bảng `VideoMetrics` (views, likes, comments, shares, reach) với timestamp.
+
+### Story 11.2: Dashboard Phân Tích Hiệu Suất (Analytics Dashboard)
+
+As an Admin,
+I want to xem dashboard tổng hợp hiệu suất của từng campaign,
+So that biết chiến dịch nào đang hoạt động tốt để tập trung tài nguyên.
+
+**Acceptance Criteria:**
+
+**Given** Admin vào trang Analytics
+**When** chọn campaign và khoảng thời gian
+**Then** hiển thị: tổng views, likes, comments, top 5 video viral nhất, average engagement rate
+**And** biểu đồ trend engagement theo ngày (line chart).
+
+<!-- End story repeat -->
+
+## Epic 12: Đăng Lên Đa Nền Tảng (Multi-Platform Publishing)
+
+Mở rộng khả năng đăng bài sang YouTube Shorts và Instagram Reels ngoài Facebook, cho phép một nội dung TikTok được phân phối đồng thời lên nhiều nền tảng.
+**Ưu tiên:** THẤP — Sprint 5 Phase 2
+
+### Story 12.1: Upload Lên YouTube Shorts (YouTube Shorts Publisher)
+
+As a Campaign Manager,
+I want to cấu hình campaign để đăng video lên YouTube Shorts channel,
+So that nội dung được phân phối sang YouTube audience mà không cần upload thủ công.
+
+**Acceptance Criteria:**
+
+**Given** Admin kết nối YouTube channel qua OAuth2 và cấu hình mapping TikTok → YouTube
+**When** video sẵn sàng (status `ready`)
+**Then** upload MP4 lên YouTube Shorts via YouTube Data API v3 (< 60 giây, ratio 9:16)
+**And** set `category_id`, `description`, `tags` từ original caption + brand voice.
+
+### Story 12.2: Upload Lên Instagram Reels (Instagram Reels Publisher)
+
+As a Campaign Manager,
+I want to cấu hình campaign để đăng video lên Instagram Reels,
+So that tiếp cận thêm audience Instagram cùng một nội dung.
+
+**Acceptance Criteria:**
+
+**Given** Instagram Business Account được kết nối qua Facebook Business Manager
+**When** video sẵn sàng
+**Then** upload MP4 lên Instagram Reels via Instagram Graph API (Container Upload → Publish)
+**And** xử lý hết hạn container upload (max 24h) bằng cách tạo lại container nếu cần.
+
+<!-- End story repeat -->
+
+## Epic 13: Đa Nguồn Crawl (Multi-Source Content Ingestion)
+
+Mở rộng hệ thống crawl để hỗ trợ các nguồn ngoài TikTok: YouTube Shorts, Instagram Reels, cho phép tổng hợp nội dung từ nhiều nền tảng vào một pipeline.
+**Ưu tiên:** THẤP — Sprint 5 Phase 2
+
+### Story 13.1: Crawl Video Từ YouTube Shorts (YouTube Shorts Crawler)
+
+As a Campaign Manager,
+I want to thêm YouTube channel/playlist làm nguồn crawl,
+So that nội dung YouTube Shorts cũng được đưa vào pipeline đăng Facebook tự động.
+
+**Acceptance Criteria:**
+
+**Given** Campaign source URL là YouTube channel hoặc playlist URL
+**When** sync_campaign_content chạy
+**Then** sử dụng yt-dlp (YouTube không block như TikTok) để extract video list và download
+**And** metadata (title, description, views) được map đúng schema Video hiện tại.
+
+### Story 13.2: Crawl Video Từ Instagram Reels (Instagram Reels Crawler)
+
+As a Campaign Manager,
+I want to thêm Instagram profile làm nguồn crawl,
+So that Reels viral trên Instagram cũng được tự động repost sang Facebook.
+
+**Acceptance Criteria:**
+
+**Given** Campaign source URL là Instagram profile URL
+**When** sync_campaign_content chạy
+**Then** sử dụng Apify Instagram Scraper actor để extract Reels list
+**And** download video từ CDN URL trả về (không watermark).
+
+<!-- End story repeat -->
+
+## Epic 14: Đa Người Dùng & Phân Quyền (Multi-Tenant User Management)
+
+Chuyển từ single-admin sang multi-user với role-based access control, cho phép nhiều thành viên team cùng quản lý campaigns với quyền hạn khác nhau.
+**Ưu tiên:** THẤP — Sprint 6 Phase 2
+
+### Story 14.1: Hệ Thống Quản Lý Người Dùng (User Management)
+
+As a Super Admin,
+I want to tạo và quản lý tài khoản cho các thành viên team,
+So that nhiều người có thể truy cập hệ thống với credential riêng.
+
+**Acceptance Criteria:**
+
+**Given** Super Admin vào trang User Management
+**When** tạo user mới với email + password + role
+**Then** user được tạo trong DB với password hash (bcrypt) và có thể đăng nhập
+**And** mỗi user có profile riêng (tên, avatar, last login).
+
+### Story 14.2: Role-Based Access Control (RBAC)
+
+As a Super Admin,
+I want to phân quyền theo role (Owner / Editor / Viewer),
+So that kiểm soát ai được phép thay đổi cấu hình nhạy cảm (token, proxy).
+
+**Acceptance Criteria:**
+
+**Given** User có role `Viewer`
+**When** user cố gắng truy cập endpoint thay đổi campaign hoặc xem access token
+**Then** API trả về `403 Forbidden`
+**And** `Editor` có thể tạo/sửa campaign nhưng không thể xóa hoặc xem token
+**And** `Owner` có toàn quyền.
+
+### Story 14.3: Workspace Tổ Chức (Organization Workspace)
+
+As a Super Admin,
+I want to tổ chức campaigns theo workspace/organization,
+So that nhiều team hoặc khách hàng có thể dùng cùng một hệ thống mà không thấy data của nhau.
+
+**Acceptance Criteria:**
+
+**Given** Hệ thống có nhiều Organization
+**When** user đăng nhập
+**Then** chỉ thấy campaigns và data thuộc organization của mình
+**And** Super Admin có thể switch giữa các organizations để quản lý.
+
+<!-- End story repeat -->
