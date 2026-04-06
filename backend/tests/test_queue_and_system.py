@@ -1,4 +1,4 @@
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 from app.models.models import SystemEvent, TaskQueue, WorkerHeartbeat
@@ -43,7 +43,7 @@ def test_task_queue_deduplicates_and_retries(db_session):
     reclaimed = claim_next_task(db_session, "worker-test")
     assert reclaimed is None
 
-    failed.available_at = datetime.utcnow() - timedelta(seconds=1)
+    failed.available_at = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=1)
     db_session.commit()
 
     reclaimed = claim_next_task(db_session, "worker-test")
@@ -64,7 +64,7 @@ def test_system_endpoints_return_health_tasks_and_events(client, auth_headers, d
         app_role="worker",
         hostname="localhost",
         status="idle",
-        last_seen_at=datetime.utcnow(),
+        last_seen_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
     event = SystemEvent(scope="queue", level="INFO", message="Đã tạo tác vụ kiểm thử.")
     db_session.add_all([task, worker, event])
@@ -96,14 +96,14 @@ def test_admin_can_cleanup_stale_workers(client, auth_headers, db_session):
         app_role="worker",
         hostname="localhost",
         status="idle",
-        last_seen_at=datetime.utcnow(),
+        last_seen_at=datetime.now(timezone.utc).replace(tzinfo=None),
     )
     stale_worker = WorkerHeartbeat(
         worker_name="worker-stale@test",
         app_role="worker",
         hostname="localhost",
         status="idle",
-        last_seen_at=datetime.utcnow() - timedelta(minutes=10),
+        last_seen_at=datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(minutes=10),
     )
     db_session.add_all([online_worker, stale_worker])
     db_session.commit()

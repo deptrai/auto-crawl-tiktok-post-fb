@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -76,7 +76,7 @@ def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_d
 def _calc_days_remaining(expires_at: datetime | None) -> int | None:
     if not expires_at:
         return None
-    days = (expires_at - datetime.utcnow()).days
+    days = (expires_at - datetime.now(timezone.utc).replace(tzinfo=None)).days
     return days if days > 0 else 0
 
 @router.get("/config")
@@ -145,7 +145,7 @@ def manual_refresh_token(page_id: str, db: Session = Depends(get_db)):
 
     # Check cooldown trước — trả 200 thay vì 400 vì đây là hành vi expected
     if page.last_refresh_at:
-        elapsed = datetime.utcnow() - page.last_refresh_at
+        elapsed = datetime.now(timezone.utc).replace(tzinfo=None) - page.last_refresh_at
         if elapsed < timedelta(hours=1):
             return {
                 "message": f"Đã refresh gần đây ({int(elapsed.total_seconds() / 60)} phút trước). Vui lòng thử lại sau.",

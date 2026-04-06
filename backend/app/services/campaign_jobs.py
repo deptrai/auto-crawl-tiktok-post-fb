@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import uuid
 
@@ -45,7 +45,7 @@ def set_campaign_sync_state(campaign: Campaign, status: str, error: str | None =
 
 
 def build_source_page_publish_time(db: Session, page_id: str | None, schedule_interval: int):
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     start_time = now
 
     if page_id and schedule_interval > 0:
@@ -81,7 +81,7 @@ def retry_video_download(video_id: str) -> dict:
             safe_remove_file(video.file_path)
             video.file_path = out_path
             video.status = VideoStatus.ready
-            video.publish_time = datetime.utcnow()
+            video.publish_time = datetime.now(timezone.utc).replace(tzinfo=None)
             video.last_error = None
             db.commit()
             record_event(
@@ -207,7 +207,7 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
         campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
         if campaign:
             if interrupted_reason:
-                set_campaign_sync_state(campaign, "failed", interrupted_reason, datetime.utcnow())
+                set_campaign_sync_state(campaign, "failed", interrupted_reason, datetime.now(timezone.utc).replace(tzinfo=None))
                 record_event(
                     "campaign",
                     "warning",
@@ -216,7 +216,7 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
                     details={"campaign_id": campaign_id, "reason": interrupted_reason},
                 )
             else:
-                set_campaign_sync_state(campaign, "completed", None, datetime.utcnow())
+                set_campaign_sync_state(campaign, "completed", None, datetime.now(timezone.utc).replace(tzinfo=None))
                 record_event(
                     "campaign",
                     "info",
@@ -232,7 +232,7 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
         if campaign_uuid:
             campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
             if campaign:
-                set_campaign_sync_state(campaign, "failed", str(exc), datetime.utcnow())
+                set_campaign_sync_state(campaign, "failed", str(exc), datetime.now(timezone.utc).replace(tzinfo=None))
                 db.commit()
         record_event(
             "campaign",

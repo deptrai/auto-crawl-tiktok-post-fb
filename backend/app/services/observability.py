@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 import json
 import logging
 import socket
@@ -52,7 +52,7 @@ def record_event(
 ) -> None:
     normalized_details = _normalize_details(details)
     payload = {
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         "scope": scope,
         "level": level.upper(),
         "message": message,
@@ -116,7 +116,7 @@ def update_worker_heartbeat(
         heartbeat.current_task_id = current_task_id
         heartbeat.current_task_type = current_task_type
         heartbeat.details = _normalize_details(details) or None
-        heartbeat.last_seen_at = datetime.utcnow()
+        heartbeat.last_seen_at = datetime.now(timezone.utc).replace(tzinfo=None)
         session.commit()
     finally:
         if own_session and session is not None:

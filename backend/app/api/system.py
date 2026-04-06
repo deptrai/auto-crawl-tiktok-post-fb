@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, Field
@@ -45,7 +45,7 @@ class RuntimeSettingsUpdateRequest(BaseModel):
 
 
 def serialize_worker(worker: WorkerHeartbeat) -> dict:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     age_seconds = int((now - worker.last_seen_at).total_seconds()) if worker.last_seen_at else None
     is_online = bool(age_seconds is not None and age_seconds <= settings.WORKER_STALE_SECONDS)
     return {
@@ -82,7 +82,7 @@ def get_system_overview(db: Session = Depends(get_db)):
     fb_app_secret = resolve_runtime_value("FB_APP_SECRET", db=db)
     tunnel_token = resolve_runtime_value("TUNNEL_TOKEN", db=db)
     warnings = []
-    worker_cutoff = datetime.utcnow() - timedelta(seconds=settings.WORKER_STALE_SECONDS)
+    worker_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=settings.WORKER_STALE_SECONDS)
 
     if not webhook_url or not webhook_url.startswith("https://"):
         warnings.append("BASE_URL chưa là HTTPS công khai. Facebook webhook sẽ không hoạt động ổn định.")
@@ -107,7 +107,7 @@ def get_system_overview(db: Session = Depends(get_db)):
 
     return {
         "project_name": settings.PROJECT_NAME,
-        "server_time": datetime.utcnow().isoformat(),
+        "server_time": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         "app_role": settings.APP_ROLE,
         "base_url": base_url,
         "webhook_url": webhook_url,
@@ -148,7 +148,7 @@ def get_system_health(db: Session = Depends(get_db)):
     queue_summary = summarize_tasks(db)
 
     return {
-        "checked_at": datetime.utcnow().isoformat(),
+        "checked_at": datetime.now(timezone.utc).replace(tzinfo=None).isoformat(),
         "database": {"ok": db_ok, "error": db_error},
         "worker": {
             "expected_mode": settings.BACKGROUND_JOBS_MODE,
@@ -237,7 +237,7 @@ def cleanup_stale_workers(
     current_user: User = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
-    stale_cutoff = datetime.utcnow() - timedelta(seconds=settings.WORKER_STALE_SECONDS)
+    stale_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=settings.WORKER_STALE_SECONDS)
     stale_workers = db.query(WorkerHeartbeat).filter(WorkerHeartbeat.last_seen_at < stale_cutoff).all()
     stale_names = [worker.worker_name for worker in stale_workers]
 

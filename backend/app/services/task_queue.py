@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from sqlalchemy import func, or_
@@ -85,7 +85,7 @@ def enqueue_task(
         payload=payload,
         priority=priority,
         max_attempts=max_attempts,
-        available_at=available_at or datetime.utcnow(),
+        available_at=available_at or datetime.now(timezone.utc).replace(tzinfo=None),
         status=TaskStatus.queued,
     )
     db.add(task)
@@ -95,7 +95,7 @@ def enqueue_task(
 
 
 def claim_next_task(db: Session, worker_name: str) -> TaskQueue | None:
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     task = (
         db.query(TaskQueue)
         .filter(
@@ -122,7 +122,7 @@ def claim_next_task(db: Session, worker_name: str) -> TaskQueue | None:
 
 def complete_task(db: Session, task: TaskQueue) -> TaskQueue:
     task.status = TaskStatus.completed
-    task.completed_at = datetime.utcnow()
+    task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
     task.locked_at = None
     task.locked_by = None
     db.commit()
@@ -139,10 +139,10 @@ def fail_task(db: Session, task: TaskQueue, error_message: str, *, retry_delay_s
     if (task.attempts or 0) < (task.max_attempts or 1):
         delay_seconds = retry_delay_seconds if retry_delay_seconds is not None else min(300, max(5, (task.attempts or 0) * 15))
         task.status = TaskStatus.queued
-        task.available_at = datetime.utcnow() + timedelta(seconds=delay_seconds)
+        task.available_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=delay_seconds)
     else:
         task.status = TaskStatus.failed
-        task.completed_at = datetime.utcnow()
+        task.completed_at = datetime.now(timezone.utc).replace(tzinfo=None)
 
     db.commit()
     db.refresh(task)

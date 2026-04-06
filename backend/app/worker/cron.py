@@ -2,7 +2,7 @@ from __future__ import annotations
 import os
 import socket
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
@@ -25,7 +25,7 @@ def auto_post_job():
     db: Session = SessionLocal()
     update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="quét lịch đăng", db=db)
     try:
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
         pages = db.query(FacebookPage).all()
 
         for page in pages:
@@ -265,7 +265,7 @@ def start_scheduler():
             replace_existing=True,
             max_instances=1,
             coalesce=True,
-            next_run_time=datetime.utcnow()
+            next_run_time=datetime.now(timezone.utc).replace(tzinfo=None)
         )
     if not scheduler.running:
         scheduler.start()

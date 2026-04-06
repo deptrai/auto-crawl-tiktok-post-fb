@@ -13,12 +13,12 @@ def test_detect_token_type():
     assert ttype == TokenType.system_user.value
     assert dt is None
     
-    short_ts = int((datetime.utcnow() + timedelta(days=10)).replace(tzinfo=timezone.utc).timestamp())
+    short_ts = int((datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=10)).replace(tzinfo=timezone.utc).timestamp())
     ttype, dt = detect_token_type(short_ts)
     assert ttype == TokenType.short_lived.value
     assert dt is not None
     
-    long_ts = int((datetime.utcnow() + timedelta(days=60)).replace(tzinfo=timezone.utc).timestamp())
+    long_ts = int((datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=60)).replace(tzinfo=timezone.utc).timestamp())
     ttype, dt = detect_token_type(long_ts)
     assert ttype == TokenType.long_lived.value
 
@@ -40,7 +40,7 @@ def test_check_token_health_valid(mock_get, db_session):
     mock_resp.json.return_value = {
         "data": {
             "is_valid": True,
-            "expires_at": int((datetime.utcnow() + timedelta(days=60)).replace(tzinfo=timezone.utc).timestamp()),
+            "expires_at": int((datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=60)).replace(tzinfo=timezone.utc).timestamp()),
             "scopes": ["public_profile"]
         }
     }

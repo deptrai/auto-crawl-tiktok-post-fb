@@ -34,7 +34,7 @@ def detect_token_type(expires_at_ts: int | None = None) -> tuple[str, datetime |
         return TokenType.system_user.value, None
 
     expires_dt = datetime.fromtimestamp(expires_at_ts, tz=timezone.utc).replace(tzinfo=None)
-    days_remaining = (expires_dt - datetime.utcnow()).days
+    days_remaining = (expires_dt - datetime.now(timezone.utc).replace(tzinfo=None)).days
     if days_remaining > 50:
         return TokenType.long_lived.value, expires_dt
     return TokenType.short_lived.value, expires_dt
@@ -48,7 +48,7 @@ def check_token_health(page_id: str, db: Session) -> TokenHealthResult | None:
     if not settings.FB_APP_ID or not settings.FB_APP_SECRET:
         logger.warning("FB_APP_ID/FB_APP_SECRET chưa cấu hình, bỏ qua token health check.")
         page.token_health_status = "unknown"
-        page.token_last_checked_at = datetime.utcnow()
+        page.token_last_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
         return TokenHealthResult(
             is_valid=True,
@@ -59,7 +59,15 @@ def check_token_health(page_id: str, db: Session) -> TokenHealthResult | None:
             health_status="unknown"
         )
 
-    raw_token = decrypt_secret(page.long_lived_access_token)
+    try:
+        raw_token = decrypt_secret(page.long_lived_access_token)
+    except Exception as exc:
+        logger.error(f"Page {page_id}: không thể giải mã long_lived_access_token — {exc}")
+        page.token_health_status = "invalid"
+        page.token_last_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+        db.commit()
+        return TokenHealthResult(False, None, None, None, [], "invalid")
+
     app_access_token = f"{settings.FB_APP_ID}|{settings.FB_APP_SECRET}"
     url = f"https://graph.facebook.com/v21.0/debug_token?input_token={raw_token}&access_token={app_access_token}"
 
@@ -81,7 +89,7 @@ def check_token_health(page_id: str, db: Session) -> TokenHealthResult | None:
         is_valid = data.get("is_valid", False)
         if not is_valid:
             page.token_health_status = "invalid"
-            page.token_last_checked_at = datetime.utcnow()
+            page.token_last_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.commit()
             return TokenHealthResult(False, None, None, None, [], "invalid")
 
@@ -91,7 +99,7 @@ def check_token_health(page_id: str, db: Session) -> TokenHealthResult | None:
         health_status = "valid"
         days_remaining = None
         if expires_dt:
-            days_remaining = (expires_dt - datetime.utcnow()).days
+            days_remaining = (expires_dt - datetime.now(timezone.utc).replace(tzinfo=None)).days
             if days_remaining <= 0:
                 health_status = "expired"
             elif days_remaining < 14:
@@ -100,7 +108,7 @@ def check_token_health(page_id: str, db: Session) -> TokenHealthResult | None:
         page.token_type = TokenType(token_type_val)
         page.token_expires_at = expires_dt
         page.token_health_status = health_status
-        page.token_last_checked_at = datetime.utcnow()
+        page.token_last_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
 
         return TokenHealthResult(
@@ -264,7 +272,7 @@ def refresh_long_lived_token(page_id: str, db: Session) -> RefreshResult:
 
     # Chống double-refresh: bỏ qua nếu đã refresh trong vòng 1h gần đây
     if page.last_refresh_at:
-        elapsed = datetime.utcnow() - page.last_refresh_at
+        elapsed = datetime.now(timezone.utc).replace(tzinfo=None) - page.last_refresh_at
         if elapsed < timedelta(hours=1):
             msg = f"Đã refresh gần đây ({int(elapsed.total_seconds() / 60)} phút trước), bỏ qua."
             logger.info(f"Page {page_id}: {msg}")
@@ -326,13 +334,13 @@ def refresh_long_lived_token(page_id: str, db: Session) -> RefreshResult:
         return RefreshResult(success=False, message=msg)
 
     # Atomic update: chỉ ghi đè sau khi CẢ BA bước (exchange + derive + verify) thành công
-    new_expires_at = datetime.utcnow() + timedelta(seconds=expires_in_seconds)
+    new_expires_at = datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(seconds=expires_in_seconds)
     page.user_access_token = encrypt_secret(new_user_token)
     page.long_lived_access_token = encrypt_secret(new_page_token)
     page.token_expires_at = new_expires_at
     page.token_health_status = "valid"
-    page.token_last_checked_at = datetime.utcnow()
-    page.last_refresh_at = datetime.utcnow()
+    page.token_last_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
+    page.last_refresh_at = datetime.now(timezone.utc).replace(tzinfo=None)
     page.token_refresh_error = None
     db.commit()
 

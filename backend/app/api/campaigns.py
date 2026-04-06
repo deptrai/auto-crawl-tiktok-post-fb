@@ -1,6 +1,6 @@
 from __future__ import annotations
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import os
 import uuid
 
@@ -379,7 +379,7 @@ def prioritize_video(video_id: str, db: Session = Depends(get_db)):
         .scalar()
     )
 
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     video.publish_time = min(now, earliest_other_publish - timedelta(seconds=1)) if earliest_other_publish else now
     video.last_error = None
     db.commit()
@@ -434,7 +434,7 @@ def retry_video(video_id: str, db: Session = Depends(get_db)):
 
     if video.file_path and os.path.exists(video.file_path):
         video.status = VideoStatus.ready
-        video.publish_time = datetime.utcnow()
+        video.publish_time = datetime.now(timezone.utc).replace(tzinfo=None)
         video.last_error = None
         video.fb_post_id = None
         db.commit()

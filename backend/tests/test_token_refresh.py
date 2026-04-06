@@ -3,7 +3,7 @@ Tests cho Story 7.2: Auto Token Refresh
 AC1-AC5: refresh_long_lived_token, cron integration, API endpoints
 """
 import pytest
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock
 
 from app.models.models import FacebookPage, Campaign, CampaignStatus, TokenType
@@ -39,7 +39,7 @@ def make_page(db_session, page_id="page_123", token_type=TokenType.long_lived,
         page_name="Test Page",
         long_lived_access_token=encrypt_secret("old_page_token"),
         token_type=token_type,
-        token_expires_at=datetime.utcnow() + timedelta(days=expires_days),
+        token_expires_at=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=expires_days),
         token_health_status=health_status,
         auto_refresh_enabled=auto_refresh_enabled,
     )
@@ -260,7 +260,7 @@ def test_cron_auto_refresh_triggered(mock_get, db_session):
     debug_resp.json.return_value = {
         "data": {
             "is_valid": True,
-            "expires_at": int((datetime.utcnow() + timedelta(days=5)).timestamp()),
+            "expires_at": int((datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=5)).timestamp()),
             "scopes": ["pages_manage_posts"],
         }
     }
@@ -306,7 +306,7 @@ def test_cron_expiring_soon_no_auto_refresh(mock_get, db_session):
     debug_resp.json.return_value = {
         "data": {
             "is_valid": True,
-            "expires_at": int((datetime.utcnow() + timedelta(days=5)).timestamp()),
+            "expires_at": int((datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=5)).timestamp()),
             "scopes": [],
         }
     }

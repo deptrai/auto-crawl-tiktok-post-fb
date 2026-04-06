@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Security
@@ -97,7 +97,7 @@ def login(creds: LoginRequest, request: Request, db: Session = Depends(get_db)):
     user = db.query(User).filter(User.username == username).first()
     if user and user.is_active and verify_password(creds.password, user.password_hash):
         clear_login_rate_limit(client_id, username)
-        user.last_login_at = datetime.utcnow()
+        user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
         access_token, expires_in = create_access_token(user.id, user.username, user.role.value)
         record_event(
