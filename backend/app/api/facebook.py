@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -9,6 +10,8 @@ from app.services.observability import record_event
 from app.services.security import decrypt_secret, encrypt_secret, is_secret_encrypted, mask_secret
 from app.services.fb_graph import inspect_page_access
 from app.services.token_lifecycle import check_token_health, refresh_long_lived_token
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/facebook", tags=["Trang Facebook"])
 
@@ -60,10 +63,13 @@ def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_d
         page.auto_refresh_enabled = page_in.auto_refresh_enabled
 
     db.commit()
-    
+
     # Kích hoạt check health để lấy metadata ngay lập tức
-    check_token_health(page_in.page_id, db)
-    
+    try:
+        check_token_health(page_in.page_id, db)
+    except Exception as exc:
+        logger.warning(f"Health check sau khi lưu config thất bại: {exc}")
+
     record_event(
         "facebook",
         "info",

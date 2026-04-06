@@ -11,6 +11,13 @@ from app.services.observability import record_event
 
 logger = logging.getLogger(__name__)
 
+# Health status constants — single source of truth cho token_health_status values
+HEALTH_VALID = "valid"
+HEALTH_EXPIRING_SOON = "expiring_soon"
+HEALTH_EXPIRED = "expired"
+HEALTH_INVALID = "invalid"
+HEALTH_UNKNOWN = "unknown"
+
 @dataclass
 class TokenHealthResult:
     is_valid: bool
@@ -40,14 +47,15 @@ def detect_token_type(expires_at_ts: int | None = None) -> tuple[str, datetime |
     return TokenType.short_lived.value, expires_dt
 
 
-def check_token_health(page_id: str, db: Session) -> TokenHealthResult | None:
-    page = db.query(FacebookPage).filter_by(page_id=page_id).first()
+def check_token_health(page_id: str, db: Session, *, page: FacebookPage | None = None) -> TokenHealthResult | None:
+    if page is None:
+        page = db.query(FacebookPage).filter_by(page_id=page_id).first()
     if not page or not page.long_lived_access_token:
         return None
 
     if not settings.FB_APP_ID or not settings.FB_APP_SECRET:
         logger.warning("FB_APP_ID/FB_APP_SECRET chưa cấu hình, bỏ qua token health check.")
-        page.token_health_status = "unknown"
+        page.token_health_status = HEALTH_UNKNOWN
         page.token_last_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
         return TokenHealthResult(
@@ -56,17 +64,17 @@ def check_token_health(page_id: str, db: Session) -> TokenHealthResult | None:
             expires_at=page.token_expires_at,
             days_remaining=None,
             scopes=[],
-            health_status="unknown"
+            health_status=HEALTH_UNKNOWN
         )
 
     try:
         raw_token = decrypt_secret(page.long_lived_access_token)
     except Exception as exc:
         logger.error(f"Page {page_id}: không thể giải mã long_lived_access_token — {exc}")
-        page.token_health_status = "invalid"
+        page.token_health_status = HEALTH_INVALID
         page.token_last_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
-        return TokenHealthResult(False, None, None, None, [], "invalid")
+        return TokenHealthResult(False, None, None, None, [], HEALTH_INVALID)
 
     app_access_token = f"{settings.FB_APP_ID}|{settings.FB_APP_SECRET}"
     url = f"https://graph.facebook.com/v21.0/debug_token?input_token={raw_token}&access_token={app_access_token}"
@@ -76,7 +84,7 @@ def check_token_health(page_id: str, db: Session) -> TokenHealthResult | None:
         data = resp.json().get("data", {})
 
         if resp.status_code != 200 or "error" in data:
-            logger.warning(f"Lỗi khi debug_token: {resp.text}")
+            logger.warning(f"Lỗi khi debug_token: HTTP {resp.status_code}")
             return TokenHealthResult(
                 is_valid=True, # default to keeping existing data
                 token_type=page.token_type.value if page.token_type else None,
@@ -88,22 +96,22 @@ def check_token_health(page_id: str, db: Session) -> TokenHealthResult | None:
 
         is_valid = data.get("is_valid", False)
         if not is_valid:
-            page.token_health_status = "invalid"
+            page.token_health_status = HEALTH_INVALID
             page.token_last_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
             db.commit()
-            return TokenHealthResult(False, None, None, None, [], "invalid")
+            return TokenHealthResult(False, None, None, None, [], HEALTH_INVALID)
 
         expires_at_ts = data.get("expires_at", 0)
         token_type_val, expires_dt = detect_token_type(expires_at_ts)
 
-        health_status = "valid"
+        health_status = HEALTH_VALID
         days_remaining = None
         if expires_dt:
             days_remaining = (expires_dt - datetime.now(timezone.utc).replace(tzinfo=None)).days
             if days_remaining <= 0:
-                health_status = "expired"
+                health_status = HEALTH_EXPIRED
             elif days_remaining < 14:
-                health_status = "expiring_soon"
+                health_status = HEALTH_EXPIRING_SOON
 
         page.token_type = TokenType(token_type_val)
         page.token_expires_at = expires_dt
@@ -135,7 +143,7 @@ def check_all_tokens(db: Session) -> list[TokenHealthResult]:
     pages = db.query(FacebookPage).filter(FacebookPage.long_lived_access_token.isnot(None)).all()
     results = []
     for page in pages:
-        result = check_token_health(page.page_id, db)
+        result = check_token_health(page.page_id, db, page=page)
         if result:
             results.append(result)
     return results
@@ -157,7 +165,12 @@ def _exchange_user_token(current_token: str) -> dict:
     resp = requests.get(url, params=params, timeout=30)
 
     if resp.status_code != 200:
-        raise ValueError(f"Facebook API trả về HTTP {resp.status_code}: {resp.text[:200]}")
+        try:
+            err_data = resp.json().get("error", {})
+            err_msg = f"code={err_data.get('code')}, message={err_data.get('message', 'unknown')}"
+        except Exception:
+            err_msg = "(không parse được response)"
+        raise ValueError(f"Facebook API trả về HTTP {resp.status_code}: {err_msg}")
 
     try:
         data = resp.json()
@@ -170,7 +183,7 @@ def _exchange_user_token(current_token: str) -> dict:
             f"Facebook API lỗi {err.get('code')}/{err.get('error_subcode')}: {err.get('message')}"
         )
     if "access_token" not in data:
-        raise ValueError(f"Phản hồi không hợp lệ từ exchange endpoint: {data}")
+        raise ValueError("Phản hồi không hợp lệ từ exchange endpoint: thiếu access_token")
 
     return data
 
@@ -182,12 +195,22 @@ def _derive_page_token(user_token: str, page_id: str) -> str:
     """
     url = "https://graph.facebook.com/v21.0/me/accounts"
     params = {"access_token": user_token}
+    max_pages = 50
+    page_count = 0
 
     while url:
+        page_count += 1
+        if page_count > max_pages:
+            break
         resp = requests.get(url, params=params, timeout=30)
 
         if resp.status_code != 200:
-            raise ValueError(f"Facebook API trả về HTTP {resp.status_code}: {resp.text[:200]}")
+            try:
+                err_data = resp.json().get("error", {})
+                err_msg = f"code={err_data.get('code')}, message={err_data.get('message', 'unknown')}"
+            except Exception:
+                err_msg = "(không parse được response)"
+            raise ValueError(f"Facebook API trả về HTTP {resp.status_code}: {err_msg}")
 
         try:
             data = resp.json()
@@ -262,12 +285,12 @@ def refresh_long_lived_token(page_id: str, db: Session) -> RefreshResult:
     # Phải có user_access_token để refresh
     if not page.user_access_token:
         msg = "Bật auto-refresh nhưng chưa cung cấp User Token."
+        page.token_refresh_error = msg
+        db.commit()
         record_event(
             "token", "warning", msg, db=db,
             details={"page_id": page_id}
         )
-        page.token_refresh_error = msg
-        db.commit()
         return RefreshResult(success=False, message=msg)
 
     # Chống double-refresh: bỏ qua nếu đã refresh trong vòng 1h gần đây
@@ -282,10 +305,10 @@ def refresh_long_lived_token(page_id: str, db: Session) -> RefreshResult:
         raw_user_token = decrypt_secret(page.user_access_token)
     except Exception:
         msg = "Không thể giải mã user_access_token — encryption key có thể đã thay đổi."
-        record_event("token", "warning", "Làm mới token thất bại.", db=db,
-                     details={"page_id": page_id, "error": msg})
         page.token_refresh_error = msg[:500]
         db.commit()
+        record_event("token", "warning", "Làm mới token thất bại.", db=db,
+                     details={"page_id": page_id, "error": msg})
         return RefreshResult(success=False, message=msg)
 
     # Bước 1: Exchange user token
@@ -294,10 +317,10 @@ def refresh_long_lived_token(page_id: str, db: Session) -> RefreshResult:
     except Exception as exc:
         msg = f"Exchange user token thất bại: {exc}"
         logger.warning(f"Page {page_id}: {msg}")
-        record_event("token", "warning", "Làm mới token thất bại.", db=db,
-                     details={"page_id": page_id, "error": str(exc)[:300]})
         page.token_refresh_error = msg[:500]
         db.commit()
+        record_event("token", "warning", "Làm mới token thất bại.", db=db,
+                     details={"page_id": page_id, "error": str(exc)[:300]})
         return RefreshResult(success=False, message=msg)
 
     new_user_token = exchange_data["access_token"]
@@ -305,10 +328,10 @@ def refresh_long_lived_token(page_id: str, db: Session) -> RefreshResult:
     if not expires_in_seconds or expires_in_seconds <= 0:
         msg = f"expires_in không hợp lệ: {expires_in_seconds}"
         logger.warning(f"Page {page_id}: {msg}")
-        record_event("token", "warning", "Làm mới token thất bại.", db=db,
-                     details={"page_id": page_id, "error": msg})
         page.token_refresh_error = msg[:500]
         db.commit()
+        record_event("token", "warning", "Làm mới token thất bại.", db=db,
+                     details={"page_id": page_id, "error": msg})
         return RefreshResult(success=False, message=msg)
 
     # Bước 2: Derive page token từ user token mới
@@ -317,20 +340,20 @@ def refresh_long_lived_token(page_id: str, db: Session) -> RefreshResult:
     except Exception as exc:
         msg = f"Derive page token thất bại: {exc}"
         logger.warning(f"Page {page_id}: {msg}")
-        record_event("token", "warning", "Làm mới token thất bại.", db=db,
-                     details={"page_id": page_id, "error": str(exc)[:300]})
         page.token_refresh_error = msg[:500]
         db.commit()
+        record_event("token", "warning", "Làm mới token thất bại.", db=db,
+                     details={"page_id": page_id, "error": str(exc)[:300]})
         return RefreshResult(success=False, message=msg)
 
     # Bước 3: Verify page token mới hoạt động trước khi ghi đè DB
     if not _verify_page_token(new_page_token, page_id):
         msg = "Page token mới không hợp lệ sau khi derive — giữ nguyên token cũ."
         logger.warning(f"Page {page_id}: {msg}")
-        record_event("token", "warning", "Làm mới token thất bại.", db=db,
-                     details={"page_id": page_id, "error": msg})
         page.token_refresh_error = msg[:500]
         db.commit()
+        record_event("token", "warning", "Làm mới token thất bại.", db=db,
+                     details={"page_id": page_id, "error": msg})
         return RefreshResult(success=False, message=msg)
 
     # Atomic update: chỉ ghi đè sau khi CẢ BA bước (exchange + derive + verify) thành công
@@ -338,15 +361,25 @@ def refresh_long_lived_token(page_id: str, db: Session) -> RefreshResult:
     page.user_access_token = encrypt_secret(new_user_token)
     page.long_lived_access_token = encrypt_secret(new_page_token)
     page.token_expires_at = new_expires_at
-    page.token_health_status = "valid"
+    page.token_health_status = HEALTH_VALID
     page.token_last_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
     page.last_refresh_at = datetime.now(timezone.utc).replace(tzinfo=None)
     page.token_refresh_error = None
+    # NOTE: token_expires_at tính từ user token TTL (expires_in) vì page token derived
+    # từ long-lived user token thường never-expire. Sau commit, check_token_health sẽ
+    # gọi debug_token để lấy TTL thực nếu cần.
     db.commit()
 
     record_event(
         "token", "info", "Token đã làm mới thành công.", db=db,
         details={"page_id": page_id, "new_expires_at": new_expires_at.isoformat()}
     )
-    logger.info(f"Page {page_id}: Token làm mới thành công, hết hạn {new_expires_at.isoformat()}.")
-    return RefreshResult(success=True, message="Token đã làm mới thành công.", new_expires_at=new_expires_at)
+
+    # Gọi debug_token để lấy TTL thực của page token mới (D3: fix TTL mismatch)
+    try:
+        check_token_health(page_id, db, page=page)
+    except Exception as exc:
+        logger.warning(f"Page {page_id}: post-refresh health check thất bại: {exc}")
+
+    logger.info(f"Page {page_id}: Token làm mới thành công, hết hạn {page.token_expires_at}.")
+    return RefreshResult(success=True, message="Token đã làm mới thành công.", new_expires_at=page.token_expires_at)
