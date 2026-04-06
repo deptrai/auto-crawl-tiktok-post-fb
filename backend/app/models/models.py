@@ -43,6 +43,12 @@ class UserRole(str, enum.Enum):
     operator = "operator"
 
 
+class TokenType(str, enum.Enum):
+    short_lived = "short_lived"
+    long_lived = "long_lived"
+    system_user = "system_user"
+
+
 class Campaign(Base):
     __tablename__ = "campaigns"
 
@@ -93,6 +99,10 @@ class FacebookPage(Base):
     page_id = Column(String, unique=True, index=True)
     page_name = Column(String)
     long_lived_access_token = Column(String)
+    token_type = Column(Enum(TokenType), default=TokenType.long_lived)
+    token_expires_at = Column(DateTime, nullable=True)
+    token_last_checked_at = Column(DateTime, nullable=True)
+    token_health_status = Column(String, default="unknown", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

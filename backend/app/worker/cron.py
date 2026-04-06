@@ -15,6 +15,7 @@ from app.services.fb_graph import upload_video_to_facebook
 from app.services.observability import record_event, update_worker_heartbeat
 from app.services.security import decrypt_secret
 from app.worker.tasks import process_task_queue
+from app.services.token_lifecycle import check_token_health
 
 scheduler = BackgroundScheduler()
 WORKER_NAME = f"{settings.APP_ROLE}@{socket.gethostname()}"
@@ -172,6 +173,43 @@ def heartbeat_job():
     update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="idle")
 
 
+def token_health_check_job():
+    db: Session = SessionLocal()
+    update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="kiểm tra token health", db=db)
+    try:
+        pages = db.query(FacebookPage).filter(FacebookPage.long_lived_access_token.isnot(None)).all()
+        for page in pages:
+            res = check_token_health(page.page_id, db)
+            if not res:
+                continue
+            if res.health_status in ["expired", "invalid"]:
+                campaigns = db.query(Campaign).filter(
+                    Campaign.target_page_id == page.page_id,
+                    Campaign.status == CampaignStatus.active
+                ).all()
+                for c in campaigns:
+                    c.status = CampaignStatus.paused
+                    record_event(
+                        "campaign", "warning", f"Tự động tạm dừng chiến dịch do token {res.health_status}.",
+                        db=db, details={"campaign_id": str(c.id), "page_id": page.page_id}
+                    )
+                db.commit()
+                record_event(
+                    "token", "error", f"Token {res.health_status}.",
+                    db=db, details={"page_id": page.page_id, "token_type": res.token_type, "scopes": res.scopes}
+                )
+            elif res.health_status == "expiring_soon":
+                record_event(
+                    "token", "warning", f"Token sắp hết hạn (còn {res.days_remaining} ngày).",
+                    db=db, details={"page_id": page.page_id, "token_type": res.token_type, "days_remaining": res.days_remaining}
+                )
+    except Exception as exc:
+        record_event("worker", "error", "Lỗi khi kiểm tra token health.", db=db, details={"error": str(exc)})
+    finally:
+        update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="idle", db=db)
+        db.close()
+
+
 def start_scheduler():
     if not scheduler.get_job("auto_post_job"):
         scheduler.add_job(
@@ -202,6 +240,17 @@ def start_scheduler():
             replace_existing=True,
             max_instances=1,
             coalesce=True,
+        )
+    if not scheduler.get_job("token_health_check_job"):
+        scheduler.add_job(
+            token_health_check_job,
+            "interval",
+            hours=settings.TOKEN_CHECK_INTERVAL_HOURS,
+            id="token_health_check_job",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            next_run_time=datetime.utcnow()
         )
     if not scheduler.running:
         scheduler.start()

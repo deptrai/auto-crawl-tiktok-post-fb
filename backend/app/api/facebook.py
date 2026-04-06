@@ -1,4 +1,5 @@
 from __future__ import annotations
+from datetime import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -7,6 +8,7 @@ from app.models.models import FacebookPage
 from app.services.observability import record_event
 from app.services.security import decrypt_secret, encrypt_secret, is_secret_encrypted, mask_secret
 from app.services.fb_graph import inspect_page_access
+from app.services.token_lifecycle import check_token_health
 
 router = APIRouter(prefix="/facebook", tags=["Trang Facebook"])
 
@@ -48,6 +50,10 @@ def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_d
         )
         db.add(page)
     db.commit()
+    
+    # Kích hoạt check health để lấy metadata ngay lập tức
+    check_token_health(page_in.page_id, db)
+    
     record_event(
         "facebook",
         "info",
@@ -56,6 +62,12 @@ def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_d
         details={"page_id": page_in.page_id, "page_name": page_in.page_name},
     )
     return {"message": "Đã lưu mã truy cập Facebook thành công!"}
+
+def _calc_days_remaining(expires_at: datetime | None) -> int | None:
+    if not expires_at:
+        return None
+    days = (expires_at - datetime.utcnow()).days
+    return days if days > 0 else 0
 
 @router.get("/config")
 def get_facebook_config(db: Session = Depends(get_db)):
@@ -86,6 +98,11 @@ def get_facebook_config(db: Session = Depends(get_db)):
                 "token_kind": token_kind,
                 "token_preview": token_preview,
                 "token_is_encrypted": bool(raw_token and is_secret_encrypted(raw_token)),
+                "token_type": page.token_type.value if page.token_type else None,
+                "token_expires_at": page.token_expires_at.isoformat() if page.token_expires_at else None,
+                "token_health_status": page.token_health_status,
+                "token_last_checked_at": page.token_last_checked_at.isoformat() if page.token_last_checked_at else None,
+                "days_remaining": _calc_days_remaining(page.token_expires_at),
             }
         )
 
@@ -93,6 +110,22 @@ def get_facebook_config(db: Session = Depends(get_db)):
         db.commit()
 
     return normalized_pages
+
+
+@router.get("/config/{page_id}/check-health")
+def trigger_token_health_check(page_id: str, db: Session = Depends(get_db)):
+    page = db.query(FacebookPage).filter(FacebookPage.page_id == page_id).first()
+    if not page:
+        raise HTTPException(status_code=404, detail="Không tìm thấy trang Facebook trong hệ thống.")
+    if not page.long_lived_access_token:
+        raise HTTPException(status_code=400, detail="Trang Facebook này chưa có mã truy cập để kiểm tra.")
+    
+    res = check_token_health(page_id, db)
+    if not res:
+        raise HTTPException(status_code=500, detail="Không thể kiểm tra trạng thái mã truy cập.")
+    
+    # Return as dict using standard response format (if needed) or simple dict
+    return res
 
 
 @router.get("/config/{page_id}/validate")
