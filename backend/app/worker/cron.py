@@ -15,7 +15,7 @@ from app.services.fb_graph import upload_video_to_facebook
 from app.services.observability import record_event, update_worker_heartbeat
 from app.services.security import decrypt_secret
 from app.worker.tasks import process_task_queue
-from app.services.token_lifecycle import check_token_health
+from app.services.token_lifecycle import check_token_health, refresh_long_lived_token
 
 scheduler = BackgroundScheduler()
 WORKER_NAME = f"{settings.APP_ROLE}@{socket.gethostname()}"
@@ -199,10 +199,25 @@ def token_health_check_job():
                     db=db, details={"page_id": page.page_id, "token_type": res.token_type, "scopes": res.scopes}
                 )
             elif res.health_status == "expiring_soon":
-                record_event(
-                    "token", "warning", f"Token sắp hết hạn (còn {res.days_remaining} ngày).",
-                    db=db, details={"page_id": page.page_id, "token_type": res.token_type, "days_remaining": res.days_remaining}
-                )
+                days_left = res.days_remaining if res.days_remaining is not None else 0
+                if page.auto_refresh_enabled and days_left <= settings.TOKEN_REFRESH_DAYS_BEFORE:
+                    # Tự động làm mới token
+                    refresh_result = refresh_long_lived_token(page.page_id, db)
+                    if not refresh_result.success:
+                        # Refresh thất bại — chỉ ghi warning, KHÔNG pause campaign
+                        record_event(
+                            "token", "warning",
+                            f"Token sắp hết hạn (còn {days_left} ngày), auto-refresh thất bại: {refresh_result.message}",
+                            db=db,
+                            details={"page_id": page.page_id, "token_type": res.token_type, "days_remaining": days_left}
+                        )
+                    # Nếu thành công thì refresh_long_lived_token đã ghi event info rồi
+                else:
+                    # auto_refresh_enabled = False hoặc chưa đến ngưỡng refresh
+                    record_event(
+                        "token", "warning", f"Token sắp hết hạn (còn {days_left} ngày).",
+                        db=db, details={"page_id": page.page_id, "token_type": res.token_type, "days_remaining": days_left}
+                    )
     except Exception as exc:
         record_event("worker", "error", "Lỗi khi kiểm tra token health.", db=db, details={"error": str(exc)})
     finally:

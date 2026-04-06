@@ -103,6 +103,11 @@ class FacebookPage(Base):
     token_expires_at = Column(DateTime, nullable=True)
     token_last_checked_at = Column(DateTime, nullable=True)
     token_health_status = Column(String, default="unknown", nullable=False)
+    # Story 7.2: Auto-refresh fields
+    user_access_token = Column(String, nullable=True)
+    auto_refresh_enabled = Column(Boolean, default=False, nullable=False)
+    token_refresh_error = Column(String, nullable=True)
+    last_refresh_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

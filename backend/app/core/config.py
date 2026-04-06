@@ -34,6 +34,7 @@ class Settings:
     FB_APP_ID: str = os.getenv("FB_APP_ID", "")
     FB_APP_SECRET: str = os.getenv("FB_APP_SECRET", "")
     TOKEN_CHECK_INTERVAL_HOURS: int = int(os.getenv("TOKEN_CHECK_INTERVAL_HOURS", "24"))
+    TOKEN_REFRESH_DAYS_BEFORE: int = int(os.getenv("TOKEN_REFRESH_DAYS_BEFORE", "7"))
     TUNNEL_TOKEN: str = os.getenv("TUNNEL_TOKEN", "")
     JWT_SECRET: str = os.getenv("JWT_SECRET", DEFAULT_JWT_SECRET)
     JWT_ALGORITHM: str = os.getenv("JWT_ALGORITHM", "HS256")

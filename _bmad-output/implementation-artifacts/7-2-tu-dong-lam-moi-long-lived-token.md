@@ -1,6 +1,6 @@
 # Story 7.2: Tự Động Làm Mới Long-Lived Token (Auto Token Refresh)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -90,33 +90,48 @@ GET https://graph.facebook.com/v21.0/oauth/access_token
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Alembic migration — thêm refresh fields vào `facebook_pages` (AC: #1)
-  - [ ] 1.1: Thêm columns: `user_access_token` (String, encrypted), `auto_refresh_enabled` (Boolean, default False), `token_refresh_error` (String NULLABLE), `last_refresh_at` (DateTime NULLABLE)
-  - [ ] 1.2: Tạo Alembic migration file
-  - [ ] 1.3: Test migration up/down — existing rows không bị ảnh hưởng
+- [x] Task 1: Alembic migration — thêm refresh fields vào `facebook_pages` (AC: #1)
+  - [x] 1.1: Thêm columns: `user_access_token` (String, encrypted), `auto_refresh_enabled` (Boolean, default False), `token_refresh_error` (String NULLABLE), `last_refresh_at` (DateTime NULLABLE)
+  - [x] 1.2: Tạo Alembic migration file
+  - [x] 1.3: Test migration up/down — existing rows không bị ảnh hưởng
 
-- [ ] Task 2: Token refresh logic trong `token_lifecycle.py` (AC: #2)
-  - [ ] 2.1: Implement `refresh_long_lived_token(page_id: str, db: Session) -> RefreshResult`
-  - [ ] 2.2: Implement `_exchange_user_token(current_token: str) -> dict` — gọi Graph API exchange endpoint
-  - [ ] 2.3: Implement `_derive_page_token(user_token: str, page_id: str) -> str` — gọi `GET /me/accounts`
-  - [ ] 2.4: Atomic update: chỉ ghi đè token sau khi CẢ HAI bước (exchange + derive) thành công
+- [x] Task 2: Token refresh logic trong `token_lifecycle.py` (AC: #2)
+  - [x] 2.1: Implement `refresh_long_lived_token(page_id: str, db: Session) -> RefreshResult`
+  - [x] 2.2: Implement `_exchange_user_token(current_token: str) -> dict` — gọi Graph API exchange endpoint
+  - [x] 2.3: Implement `_derive_page_token(user_token: str, page_id: str) -> str` — gọi `GET /me/accounts`
+  - [x] 2.4: Atomic update: chỉ ghi đè token sau khi CẢ HAI bước (exchange + derive) thành công
 
-- [ ] Task 3: Tích hợp vào health check cron (AC: #3)
-  - [ ] 3.1: Mở rộng `token_health_check_job` — sau check health, nếu `expiring_soon` + `auto_refresh_enabled` → gọi refresh
-  - [ ] 3.2: Retry logic: nếu refresh fail, retry 1 lần sau 1h (không retry liên tục)
+- [x] Task 3: Tích hợp vào health check cron (AC: #3)
+  - [x] 3.1: Mở rộng `token_health_check_job` — sau check health, nếu `expiring_soon` + `auto_refresh_enabled` → gọi refresh
+  - [x] 3.2: Retry logic: nếu refresh fail, retry 1 lần sau 1h (không retry liên tục)
 
-- [ ] Task 4: API endpoints (AC: #4)
-  - [ ] 4.1: Mở rộng `POST /facebook/config` — accept + encrypt `user_access_token`, `auto_refresh_enabled`
-  - [ ] 4.2: Mở rộng `GET /facebook/config` response — thêm `auto_refresh_enabled`, `has_user_token`, `last_refresh_at`
-  - [ ] 4.3: Thêm `POST /facebook/config/{page_id}/refresh-token` — manual trigger
+- [x] Task 4: API endpoints (AC: #4)
+  - [x] 4.1: Mở rộng `POST /facebook/config` — accept + encrypt `user_access_token`, `auto_refresh_enabled`
+  - [x] 4.2: Mở rộng `GET /facebook/config` response — thêm `auto_refresh_enabled`, `has_user_token`, `last_refresh_at`
+  - [x] 4.3: Thêm `POST /facebook/config/{page_id}/refresh-token` — manual trigger
 
-- [ ] Task 5: Unit tests (AC: #1-5)
-  - [ ] 5.1: Test `refresh_long_lived_token()` — happy path (mock exchange + derive)
-  - [ ] 5.2: Test refresh fail — exchange thất bại → token cũ giữ nguyên
-  - [ ] 5.3: Test refresh fail — derive thất bại → token cũ giữ nguyên (atomic)
-  - [ ] 5.4: Test cron integration — expiring_soon + auto_refresh → trigger refresh
-  - [ ] 5.5: Test cron integration — expiring_soon + auto_refresh=False → chỉ warning
-  - [ ] 5.6: Test API endpoint `/refresh-token`
+- [x] Task 5: Unit tests (AC: #1-5)
+  - [x] 5.1: Test `refresh_long_lived_token()` — happy path (mock exchange + derive)
+  - [x] 5.2: Test refresh fail — exchange thất bại → token cũ giữ nguyên
+  - [x] 5.3: Test refresh fail — derive thất bại → token cũ giữ nguyên (atomic)
+  - [x] 5.4: Test cron integration — expiring_soon + auto_refresh → trigger refresh
+  - [x] 5.5: Test cron integration — expiring_soon + auto_refresh=False → chỉ warning
+  - [x] 5.6: Test API endpoint `/refresh-token`
+
+### Review Findings
+
+- [x] [Review][Decision] F1: Race condition concurrent refresh — Fixed: thêm `SELECT FOR UPDATE` trong `refresh_long_lived_token`
+- [x] [Review][Decision] F2: Không verify token mới trước khi ghi đè DB — Fixed: thêm `_verify_page_token()` gọi `GET /{page_id}?fields=id` trước khi commit
+- [x] [Review][Patch] F3: `_derive_page_token` không handle Facebook pagination — Fixed: follow `paging.next` loop
+- [x] [Review][Patch] F4: `_exchange_user_token`/`_derive_page_token` không check HTTP status code — Fixed: check `resp.status_code` + wrap `resp.json()`
+- [x] [Review][Patch] F5: `token_refresh_error` leak internal exception + no length limit — Fixed: sanitize decrypt error + truncate `[:500]`
+- [x] [Review][Patch] F6: `token_type is None` bypass system_user guard — Fixed: thêm guard cho `None` token_type
+- [x] [Review][Patch] F7: `expires_in` = 0/âm → `token_expires_at` trong quá khứ — Fixed: validate `expires_in > 0`
+- [x] [Review][Patch] F8: Duplicate `settings` import trong cron.py — Fixed: xóa `_settings` alias
+- [x] [Review][Patch] F9: Test mutates settings trực tiếp, không restore — Fixed: `autouse` fixture với `patch.object`
+- [x] [Review][Patch] F10: Manual refresh trả 400 cho cooldown thay vì 200/429 — Fixed: check cooldown trước, trả 200
+- [x] [Review][Defer] F11: `decrypt_secret` trong `check_token_health` không được catch [token_lifecycle.py:62] — deferred, pre-existing Story 7.1
+- [x] [Review][Defer] F12: `datetime.utcnow()` deprecated Python 3.12+ — deferred, pre-existing codebase pattern
 
 ## Dev Notes
 
@@ -258,11 +273,25 @@ TOKEN_REFRESH_DAYS_BEFORE: int = 7  # Refresh khi còn bao nhiêu ngày
 ## Dev Agent Record
 
 ### Agent Model Used
+claude-sonnet-4-6
 
 ### Debug Log References
+- 43/43 tests pass (toàn bộ test suite)
+- 17 tests mới trong `test_token_refresh.py`
 
 ### Completion Notes List
+- Task 3.2 (retry sau 1h): implemented qua `last_refresh_at < now - 1h` guard trong `refresh_long_lived_token()` thay vì cron retry riêng — đơn giản hơn và đủ để tránh double refresh
+- `_settings` import thêm vào `cron.py` cho `TOKEN_REFRESH_DAYS_BEFORE`
+- Tất cả AC1-AC5 đã implement đầy đủ
 
 ### Change Log
+- 2026-04-06: Implement Story 7.2 — auto token refresh (claude-sonnet-4-6)
 
 ### File List
+- `backend/app/models/models.py` — thêm 4 columns mới vào `FacebookPage`
+- `backend/app/core/config.py` — thêm `TOKEN_REFRESH_DAYS_BEFORE`
+- `backend/app/services/token_lifecycle.py` — thêm `RefreshResult`, `_exchange_user_token()`, `_derive_page_token()`, `refresh_long_lived_token()`
+- `backend/app/worker/cron.py` — mở rộng `token_health_check_job` với auto-refresh logic
+- `backend/app/api/facebook.py` — mở rộng POST/GET config, thêm `/refresh-token` endpoint
+- `backend/alembic/versions/20260406_01_add_token_refresh_fields.py` — migration mới
+- `backend/tests/test_token_refresh.py` — 17 unit tests (NEW)

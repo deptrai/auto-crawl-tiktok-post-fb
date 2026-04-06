@@ -1,5 +1,5 @@
 from __future__ import annotations
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
@@ -8,7 +8,7 @@ from app.models.models import FacebookPage
 from app.services.observability import record_event
 from app.services.security import decrypt_secret, encrypt_secret, is_secret_encrypted, mask_secret
 from app.services.fb_graph import inspect_page_access
-from app.services.token_lifecycle import check_token_health
+from app.services.token_lifecycle import check_token_health, refresh_long_lived_token
 
 router = APIRouter(prefix="/facebook", tags=["Trang Facebook"])
 
@@ -16,6 +16,8 @@ class FacebookPageCreate(BaseModel):
     page_id: str
     page_name: str
     long_lived_access_token: str
+    user_access_token: str | None = None
+    auto_refresh_enabled: bool | None = None
 
 def get_token_kind(token: str | None) -> str:
     if not token:
@@ -49,6 +51,14 @@ def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_d
             long_lived_access_token=encrypt_secret(normalized_token)
         )
         db.add(page)
+
+    # Story 7.2: cập nhật user_access_token và auto_refresh_enabled nếu được cung cấp
+    if page_in.user_access_token is not None:
+        raw_user_token = page_in.user_access_token.strip()
+        page.user_access_token = encrypt_secret(raw_user_token) if raw_user_token else None
+    if page_in.auto_refresh_enabled is not None:
+        page.auto_refresh_enabled = page_in.auto_refresh_enabled
+
     db.commit()
     
     # Kích hoạt check health để lấy metadata ngay lập tức
@@ -103,6 +113,11 @@ def get_facebook_config(db: Session = Depends(get_db)):
                 "token_health_status": page.token_health_status,
                 "token_last_checked_at": page.token_last_checked_at.isoformat() if page.token_last_checked_at else None,
                 "days_remaining": _calc_days_remaining(page.token_expires_at),
+                # Story 7.2: auto-refresh fields
+                "auto_refresh_enabled": page.auto_refresh_enabled,
+                "has_user_token": bool(page.user_access_token),
+                "last_refresh_at": page.last_refresh_at.isoformat() if page.last_refresh_at else None,
+                "token_refresh_error": page.token_refresh_error,
             }
         )
 
@@ -110,6 +125,41 @@ def get_facebook_config(db: Session = Depends(get_db)):
         db.commit()
 
     return normalized_pages
+
+
+@router.post("/config/{page_id}/refresh-token")
+def manual_refresh_token(page_id: str, db: Session = Depends(get_db)):
+    """Trigger refresh token thủ công ngay lập tức cho một Facebook Page."""
+    page = db.query(FacebookPage).filter(FacebookPage.page_id == page_id).first()
+    if not page:
+        raise HTTPException(status_code=404, detail="Không tìm thấy trang Facebook trong hệ thống.")
+
+    if not page.long_lived_access_token:
+        raise HTTPException(status_code=400, detail="Trang Facebook này chưa có mã truy cập.")
+
+    if not page.user_access_token:
+        raise HTTPException(
+            status_code=400,
+            detail="Chưa cung cấp User Access Token. Hãy cập nhật cấu hình với user_access_token trước."
+        )
+
+    # Check cooldown trước — trả 200 thay vì 400 vì đây là hành vi expected
+    if page.last_refresh_at:
+        elapsed = datetime.utcnow() - page.last_refresh_at
+        if elapsed < timedelta(hours=1):
+            return {
+                "message": f"Đã refresh gần đây ({int(elapsed.total_seconds() / 60)} phút trước). Vui lòng thử lại sau.",
+                "new_expires_at": page.token_expires_at.isoformat() if page.token_expires_at else None,
+            }
+
+    result = refresh_long_lived_token(page_id, db)
+    if not result.success:
+        raise HTTPException(status_code=400, detail=result.message)
+
+    return {
+        "message": result.message,
+        "new_expires_at": result.new_expires_at.isoformat() if result.new_expires_at else None,
+    }
 
 
 @router.get("/config/{page_id}/check-health")
