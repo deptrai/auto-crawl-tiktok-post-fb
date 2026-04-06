@@ -1,0 +1,47 @@
+# Story 12.2: Upload Lên Instagram Reels (Instagram Reels Publisher)
+
+## 1. Story Foundation (Requirements)
+
+**User Story:**
+As a Campaign Manager,
+I want to cấu hình campaign để đăng video lên Instagram Reels,
+So that tiếp cận thêm lượng khán giả trên nền tảng Instagram cùng một nội dung video TikTok gốc (Đa nền tảng).
+
+**Acceptance Criteria:**
+- **Given** Admin có liên kết Instagram Business Account thông qua Facebook Business Manager (cùng một hệ thống Access Token đã setup ở Epic 1).
+- **When** Video đã kết thúc khâu tải nền và sinh caption thành công (trạng thái chờ publish).
+- **Then** Xây dựng Publisher đăng MP4 lên Instagram Reels API sử dụng tiến trình Graph API đứt đoạn qua 2 giai đoạn: `Container Upload` -> Chờ Render -> `Publish Container`
+- **And** Nếu gặp lỗi Container hoặc Token hết hạn Container (sau 24h), tự động bẫy Exception tạo lại (retry) tiến trình Upload theo cơ chế của API.
+
+## 2. Developer Context (Guardrails)
+
+### Technical Requirements
+- Mở rộng model / config Campaigns:
+  - Cho phép chọn nền tảng xuất bản (Publish Platforms) thay vì bind cứng. Bật tuỳ chọn `instagram_reels` cho từng chiến dịch.
+- Publisher Service (Kế thừa từ Story 12.1):
+  - Xây dựng `InstagramPublisher` implement Base Interface `Publisher`. 
+  - Khởi tạo Step 1: `/ig_user_id/media?media_type=REELS&video_url=...` để xin Meta mở một Upload Container.
+  - Khởi tạo Wait Logic: Poll trạng thái của Container `status_code` liên tục tại endpoint `/ig_container_id` cho đến khi container in progress trả về `FINISHED`.
+  - Khởi tạo Step 2: `/ig_user_id/media_publish?creation_id=ig_container_id` để kết thúc quá trình up luồng.
+- Frontend Update:
+  - Bổ sung Cấu hình "Publish Destinations" dưới dạng checkbox đa lựa chọn: Facebook Page, YouTube Shorts, và Instagram Reels. 
+
+### Architecture Compliance
+- Backend API Integration: Đòi hỏi Instagram Business / Creator Account (cá nhân thường không dùng được endpoint này) kết nối qua Meta Graph API.
+- Cảnh báo Video Format Aspect Ratio: Instagram Reels yêu cầu 9:16. Trọng số kiểm duyệt gắt nếu ratio lệch. Validation bước đầu bắt buộc loại hoặc cover viền đen (đưa về chuẩn 9:16) trước khi bắn lên Graph API.
+- Do quá trình tạo Container tốn thời gian Render trên cụm máy chủ Meta, Task Worker của Background Job không được block Main Thread. Sử dụng Event Loop (`asyncio.sleep()`) hoặc tách Polling ra một Job nhỏ nhắn khác chạy định kỳ check status nếu cần rảnh rỗi Worker.
+
+### Previous Intelligence (Liên kết Facebook Token)
+- Instagram Reels API nằm nội bộ trong Meta Graph API, cùng sử dụng bộ Node Tree `/v18.0/...`. Từ ID Facebook Page, có thể tìm Instagram Profile nối kèm qua property `instagram_business_account`. Do đó, Token hiện hữu (Long Cấp của System User) vẫn đang dùng chung cho luồng này mà không cần xin cấp mới như OAuth2 YouTube Shorts. 
+
+### File Structure Impacts
+- `backend/app/services/publishers/instagram.py` => Implement module upload Instagram Reels.
+- `backend/app/schemas/` => Mở rộng Campaign DTO đón cấu trúc publish destination configs.
+- `frontend/src/features/campaigns/` => Add checkboxes to UI form cho phần Destinations.
+
+## 3. Latest Tech Specifics
+- Đối với Instagram Graph API: Thập niên mới, `media_type=REELS` là thông số bắt buộc nếu muốn nó cắn thành Reels (không truyền sẽ vào standard grid video của Instagram và hay bị fail). Share vào feed qua `share_to_feed=true`.
+
+## 4. Status
+Status: `ready-for-dev`
+Note: Ultimate context engine analysis completed - comprehensive developer guide created.

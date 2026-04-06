@@ -531,14 +531,16 @@ Nâng cấp Gemini AI caption generator với khả năng tùy chỉnh giọng v
 
 As an Admin,
 I want to định nghĩa profile giọng văn thương hiệu cho từng Facebook Page,
-So that AI caption phản ánh đúng tông/phong cách giao tiếp của page thay vì generic.
+So that AI caption VÀ reply comment đều phản ánh đúng tông/phong cách giao tiếp của page thay vì generic.
 
 **Acceptance Criteria:**
 
 **Given** Admin vào trang cấu hình Facebook Page
 **When** Admin nhập `brand_voice` prompt (VD: "Viết theo phong cách trẻ trung, dùng emoji, ngôn ngữ Gen Z")
 **Then** Gemini nhận brand_voice prompt như system instruction khi generate caption
-**And** có 5 template preset (professional, casual, gen-z, corporate, viral) để chọn nhanh.
+**And** Gemini nhận brand_voice prompt như system instruction khi generate reply comment (áp dụng cho `generate_reply()` trong `ai_generator.py`)
+**And** có 5 template preset (professional, casual, gen-z, corporate, viral) để chọn nhanh
+**And** `brand_voice` lưu trên `FacebookPage` model, áp dụng cho tất cả campaigns targeting page đó.
 
 ### Story 10.2: Caption Đa Ngôn Ngữ (Multilingual Caption)
 

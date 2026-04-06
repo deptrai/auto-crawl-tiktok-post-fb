@@ -1,6 +1,6 @@
 # Story 7.1: Hỗ Trợ System User Token Không Hết Hạn (Never-Expiring Token)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -68,34 +68,34 @@ so that hệ thống đăng bài hoạt động liên tục 24/7 mà không bị
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Alembic migration — thêm 4 columns vào `facebook_pages` (AC: #1)
-  - [ ] 1.1: Thêm `TokenType` enum + 4 columns vào `models.py`
-  - [ ] 1.2: Tạo Alembic migration file
-  - [ ] 1.3: Test migration up/down
+- [x] Task 1: Alembic migration — thêm 4 columns vào `facebook_pages` (AC: #1)
+  - [x] 1.1: Thêm `TokenType` enum + 4 columns vào `models.py`
+  - [x] 1.2: Tạo Alembic migration file
+  - [x] 1.3: Test migration up/down
 
-- [ ] Task 2: Token lifecycle service (AC: #2)
-  - [ ] 2.1: Tạo `backend/app/services/token_lifecycle.py`
-  - [ ] 2.2: Implement `check_token_health(page_id: str, db: Session) -> TokenHealthResult`
-  - [ ] 2.3: Implement `check_all_tokens(db: Session) -> list[TokenHealthResult]`
-  - [ ] 2.4: Implement `detect_token_type(token: str) -> tuple[str, datetime | None]`
-  - [ ] 2.5: Handle lỗi khi `FB_APP_ID`/`FB_APP_SECRET` chưa config (graceful skip, log warning)
+- [x] Task 2: Token lifecycle service (AC: #2)
+  - [x] 2.1: Tạo `backend/app/services/token_lifecycle.py`
+  - [x] 2.2: Implement `check_token_health(page_id: str, db: Session) -> TokenHealthResult`
+  - [x] 2.3: Implement `check_all_tokens(db: Session) -> list[TokenHealthResult]`
+  - [x] 2.4: Implement `detect_token_type(token: str) -> tuple[str, datetime | None]`
+  - [x] 2.5: Handle lỗi khi `FB_APP_ID`/`FB_APP_SECRET` chưa config (graceful skip, log warning)
 
-- [ ] Task 3: APScheduler cron job (AC: #3)
-  - [ ] 3.1: Thêm `token_health_check_job` vào `cron.py`, trigger mỗi 24h
-  - [ ] 3.2: Implement auto-pause campaigns khi token expired/invalid
-  - [ ] 3.3: Ghi `SystemEvent` cho mỗi token có vấn đề
+- [x] Task 3: APScheduler cron job (AC: #3)
+  - [x] 3.1: Thêm `token_health_check_job` vào `cron.py`, trigger mỗi 24h
+  - [x] 3.2: Implement auto-pause campaigns khi token expired/invalid
+  - [x] 3.3: Ghi `SystemEvent` cho mỗi token có vấn đề
 
-- [ ] Task 4: API endpoints mở rộng (AC: #4, #5)
-  - [ ] 4.1: Mở rộng `GET /facebook/config` response với token health fields
-  - [ ] 4.2: Thêm endpoint `GET /facebook/config/{page_id}/check-health`
-  - [ ] 4.3: Mở rộng `POST /facebook/config` — auto-detect token type sau khi save
+- [x] Task 4: API endpoints mở rộng (AC: #4, #5)
+  - [x] 4.1: Mở rộng `GET /facebook/config` response với token health fields
+  - [x] 4.2: Thêm endpoint `GET /facebook/config/{page_id}/check-health`
+  - [x] 4.3: Mở rộng `POST /facebook/config` — auto-detect token type sau khi save
 
-- [ ] Task 5: Unit tests (AC: #1-5)
-  - [ ] 5.1: Test `detect_token_type()` với mock `/debug_token` responses
-  - [ ] 5.2: Test `check_token_health()` — happy path + expired + invalid + network error
-  - [ ] 5.3: Test auto-pause campaigns khi token expired
-  - [ ] 5.4: Test API response format mới
-  - [ ] 5.5: Test migration up/down
+- [x] Task 5: Unit tests (AC: #1-5)
+  - [x] 5.1: Test `detect_token_type()` với mock `/debug_token` responses
+  - [x] 5.2: Test `check_token_health()` — happy path + expired + invalid + network error
+  - [x] 5.3: Test auto-pause campaigns khi token expired
+  - [x] 5.4: Test API response format mới
+  - [x] 5.5: Test migration up/down
 
 ## Dev Notes
 
