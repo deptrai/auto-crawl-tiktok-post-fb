@@ -123,7 +123,7 @@ services:
     logging: *default-logging
     env_file:
       - ./backend/runtime.env
-    command: tunnel --no-autoupdate run
+    command: tunnel --no-autoupdate run --token ${TUNNEL_TOKEN}
     depends_on:
       backend:
         condition: service_started

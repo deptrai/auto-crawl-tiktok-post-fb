@@ -202,18 +202,16 @@ def validate_facebook_page(page_id: str, db: Session = Depends(get_db)):
     if not page.long_lived_access_token:
         raise HTTPException(status_code=400, detail="Trang Facebook này chưa có mã truy cập để kiểm tra.")
 
-    token_kind = get_token_kind(page.long_lived_access_token)
-    if token_kind != "page_access_token":
-        raise HTTPException(status_code=400, detail="Mã truy cập hiện tại không phải mã truy cập trang Facebook hợp lệ.")
-
+    # Gọi check_token_health để vừa validate vừa update DB health status
     try:
-        access_token = decrypt_secret(page.long_lived_access_token)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        res = check_token_health(page_id, db)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Lỗi kiểm tra token: {exc}") from exc
 
-    result = inspect_page_access(page.page_id, access_token)
-    if not result.get("ok"):
-        raise HTTPException(status_code=400, detail=result.get("message", "Không thể xác minh trang Facebook."))
+    if not res or not res.is_valid:
+        status = res.health_status if res else "unknown"
+        raise HTTPException(status_code=400, detail=f"Token không hợp lệ (trạng thái: {status}).")
+
     record_event(
         "facebook",
         "info",
@@ -221,4 +219,4 @@ def validate_facebook_page(page_id: str, db: Session = Depends(get_db)):
         db=db,
         details={"page_id": page.page_id, "page_name": page.page_name},
     )
-    return result
+    return {"ok": True, "health_status": res.health_status, "days_remaining": res.days_remaining}

@@ -64,7 +64,7 @@ def check_token_health(page_id: str, db: Session, *, page: FacebookPage | None =
         page.token_last_checked_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
         return TokenHealthResult(
-            is_valid=True,
+            is_valid=False,  # Không thể xác minh → is_valid=False để caller biết không validate được
             token_type=page.token_type.value if page.token_type else None,
             expires_at=page.token_expires_at,
             days_remaining=None,
@@ -91,8 +91,8 @@ def check_token_health(page_id: str, db: Session, *, page: FacebookPage | None =
         )
         data = resp.json().get("data", {})
 
-        if resp.status_code != 200 or "error" in data:
-            # C2: Không thể xác minh → HEALTH_UNKNOWN, không giả định is_valid=True
+        if resp.status_code != 200:
+            # C2: HTTP error → không thể xác minh, HEALTH_UNKNOWN (không update DB)
             logger.warning(f"Lỗi khi debug_token: HTTP {resp.status_code}")
             return TokenHealthResult(
                 is_valid=False,
@@ -103,6 +103,7 @@ def check_token_health(page_id: str, db: Session, *, page: FacebookPage | None =
                 health_status=HEALTH_UNKNOWN
             )
 
+        # HTTP 200: is_valid=false (kể cả khi có "error" trong data) → token không hợp lệ
         is_valid = data.get("is_valid", False)
         if not is_valid:
             page.token_health_status = HEALTH_INVALID
