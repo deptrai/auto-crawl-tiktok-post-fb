@@ -28,7 +28,8 @@ def upgrade() -> None:
     op.drop_index(op.f('ix_facebook_pages_page_id'), table_name='facebook_pages')
     op.create_index(op.f('ix_facebook_pages_page_id'), 'facebook_pages', ['page_id'], unique=True)
     op.drop_constraint(op.f('interactions_log_page_id_fkey'), 'interactions_log', type_='foreignkey')
-    op.create_foreign_key(None, 'interactions_log', 'facebook_pages', ['page_id'], ['page_id'], ondelete='SET NULL')
+    # H5: Đặt tên tường minh để downgrade() có thể drop đúng constraint
+    op.create_foreign_key('fk_interactions_log_page_id_set_null', 'interactions_log', 'facebook_pages', ['page_id'], ['page_id'], ondelete='SET NULL')
     op.alter_column('users', 'username',
                existing_type=sa.VARCHAR(),
                nullable=True)
@@ -36,7 +37,8 @@ def upgrade() -> None:
     op.drop_index(op.f('ix_users_username'), table_name='users')
     op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=True)
     op.drop_constraint(op.f('videos_campaign_id_fkey'), 'videos', type_='foreignkey')
-    op.create_foreign_key(None, 'videos', 'campaigns', ['campaign_id'], ['id'], ondelete='CASCADE')
+    # H5: Đặt tên tường minh để downgrade() có thể drop đúng constraint
+    op.create_foreign_key('fk_videos_campaign_id_cascade', 'videos', 'campaigns', ['campaign_id'], ['id'], ondelete='CASCADE')
     op.alter_column('worker_heartbeats', 'worker_name',
                existing_type=sa.VARCHAR(),
                nullable=True)
@@ -54,7 +56,8 @@ def downgrade() -> None:
     op.alter_column('worker_heartbeats', 'worker_name',
                existing_type=sa.VARCHAR(),
                nullable=False)
-    op.drop_constraint(None, 'videos', type_='foreignkey')
+    # H5: Dùng tên constraint tường minh thay vì None (None gây ProgrammingError trên PostgreSQL)
+    op.drop_constraint('fk_videos_campaign_id_cascade', 'videos', type_='foreignkey')
     op.create_foreign_key(op.f('videos_campaign_id_fkey'), 'videos', 'campaigns', ['campaign_id'], ['id'])
     op.drop_index(op.f('ix_users_username'), table_name='users')
     op.create_index(op.f('ix_users_username'), 'users', ['username'], unique=False)
@@ -62,7 +65,7 @@ def downgrade() -> None:
     op.alter_column('users', 'username',
                existing_type=sa.VARCHAR(),
                nullable=False)
-    op.drop_constraint(None, 'interactions_log', type_='foreignkey')
+    op.drop_constraint('fk_interactions_log_page_id_set_null', 'interactions_log', type_='foreignkey')
     op.create_foreign_key(op.f('interactions_log_page_id_fkey'), 'interactions_log', 'facebook_pages', ['page_id'], ['page_id'])
     op.drop_index(op.f('ix_facebook_pages_page_id'), table_name='facebook_pages')
     op.create_index(op.f('ix_facebook_pages_page_id'), 'facebook_pages', ['page_id'], unique=False)
@@ -71,4 +74,6 @@ def downgrade() -> None:
     op.drop_column('facebook_pages', 'token_last_checked_at')
     op.drop_column('facebook_pages', 'token_expires_at')
     op.drop_column('facebook_pages', 'token_type')
+    # L1: Drop PostgreSQL Enum type 'tokentype' — không drop thì upgrade lại sau sẽ fail
+    sa.Enum(name='tokentype').drop(op.get_bind(), checkfirst=True)
     # ### end Alembic commands ###

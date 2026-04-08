@@ -3,7 +3,7 @@ import logging
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from app.core.database import get_db
 from app.models.models import FacebookPage
 from app.services.observability import record_event
@@ -15,12 +15,21 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/facebook", tags=["Trang Facebook"])
 
+_MAX_TOKEN_LENGTH = 2048  # Facebook token thông thường < 300 chars; 2048 là đủ an toàn
+
 class FacebookPageCreate(BaseModel):
     page_id: str
     page_name: str
     long_lived_access_token: str
     user_access_token: str | None = None
     auto_refresh_enabled: bool | None = None
+
+    @field_validator("long_lived_access_token", "user_access_token", mode="before")
+    @classmethod
+    def validate_token_length(cls, v: str | None) -> str | None:
+        if v is not None and len(v) > _MAX_TOKEN_LENGTH:
+            raise ValueError(f"Token quá dài (tối đa {_MAX_TOKEN_LENGTH} ký tự).")
+        return v
 
 def get_token_kind(token: str | None) -> str:
     if not token:

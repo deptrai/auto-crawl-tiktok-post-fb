@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import logging
 import os
 import uuid
 import requests
 from pathlib import Path
+from urllib.parse import urlparse
 
 from app.core.config import settings
 
+logger = logging.getLogger(__name__)
 DOWNLOAD_DIR = settings.DOWNLOAD_DIR
-APIFY_ACTOR_TIMEOUT = int(os.getenv("APIFY_ACTOR_TIMEOUT", "300"))  # giây
+# H6: Đọc từ settings (không module-level os.getenv) để timeout có thể được cấu hình đúng
 
 
 def _get_client():
@@ -22,8 +25,14 @@ def _get_client():
 
 
 def _is_profile_url(url: str) -> bool:
-    """Kiểm tra xem URL là profile/channel TikTok hay single video."""
-    return "/video/" not in url
+    """Kiểm tra xem URL là profile/channel TikTok hay single video.
+    L2: Dùng urlparse để chỉ kiểm tra path, tránh bị lừa bởi query params.
+    """
+    try:
+        path = urlparse(url).path
+    except Exception:
+        path = url
+    return "/video/" not in path
 
 
 def _is_hashtag_url(url: str) -> bool:
@@ -122,7 +131,7 @@ def extract_metadata_apify(source_url: str, results_per_page: int = 20) -> dict:
 
     run = client.actor(actor_id).call(
         run_input=run_input,
-        timeout_secs=APIFY_ACTOR_TIMEOUT,
+        timeout_secs=settings.APIFY_ACTOR_TIMEOUT,
     )
 
     items = client.dataset(run["defaultDatasetId"]).list_items().items
@@ -186,7 +195,7 @@ def download_video_apify(download_url: str, filename_prefix: str = "tiktok") -> 
                     f.write(chunk)
         return out_path, video_id
     except Exception as e:
-        print(f"Lỗi tải video từ Apify URL {download_url}: {e}")
+        logger.error(f"Lỗi tải video từ Apify URL: {e}")
         if os.path.exists(out_path):
             try:
                 os.remove(out_path)

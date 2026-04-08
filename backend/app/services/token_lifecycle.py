@@ -1,4 +1,5 @@
 import logging
+import time
 from datetime import datetime, timezone, timedelta
 from dataclasses import dataclass
 import requests
@@ -17,6 +18,10 @@ HEALTH_EXPIRING_SOON = "expiring_soon"
 HEALTH_EXPIRED = "expired"
 HEALTH_INVALID = "invalid"
 HEALTH_UNKNOWN = "unknown"
+
+# Facebook long-lived token có TTL ~60 ngày. Token có days_remaining > ngưỡng này
+# được coi là long_lived; dưới ngưỡng là short_lived (~1h).
+LONG_LIVED_TOKEN_MIN_DAYS = 50
 
 @dataclass
 class TokenHealthResult:
@@ -42,7 +47,7 @@ def detect_token_type(expires_at_ts: int | None = None) -> tuple[str, datetime |
 
     expires_dt = datetime.fromtimestamp(expires_at_ts, tz=timezone.utc).replace(tzinfo=None)
     days_remaining = (expires_dt - datetime.now(timezone.utc).replace(tzinfo=None)).days
-    if days_remaining > 50:
+    if days_remaining > LONG_LIVED_TOKEN_MIN_DAYS:
         return TokenType.long_lived.value, expires_dt
     return TokenType.short_lived.value, expires_dt
 
@@ -77,21 +82,25 @@ def check_token_health(page_id: str, db: Session, *, page: FacebookPage | None =
         return TokenHealthResult(False, None, None, None, [], HEALTH_INVALID)
 
     app_access_token = f"{settings.FB_APP_ID}|{settings.FB_APP_SECRET}"
-    url = f"https://graph.facebook.com/v21.0/debug_token?input_token={raw_token}&access_token={app_access_token}"
-
+    # C1: Dùng params= dict thay vì nội suy vào URL để tránh token/secret bị ghi vào server log
     try:
-        resp = requests.get(url, timeout=10)
+        resp = requests.get(
+            "https://graph.facebook.com/v21.0/debug_token",
+            params={"input_token": raw_token, "access_token": app_access_token},
+            timeout=10,
+        )
         data = resp.json().get("data", {})
 
         if resp.status_code != 200 or "error" in data:
+            # C2: Không thể xác minh → HEALTH_UNKNOWN, không giả định is_valid=True
             logger.warning(f"Lỗi khi debug_token: HTTP {resp.status_code}")
             return TokenHealthResult(
-                is_valid=True, # default to keeping existing data
+                is_valid=False,
                 token_type=page.token_type.value if page.token_type else None,
                 expires_at=page.token_expires_at,
                 days_remaining=None,
                 scopes=[],
-                health_status=page.token_health_status
+                health_status=HEALTH_UNKNOWN
             )
 
         is_valid = data.get("is_valid", False)
@@ -128,14 +137,15 @@ def check_token_health(page_id: str, db: Session, *, page: FacebookPage | None =
             health_status=health_status
         )
     except Exception as e:
+        # C2: Lỗi mạng → không thể xác minh, KHÔNG giả định is_valid=True
         logger.error(f"Lỗi mạng khi debug_token: {e}")
         return TokenHealthResult(
-            is_valid=True,
+            is_valid=False,
             token_type=page.token_type.value if page.token_type else None,
             expires_at=page.token_expires_at,
             days_remaining=None,
             scopes=[],
-            health_status=page.token_health_status
+            health_status=HEALTH_UNKNOWN
         )
 
 
@@ -162,7 +172,14 @@ def _exchange_user_token(current_token: str) -> dict:
         "client_secret": settings.FB_APP_SECRET,
         "fb_exchange_token": current_token,
     }
-    resp = requests.get(url, params=params, timeout=30)
+    # M3: Retry tối đa 2 lần khi Facebook API trả 5xx (transient)
+    resp = None
+    for attempt in range(3):
+        resp = requests.get(url, params=params, timeout=30)
+        if resp.status_code < 500:
+            break
+        if attempt < 2:
+            time.sleep(2 ** attempt)
 
     if resp.status_code != 200:
         try:
@@ -202,7 +219,14 @@ def _derive_page_token(user_token: str, page_id: str) -> str:
         page_count += 1
         if page_count > max_pages:
             break
-        resp = requests.get(url, params=params, timeout=30)
+        # M3: Retry tối đa 2 lần khi Facebook API trả 5xx (transient)
+        resp = None
+        for attempt in range(3):
+            resp = requests.get(url, params=params, timeout=30)
+            if resp.status_code < 500:
+                break
+            if attempt < 2:
+                time.sleep(2 ** attempt)
 
         if resp.status_code != 200:
             try:
@@ -375,9 +399,10 @@ def refresh_long_lived_token(page_id: str, db: Session) -> RefreshResult:
         details={"page_id": page_id, "new_expires_at": new_expires_at.isoformat()}
     )
 
-    # Gọi debug_token để lấy TTL thực của page token mới (D3: fix TTL mismatch)
+    # H1: Load fresh từ DB (không dùng page object đã stale sau commit) để tránh
+    # ghi đè health_status đúng nếu debug_token trả kết quả khác do propagation delay.
     try:
-        check_token_health(page_id, db, page=page)
+        check_token_health(page_id, db)
     except Exception as exc:
         logger.warning(f"Page {page_id}: post-refresh health check thất bại: {exc}")
 

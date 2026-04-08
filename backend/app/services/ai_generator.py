@@ -1,8 +1,11 @@
 from __future__ import annotations
+import logging
 import requests
 import time
 
 from app.services.runtime_settings import resolve_runtime_value
+
+logger = logging.getLogger(__name__)
 
 def generate_caption(original_caption: str) -> str:
     gemini_api_key = resolve_runtime_value("GEMINI_API_KEY")
@@ -37,17 +40,17 @@ Caption gốc: {original_caption}"""
                 if 'candidates' in data and data['candidates'] and 'content' in data['candidates'][0]:
                     return data['candidates'][0]['content']['parts'][0]['text'].strip()
                 else:
-                    print(f"AI cảnh báo: Cấu trúc phản hồi lạ: {data}")
-            
+                    logger.warning(f"AI: cấu trúc phản hồi không như kỳ vọng (status=200)")
+
             elif response.status_code == 429:
-                print(f"AI bị giới hạn tốc độ (429) - Thử lại lần {attempt + 1}/{max_retries}...")
+                logger.warning(f"AI bị giới hạn tốc độ (429) - Thử lại lần {attempt + 1}/{max_retries}...")
             else:
-                print(f"AI lỗi API {response.status_code}: {response.text}")
-                
+                logger.error(f"AI lỗi API {response.status_code}")
+
             if attempt < max_retries - 1:
                 time.sleep(retry_delay * (attempt + 1)) # Exponential backoff
         except Exception as e:
-            print(f"AI gặp ngoại lệ (Lần {attempt + 1}): {e}")
+            logger.error(f"AI gặp ngoại lệ (Lần {attempt + 1}): {e}")
             if attempt < max_retries - 1:
                 time.sleep(retry_delay * (attempt + 1))
 
@@ -73,10 +76,10 @@ def generate_reply(user_message: str) -> str:
             if 'candidates' in data and data['candidates'] and 'content' in data['candidates'][0]:
                 return data['candidates'][0]['content']['parts'][0]['text'].strip()
             else:
-                print(f"AI cảnh báo: Cấu trúc phản hồi lạ: {data}")
+                logger.warning("AI generate_reply: cấu trúc phản hồi không như kỳ vọng (status=200)")
         else:
-            print(f"AI trả lời lỗi {response.status_code}: {response.text}")
+            logger.error(f"AI trả lời lỗi {response.status_code}")
     except Exception as e:
-        print(f"AI trả lời gặp ngoại lệ: {e}")
+        logger.error(f"AI trả lời gặp ngoại lệ: {e}")
         
     return "Cảm ơn bạn yêu! 💖"

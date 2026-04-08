@@ -279,7 +279,18 @@ def test_cron_auto_refresh_triggered(mock_get, db_session):
     verify_resp.status_code = 200
     verify_resp.json.return_value = {"id": "page_cron_refresh"}
 
-    mock_get.side_effect = [debug_resp, exchange_resp, derive_resp, verify_resp]
+    # M5: Thêm post-refresh debug_token call (check_token_health được gọi sau refresh)
+    post_refresh_debug_resp = MagicMock()
+    post_refresh_debug_resp.status_code = 200
+    post_refresh_debug_resp.json.return_value = {
+        "data": {
+            "is_valid": True,
+            "expires_at": int((datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=60)).timestamp()),
+            "scopes": ["pages_manage_posts"],
+        }
+    }
+
+    mock_get.side_effect = [debug_resp, exchange_resp, derive_resp, verify_resp, post_refresh_debug_resp]
 
     with patch("app.worker.cron.SessionLocal", return_value=db_session), \
          patch.object(db_session, "close"):

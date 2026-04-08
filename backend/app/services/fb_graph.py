@@ -1,9 +1,12 @@
 from __future__ import annotations
+import logging
 import os
 import time
 from json import JSONDecodeError
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 GRAPH_API_BASE = "https://graph.facebook.com/v19.0"
 
@@ -21,7 +24,7 @@ def upload_video_to_facebook(file_path: str, caption: str, page_id: str, access_
 
     try:
         # Giai đoạn 1: Khởi tạo
-        print(f"FB GHI CHÚ: Khởi tạo tải Reels cho trang {page_id}...")
+        logger.info(f"Khởi tạo tải Reels cho trang {page_id}...")
         init_url = f"{GRAPH_API_BASE}/{page_id}/video_reels"
         params = {
             'upload_phase': 'start',
@@ -32,18 +35,18 @@ def upload_video_to_facebook(file_path: str, caption: str, page_id: str, access_
             res_init_data = res_init.json()
         except (JSONDecodeError, ValueError):
             return {'error': f"Facebook trả lỗi không phải JSON (HTTP {res_init.status_code}). Thử lại sau."}
-        
+
         if 'video_id' not in res_init_data:
-            print(f"FB LỖI (khởi tạo - toàn bộ JSON): {res_init_data}")
+            logger.error(f"Lỗi khởi tạo Reels (HTTP {res_init.status_code}): {res_init_data.get('error', {})}")
             return {'error': f"Lỗi khởi tạo Reels: {res_init_data.get('error', {}).get('message', 'Lỗi không xác định')}"}
-        
+
         video_id = res_init_data['video_id']
-        print(f"FB GHI CHÚ: Đã lấy mã video: {video_id}")
+        logger.info(f"Đã lấy mã video: {video_id}")
 
         # Giai đoạn 2: Tải lên - Dùng hạ tầng RUpload chuyên dụng
-        print("FB GHI CHÚ: Đang tải dữ liệu video lên hạ tầng RUpload...")
+        logger.info("Đang tải dữ liệu video lên hạ tầng RUpload...")
         upload_url = f"https://rupload.facebook.com/video-upload/v19.0/{video_id}"
-        
+
         file_size = os.path.getsize(file_path)
         with open(file_path, 'rb') as f:
             headers = {
@@ -55,26 +58,26 @@ def upload_video_to_facebook(file_path: str, caption: str, page_id: str, access_
             }
             # Tải toàn bộ tệp lên rupload
             res_upload = requests.post(
-                upload_url, 
-                data=f, 
+                upload_url,
+                data=f,
                 headers=headers,
                 timeout=300 # Cho phép 5 phút để tải lên
             )
-        
+
         try:
             res_upload_data = res_upload.json()
         except (JSONDecodeError, ValueError):
             return {'error': f"RUpload trả lỗi không phải JSON (HTTP {res_upload.status_code}). Thử lại sau."}
         # Chú ý: RUpload có thể trả về thành công theo kiểu khác, nên kiểm tra 'id' hoặc 'success'
         if 'id' not in res_upload_data and not res_upload_data.get('success'):
-            print(f"FB LỖI (RUpload - toàn bộ JSON): {res_upload_data}")
+            logger.error(f"Lỗi RUpload (HTTP {res_upload.status_code}): {res_upload_data.get('error', {})}")
             return {'error': f"Lỗi tải video (RUpload): {res_upload_data.get('error', {}).get('message', 'Tải video thất bại')}"}
 
         # Giai đoạn 3: Hoàn tất và công bố
-        print("FB GHI CHÚ: Đợi 20 giây để Facebook xử lý video trước khi công bố...")
+        logger.info("Đợi 20 giây để Facebook xử lý video trước khi công bố...")
         time.sleep(20) # Thời gian chờ rất quan trọng cho video lớn
 
-        print("FB GHI CHÚ: Đang hoàn tất và công bố Reel...")
+        logger.info("Đang hoàn tất và công bố Reel...")
         publish_url = f"{GRAPH_API_BASE}/{page_id}/video_reels"
         publish_params = {
             'upload_phase': 'finish',
@@ -90,15 +93,15 @@ def upload_video_to_facebook(file_path: str, caption: str, page_id: str, access_
             return {'error': f"Lỗi công bố: Facebook trả lỗi không phải JSON (HTTP {res_publish.status_code})."}
 
         if 'success' in res_publish_data and res_publish_data['success']:
-            print(f"FB THÀNH CÔNG: Đã đăng Reel thành công. Mã video: {video_id}")
+            logger.info(f"Đã đăng Reel thành công. Mã video: {video_id}")
             return {'id': video_id}
         else:
-            print(f"FB LỖI (công bố - toàn bộ JSON): {res_publish_data}")
+            logger.error(f"Lỗi công bố Reel (HTTP {res_publish.status_code}): {res_publish_data.get('error', {})}")
             error_msg = res_publish_data.get('error', {}).get('message', 'Công bố thất bại')
             return {'error': f"Lỗi công bố: {error_msg}"}
 
     except Exception as e:
-        print(f"FB LỖI NGHIÊM TRỌNG: {str(e)}")
+        logger.exception(f"Lỗi hệ thống khi đăng FB: {e}")
         return {'error': f"Lỗi hệ thống khi đăng FB: {str(e)}"}
 
 
@@ -150,11 +153,11 @@ def reply_to_comment(comment_id: str, message: str, access_token: str):
         try:
             res_data = res.json()
         except (JSONDecodeError, ValueError):
-            print(f"FB LỖI: Phản hồi không phải JSON (HTTP {res.status_code})")
+            logger.error(f"Phản hồi không phải JSON khi reply comment (HTTP {res.status_code})")
             return None
         if 'error' in res_data:
-            print(f"FB LỖI GRAPH: {res_data['error'].get('message')}")
+            logger.error(f"Graph API lỗi khi reply comment: {res_data['error'].get('message')}")
         return res_data
     except Exception as e:
-        print(f"Lỗi API trả lời Facebook: {e}")
+        logger.error(f"Lỗi API trả lời Facebook: {e}")
         return None

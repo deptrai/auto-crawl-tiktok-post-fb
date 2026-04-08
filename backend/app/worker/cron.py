@@ -1,8 +1,11 @@
 from __future__ import annotations
+import logging
 import os
 import socket
 import traceback
 from datetime import datetime, timezone
+
+logger = logging.getLogger(__name__)
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from sqlalchemy.orm import Session
@@ -176,14 +179,21 @@ def process_task_queue_job():
 
 
 def heartbeat_job():
-    update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="idle")
+    # L3: Bọc try/except để tránh APScheduler unschedule job khi DB lỗi tạm thời
+    try:
+        update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="idle")
+    except Exception as exc:
+        logger.warning(f"Heartbeat job gặp lỗi: {exc}")
 
 
 def token_health_check_job():
     db: Session = SessionLocal()
     update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="kiểm tra token health", db=db)
     try:
-        pages = db.query(FacebookPage).filter(FacebookPage.long_lived_access_token.isnot(None)).all()
+        # H2: with_for_update() để tránh race condition khi nhiều worker chạy đồng thời
+        pages = db.query(FacebookPage).filter(
+            FacebookPage.long_lived_access_token.isnot(None)
+        ).with_for_update().all()
         for page in pages:
             res = check_token_health(page.page_id, db, page=page)
             if not res:
@@ -225,6 +235,8 @@ def token_health_check_job():
                         db=db, details={"page_id": page.page_id, "token_type": res.token_type, "days_remaining": days_left}
                     )
     except Exception as exc:
+        # M4: Rollback để tránh PendingRollbackError trên session sau khi exception
+        db.rollback()
         record_event("worker", "error", "Lỗi khi kiểm tra token health.", db=db, details={"error": str(exc)})
     finally:
         update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="idle", db=db)

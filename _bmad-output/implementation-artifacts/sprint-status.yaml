@@ -98,8 +98,8 @@ development_status:
 
   # ─── PHASE 2 — SPRINT 1 ──────────────────────────────────────────────────
   # Priority: CRITICAL — Fix Facebook token expiry
-  epic-7: in-progress
-  7-1-ho-tro-system-user-token-khong-het-han: review
+  epic-7: done
+  7-1-ho-tro-system-user-token-khong-het-han: done
   7-2-tu-dong-lam-moi-long-lived-token: done
   7-3-canh-bao-giam-sat-han-token: ready-for-dev
   epic-7-retrospective: optional

@@ -1,4 +1,5 @@
 import os
+import atexit
 from pathlib import Path
 
 from fastapi import Depends, FastAPI
@@ -7,6 +8,13 @@ import pytest
 
 TEST_DB_PATH = Path(__file__).with_name("test_suite.db")
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH.as_posix()}"
+
+# M6: Cleanup DB file khi test process thoát (kể cả khi bị interrupt)
+def _cleanup_test_db():
+    if TEST_DB_PATH.exists():
+        TEST_DB_PATH.unlink(missing_ok=True)
+
+atexit.register(_cleanup_test_db)
 os.environ["JWT_SECRET"] = "test-jwt-secret"
 os.environ["TOKEN_ENCRYPTION_SECRET"] = "test-token-secret"
 os.environ["ADMIN_PASSWORD"] = "admin12345"
