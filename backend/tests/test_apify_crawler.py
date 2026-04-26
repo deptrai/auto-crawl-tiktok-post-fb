@@ -235,7 +235,7 @@ class TestConfig:
         """AC4: Default actor ID đúng."""
         from app.core.config import settings
         # Trong test env không có APIFY_ACTOR_ID set → giá trị default
-        assert "tiktok" in settings.APIFY_ACTOR_ID.lower() or settings.APIFY_ACTOR_ID == ""
+        assert settings.APIFY_ACTOR_ID == "kingscraper/tiktok-video-and-thumbnail-downloader"
 
     def test_default_crawler_mode(self):
         """AC4: Default mode là 'auto' hoặc được override qua env."""

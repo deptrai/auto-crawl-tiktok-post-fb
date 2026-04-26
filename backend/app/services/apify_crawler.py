@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import uuid
 import requests
 from pathlib import Path
@@ -12,6 +13,9 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 DOWNLOAD_DIR = settings.DOWNLOAD_DIR
 # H6: Đọc từ settings (không module-level os.getenv) để timeout có thể được cấu hình đúng
+
+_ALLOWED_DOWNLOAD_HOSTS = {"api.apify.com"}
+_ALLOWED_DOWNLOAD_SUFFIXES = (".tiktok.com", ".tiktokcdn.com", ".tiktokv.com")
 
 
 def _get_client():
@@ -95,7 +99,8 @@ def _build_run_input(source_url: str, actor_id: str, results_per_page: int = 20)
         # kingscraper format — cần video URL list
         if _is_profile_url(source_url):
             video_urls = _extract_video_urls_flat(source_url)
-            return {"videoUrls": video_urls}
+            # F-06: Giới hạn số lượng video theo results_per_page
+            return {"videoUrls": video_urls[:results_per_page]}
         return {"videoUrls": [source_url]}
 
 
@@ -134,7 +139,22 @@ def extract_metadata_apify(source_url: str, results_per_page: int = 20) -> dict:
         timeout_secs=settings.APIFY_ACTOR_TIMEOUT,
     )
 
-    items = client.dataset(run["defaultDatasetId"]).list_items().items
+    # F-13: Validate dataset ID trước khi dùng
+    dataset_id = run.get("defaultDatasetId")
+    if not dataset_id:
+        raise RuntimeError(f"Apify actor run returned no dataset. Run status: {run.get('status')}")
+
+    # F-09: Pagination để lấy toàn bộ items (list_items() mặc định chỉ trả page đầu)
+    dataset = client.dataset(dataset_id)
+    items = []
+    _offset = 0
+    _page_size = 1000
+    while True:
+        page = dataset.list_items(offset=_offset, limit=_page_size)
+        items.extend(page.items)
+        if len(page.items) < _page_size:
+            break
+        _offset += _page_size
 
     entries = []
     for item in items:
@@ -158,13 +178,21 @@ def extract_metadata_apify(source_url: str, results_per_page: int = 20) -> dict:
         ).strip()
         author_name = (item.get("authorMeta") or {}).get("name", "unknown")
         webpage_url = item.get("webVideoUrl") or f"https://www.tiktok.com/@{author_name}/video/{video_id}"
-        entries.append({
+
+        # F-11: Thêm engagement metrics và duration
+        entry = {
             "id": video_id,
             "webpage_url": webpage_url,
             "title": description,
             "description": description,
             "_apify_download_url": download_url,
-        })
+            "view_count": item.get("playCount") or item.get("views") or 0,
+            "like_count": item.get("diggCount") or item.get("likes") or 0,
+            "comment_count": item.get("commentCount") or item.get("comments") or 0,
+            "share_count": item.get("shareCount") or item.get("shares") or 0,
+            "duration": item.get("videoMeta", {}).get("duration") or item.get("duration") or 0,
+        }
+        entries.append(entry)
 
     return {"entries": entries}
 
@@ -177,25 +205,48 @@ def download_video_apify(download_url: str, filename_prefix: str = "tiktok") -> 
     if not download_url:
         return None, None
 
+    # F-04 + F-14: SSRF protection — chỉ cho phép download từ allowlisted hosts
+    parsed_url = urlparse(download_url)
+    hostname = parsed_url.hostname or ""
+    if not (
+        hostname in _ALLOWED_DOWNLOAD_HOSTS
+        or any(hostname.endswith(s) for s in _ALLOWED_DOWNLOAD_SUFFIXES)
+    ):
+        raise ValueError(f"SSRF protection: hostname '{hostname}' not in allowlist")
+
     Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
     video_id = str(uuid.uuid4())
-    filename = f"{filename_prefix}_{video_id}.mp4"
+
+    # F-03: Sanitize filename_prefix để tránh path traversal
+    safe_prefix = re.sub(r"[^a-zA-Z0-9_-]", "_", filename_prefix)
+    filename = f"{safe_prefix}_{video_id}.mp4"
     out_path = os.path.join(DOWNLOAD_DIR, filename)
 
     try:
-        # Apify KV store URLs cần bearer token auth
+        # F-05: Dùng exact hostname match thay vì substring "in url"
         headers = {}
-        if "api.apify.com" in download_url and settings.APIFY_API_TOKEN:
+        if hostname == "api.apify.com" and settings.APIFY_API_TOKEN:
             headers["Authorization"] = f"Bearer {settings.APIFY_API_TOKEN}"
         resp = requests.get(download_url, stream=True, timeout=120, headers=headers)
         resp.raise_for_status()
+
+        # F-15: Validate Content-Type trước khi ghi file
+        content_type = resp.headers.get("Content-Type", "")
+        if not content_type.startswith("video/"):
+            raise ValueError(f"Unexpected Content-Type: {content_type!r}")
+
+        # F-15: Validate Content-Length để tránh lưu file quá lớn
+        content_length = resp.headers.get("Content-Length")
+        if content_length and int(content_length) > 500 * 1024 * 1024:
+            raise ValueError("Video size exceeds 500MB limit")
+
         with open(out_path, "wb") as f:
             for chunk in resp.iter_content(chunk_size=8192):
                 if chunk:
                     f.write(chunk)
         return out_path, video_id
     except Exception as e:
-        logger.error(f"Lỗi tải video từ Apify URL: {e}")
+        logger.error("Lỗi tải video từ Apify URL: %s", type(e).__name__)
         if os.path.exists(out_path):
             try:
                 os.remove(out_path)

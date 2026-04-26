@@ -1,6 +1,6 @@
 # Story 6.1: Tích Hợp Apify TikTok Scraper Thay Thế yt-dlp
 
-Status: review
+Status: done
 
 ## Story
 
@@ -238,3 +238,31 @@ claude-sonnet-4-6
 - `backend/app/services/campaign_jobs.py` — đổi import + dùng `download_url`
 - `backend/.env` — thêm Apify config vars (không commit)
 - `backend/tests/test_apify_crawler.py` — tạo mới (17 unit tests)
+
+### Review Findings
+
+_Code review 2026-04-26 — 2 decision-needed, 15 patch, 0 defer, 2 dismissed_
+
+#### Decision-Needed
+
+- [x] [Review][Decision] F-07: `source_video_url` lưu TikTok webpage URL thay vì `noWatermarkHdUrl` — **Dismissed** (user decision 2026-04-26): giữ webpage URL là đúng vì CDN URL expire sau vài giờ. Spec mapping table cần được cập nhật để phản ánh quyết định này. [`campaign_jobs.py`]
+- [x] [Review][Decision] F-08: `apify-client>=1.9.0,<2.0` (1.x) vs spec `apify-client==2.5.0` (2.x) — **Patch** (user decision 2026-04-26): nâng lên 2.x. Xem patch F-08 bên dưới. [`backend/requirements.txt`]
+
+#### Patch
+
+- [x] [Review][Patch] F-01 [CRITICAL]: `_download_auto` condition inverted — `"tiktok.com" not in url` khiến Apify bị skip cho TikTok CDN URLs (chứa `tiktok.com`). Sửa thành: dùng Apify khi url có `_apify_download_url` origin hoặc khi url là Apify KV store URL. [`tiktok_crawler.py:_download_auto`]
+- [x] [Review][Patch] F-02 [CRITICAL]: Token leak — `record_event(..., details={"error": str(exc)})` có thể log APIFY_API_TOKEN nếu 401 error response chứa token. Sửa: dùng `type(exc).__name__` hoặc redact token pattern. [`tiktok_crawler.py:_extract_auto`, `_download_auto`]
+- [x] [Review][Patch] F-03 [CRITICAL]: Path traversal — `filename_prefix` không được sanitize trước khi dùng làm filename. Sửa: `re.sub(r'[^a-zA-Z0-9_-]', '_', filename_prefix)`. [`apify_crawler.py:download_video_apify:183`]
+- [x] [Review][Patch] F-04 [CRITICAL]: SSRF — `download_url` từ Apify API response dùng trực tiếp trong `requests.get()` không validate hostname. Sửa: allowlist hostname (TikTok CDN domains + `api.apify.com`). [`apify_crawler.py:download_video_apify`]
+- [x] [Review][Patch] F-05 [CRITICAL]: Bearer token leak via substring check — `"api.apify.com" in download_url` có thể match URL như `evil.com/redirect?to=api.apify.com/...`. Sửa: `urlparse(download_url).hostname == "api.apify.com"`. [`apify_crawler.py:download_video_apify:188`]
+- [x] [Review][Patch] F-06 [HIGH]: Unlimited profile URLs — `_extract_video_urls_flat` trả về toàn bộ video list không giới hạn (profile 884 videos → 884 URLs gửi Apify một lần). Sửa: slice theo `results_per_page`. [`apify_crawler.py:_build_run_input`]
+- [x] [Review][Patch] F-09 [HIGH]: No dataset pagination — `list_items()` chỉ trả first page. Sửa: iterate tất cả pages. [`apify_crawler.py:extract_metadata_apify:137`]
+- [x] [Review][Patch] F-10 [HIGH]: `int(os.getenv("APIFY_ACTOR_TIMEOUT", "300"))` crash tại import time nếu env var không phải số. Sửa: try/except hoặc Pydantic validator. [`app/core/config.py`]
+- [x] [Review][Patch] F-13 [HIGH]: `run["defaultDatasetId"]` không validate — nếu actor fail, giá trị này là None → AttributeError. Sửa: check `run.get("defaultDatasetId")` và raise lỗi rõ ràng. [`apify_crawler.py:extract_metadata_apify:137`]
+- [x] [Review][Patch] F-11 [MEDIUM]: views/likes/comments/shares/duration không extract dù AC1 yêu cầu. Sửa: thêm các fields này vào entry dict từ Apify response item. [`apify_crawler.py:extract_metadata_apify:161-167`]
+- [x] [Review][Patch] F-12 [MEDIUM]: Empty Apify entries fallback sang yt-dlp mà không có warning log — không phân biệt được Apify thành công trả empty hay thất bại. Sửa: log warning khi entries rỗng. [`tiktok_crawler.py:_extract_auto`]
+- [x] [Review][Patch] F-14 [MEDIUM]: Không validate Content-Type response — Apify URL trả HTML error page sẽ ghi thành file MP4 corrupt. Sửa: check `Content-Type: video/` header. [`apify_crawler.py:download_video_apify:191`]
+- [x] [Review][Patch] F-15 [MEDIUM]: Không giới hạn file size — `Content-Length` lớn bất thường không bị reject. Sửa: check Content-Length trước khi download (e.g., max 500MB). [`apify_crawler.py:download_video_apify`]
+- [x] [Review][Patch] F-16 [LOW]: Log count sai — `len(result.get("entries", [result]))` khi result không có "entries" key trả `1` thay vì `0`. Sửa: `len(result.get("entries", []))`. [`tiktok_crawler.py:_extract_via_apify`]
+- [x] [Review][Patch] F-17 [LOW]: `test_default_actor_id` assertion quá lỏng — cho phép empty string pass. Sửa: assert equals expected default actor ID. [`tests/test_apify_crawler.py`]
+- [x] [Review][Patch] F-08 [HIGH]: `apify-client>=1.9.0,<2.0` (1.x) — nâng lên `>=2.5.0,<3.0` per spec và user decision. [`backend/requirements.txt`]

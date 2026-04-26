@@ -10,8 +10,13 @@ Route giữa Apify và yt-dlp dựa trên TIKTOK_CRAWLER_MODE:
 API contract giống yt-dlp_crawler để campaign_jobs.py không cần thay đổi nhiều.
 """
 
+import logging
+from urllib.parse import urlparse
+
 from app.core.config import settings
 from app.services.observability import record_event
+
+logger = logging.getLogger(__name__)
 
 
 def extract_metadata(source_url: str) -> dict:
@@ -60,7 +65,7 @@ def _extract_via_apify(source_url: str) -> dict:
         "crawler",
         "info",
         "Đã lấy metadata TikTok qua Apify.",
-        details={"source_url": source_url, "entries": len(result.get("entries", [result]))},
+        details={"source_url": source_url, "entries": len(result.get("entries", []))},
     )
     return result
 
@@ -89,8 +94,10 @@ def _extract_auto(source_url: str) -> dict:
                 "crawler",
                 "warning",
                 "Apify extract thất bại, chuyển sang yt-dlp.",
-                details={"source_url": source_url, "error": str(exc)},
+                details={"source_url": source_url, "error": type(exc).__name__},
             )
+        else:
+            logger.warning("Apify trả về entries rỗng cho %s, fallback sang yt-dlp.", source_url)
     return _extract_via_ytdlp(source_url)
 
 
@@ -122,8 +129,12 @@ def _download_via_ytdlp(url: str, filename_prefix: str) -> tuple[str | None, str
 
 def _download_auto(url: str, filename_prefix: str) -> tuple[str | None, str | None]:
     """Thử Apify download URL trực tiếp nếu url là CDN link, fallback yt-dlp."""
-    # Nếu url trông như CDN URL (không phải tiktok.com) → thử download trực tiếp qua Apify module
-    if settings.APIFY_API_TOKEN and "tiktok.com" not in url:
+    # CDN URLs (api.apify.com, tiktokcdn.com, ...) → download qua Apify module
+    # TikTok webpage URLs (/@user/video/...) → dùng yt-dlp
+    parsed = urlparse(url)
+    hostname = parsed.hostname or ""
+    is_tiktok_webpage = "tiktok.com" in hostname and ("/@" in url or "/video/" in parsed.path)
+    if settings.APIFY_API_TOKEN and not is_tiktok_webpage:
         out_path, video_id = _download_via_apify(url, filename_prefix)
         if out_path:
             return out_path, video_id

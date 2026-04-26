@@ -58,7 +58,10 @@ class Settings:
     APIFY_API_TOKEN: str = os.getenv("APIFY_API_TOKEN", "")
     APIFY_ACTOR_ID: str = os.getenv("APIFY_ACTOR_ID", "kingscraper/tiktok-video-and-thumbnail-downloader")
     # H6: Đọc qua settings thay vì module-level os.getenv() để cho phép runtime reload
-    APIFY_ACTOR_TIMEOUT: int = int(os.getenv("APIFY_ACTOR_TIMEOUT", "300"))
+    try:
+        APIFY_ACTOR_TIMEOUT: int = int(os.getenv("APIFY_ACTOR_TIMEOUT", "300"))
+    except (ValueError, TypeError):
+        APIFY_ACTOR_TIMEOUT: int = 300
     TIKTOK_CRAWLER_MODE: str = os.getenv("TIKTOK_CRAWLER_MODE", "auto")  # apify | ytdlp | auto
 
 
