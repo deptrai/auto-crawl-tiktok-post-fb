@@ -31,6 +31,7 @@ class TokenHealthResult:
     days_remaining: int | None
     scopes: list[str]
     health_status: str
+    page_id: str | None = None
 
 
 @dataclass
@@ -166,6 +167,7 @@ def check_all_tokens(db: Session) -> list[TokenHealthResult]:
         previous_status = page.token_health_status
         result = check_token_health(page.page_id, db, page=page)
         if result:
+            result.page_id = page.page_id
             results.append(result)
             new_status = result.health_status
             # Smart logging: only write event when status actually changes.

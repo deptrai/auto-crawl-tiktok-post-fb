@@ -20,11 +20,10 @@ _ALLOWED_DOWNLOAD_SUFFIXES = (".tiktok.com", ".tiktokcdn.com", ".tiktokv.com")
 
 def _get_client():
     """Trả về ApifyClient đã xác thực. Raise nếu token chưa cấu hình."""
-    from apify_client import ApifyClient
-
     token = settings.APIFY_API_TOKEN
     if not token:
         raise ValueError("APIFY_API_TOKEN chưa được cấu hình.")
+    from apify_client import ApifyClient
     return ApifyClient(token)
 
 

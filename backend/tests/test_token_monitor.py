@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from app.models.models import FacebookPage, TokenType
+from app.models.models import FacebookPage, SystemEvent, TokenType
 from app.services.security import encrypt_secret
 
 
@@ -368,3 +368,63 @@ class TestSmartEventLogging:
             token_lifecycle.check_all_tokens(mock_db)
 
         assert mock_rec.call_count == 1  # chỉ p2 thay đổi
+
+
+# ---------------------------------------------------------------------------
+# AC5 cron integration: token_health_check_job dùng check_all_tokens (không spam)
+# ---------------------------------------------------------------------------
+
+class TestCronSmartEventLogging:
+    def test_cron_no_duplicate_event_when_status_unchanged(self, db_session):
+        """AC5: cron chạy 2 lần liên tiếp với status không đổi → chỉ ghi event lần đầu."""
+        from unittest.mock import patch
+        from app.worker.cron import token_health_check_job
+
+        page = FacebookPage(
+            page_id="cron_ac5_page",
+            page_name="AC5 Test Page",
+            long_lived_access_token=encrypt_secret("raw_token"),
+            token_health_status="valid",
+        )
+        db_session.add(page)
+        db_session.commit()
+
+        # Mock check_token_health để trả về status "expired" — status changed từ valid
+        from app.services.token_lifecycle import TokenHealthResult
+        expired_result = TokenHealthResult(
+            is_valid=False,
+            token_type="long_lived",
+            expires_at=None,
+            days_remaining=0,
+            scopes=[],
+            health_status="expired",
+        )
+
+        from app.core.config import settings as app_settings
+
+        with patch("app.worker.cron.SessionLocal", return_value=db_session), \
+             patch.object(db_session, "close"), \
+             patch.object(app_settings, "FB_APP_ID", "mock_id"), \
+             patch.object(app_settings, "FB_APP_SECRET", "mock_secret"), \
+             patch("app.services.token_lifecycle.requests.get") as mock_get:
+
+            mock_resp = MagicMock()
+            mock_resp.status_code = 200
+            mock_resp.json.return_value = {"data": {"is_valid": False}}
+            mock_get.return_value = mock_resp
+
+            # Lần 1: valid → invalid — phải ghi event
+            token_health_check_job()
+            events_after_run1 = db_session.query(SystemEvent).filter_by(scope="token").count()
+
+            db_session.refresh(page)
+            assert page.token_health_status == "invalid"
+
+            # Lần 2: invalid → invalid (không thay đổi) — KHÔNG ghi event mới
+            token_health_check_job()
+            events_after_run2 = db_session.query(SystemEvent).filter_by(scope="token").count()
+
+        # Chỉ 1 event token từ lần 1 (status changed valid→invalid).
+        # Lần 2 không tạo event mới vì status không thay đổi.
+        assert events_after_run1 == 1
+        assert events_after_run2 == 1

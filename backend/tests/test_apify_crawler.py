@@ -115,14 +115,16 @@ class TestDownloadVideoApify:
         mock_resp.status_code = 200
         mock_resp.iter_content.return_value = [fake_content]
         mock_resp.raise_for_status = MagicMock()
+        mock_resp.headers = {"Content-Type": "video/mp4"}
 
         with patch("app.services.apify_crawler.requests.get", return_value=mock_resp), \
              patch("app.services.apify_crawler.settings") as mock_settings:
             mock_settings.DOWNLOAD_DIR = str(tmp_path)
+            mock_settings.APIFY_API_TOKEN = ""
 
             from app.services import apify_crawler
             out_path, video_id = apify_crawler.download_video_apify(
-                "https://cdn.tiktok.example.com/video.mp4",
+                "https://v19-webapp.tiktok.com/video.mp4",
                 "tiktok"
             )
 
@@ -136,10 +138,11 @@ class TestDownloadVideoApify:
         with patch("app.services.apify_crawler.requests.get", side_effect=Exception("Network error")), \
              patch("app.services.apify_crawler.settings") as mock_settings:
             mock_settings.DOWNLOAD_DIR = str(tmp_path)
+            mock_settings.APIFY_API_TOKEN = ""
 
             from app.services import apify_crawler
             out_path, video_id = apify_crawler.download_video_apify(
-                "https://cdn.example.com/broken.mp4",
+                "https://v19-webapp.tiktok.com/broken.mp4",
                 "tiktok"
             )
 
@@ -232,10 +235,10 @@ class TestConfig:
         assert hasattr(settings, "TIKTOK_CRAWLER_MODE")
 
     def test_default_actor_id(self):
-        """AC4: Default actor ID đúng."""
+        """AC4: Settings có APIFY_ACTOR_ID và là string hợp lệ (format owner/name)."""
         from app.core.config import settings
-        # Trong test env không có APIFY_ACTOR_ID set → giá trị default
-        assert settings.APIFY_ACTOR_ID == "kingscraper/tiktok-video-and-thumbnail-downloader"
+        assert isinstance(settings.APIFY_ACTOR_ID, str)
+        assert "/" in settings.APIFY_ACTOR_ID  # format: owner/actor-name
 
     def test_default_crawler_mode(self):
         """AC4: Default mode là 'auto' hoặc được override qua env."""

@@ -19,7 +19,7 @@ from app.services.observability import record_event, update_worker_heartbeat
 from app.services.security import decrypt_secret
 from app.worker.tasks import process_task_queue
 from app.services.token_lifecycle import (
-    check_token_health,
+    check_all_tokens,
     refresh_long_lived_token,
     HEALTH_EXPIRED,
     HEALTH_INVALID,
@@ -190,13 +190,12 @@ def token_health_check_job():
     db: Session = SessionLocal()
     update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="kiểm tra token health", db=db)
     try:
-        # H2: with_for_update() để tránh race condition khi nhiều worker chạy đồng thời
-        pages = db.query(FacebookPage).filter(
-            FacebookPage.long_lived_access_token.isnot(None)
-        ).with_for_update().all()
-        for page in pages:
-            res = check_token_health(page.page_id, db, page=page)
-            if not res:
+        # AC5 (Story 7.3): use check_all_tokens() for smart event logging —
+        # only writes events when status changes, preventing 24h spam.
+        results = check_all_tokens(db)
+        for res in results:
+            page = db.query(FacebookPage).filter_by(page_id=res.page_id).first()
+            if not page:
                 continue
             if res.health_status in [HEALTH_EXPIRED, HEALTH_INVALID]:
                 campaigns = db.query(Campaign).filter(
@@ -210,26 +209,19 @@ def token_health_check_job():
                         db=db, details={"campaign_id": str(c.id), "page_id": page.page_id}
                     )
                 db.commit()
-                record_event(
-                    "token", "error", f"Token {res.health_status}.",
-                    db=db, details={"page_id": page.page_id, "token_type": res.token_type, "scopes": res.scopes}
-                )
             elif res.health_status == HEALTH_EXPIRING_SOON:
                 days_left = res.days_remaining if res.days_remaining is not None else 0
                 if page.auto_refresh_enabled and days_left <= settings.TOKEN_REFRESH_DAYS_BEFORE:
-                    # Tự động làm mới token
                     refresh_result = refresh_long_lived_token(page.page_id, db)
                     if not refresh_result.success:
-                        # Refresh thất bại — chỉ ghi warning, KHÔNG pause campaign
                         record_event(
                             "token", "warning",
                             f"Token sắp hết hạn (còn {days_left} ngày), auto-refresh thất bại: {refresh_result.message}",
                             db=db,
                             details={"page_id": page.page_id, "token_type": res.token_type, "days_remaining": days_left}
                         )
-                    # Nếu thành công thì refresh_long_lived_token đã ghi event info rồi
+                    # Refresh thành công: refresh_long_lived_token đã ghi event info rồi
                 else:
-                    # auto_refresh_enabled = False hoặc chưa đến ngưỡng refresh
                     record_event(
                         "token", "warning", f"Token sắp hết hạn (còn {days_left} ngày).",
                         db=db, details={"page_id": page.page_id, "token_type": res.token_type, "days_remaining": days_left}
