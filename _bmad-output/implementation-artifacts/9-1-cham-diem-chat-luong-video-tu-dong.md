@@ -1,6 +1,6 @@
 # Story 9.1: Chấm Điểm Chất Lượng Video Tự Động (Quality Score Filter)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -74,44 +74,48 @@ Architecture D4 quy định **Chain of Responsibility pattern** cho content filt
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Alembic migration — thêm filter fields vào `campaigns` (AC: #1)
-  - [ ] 1.1: Thêm `filter_min_views` (Integer, default=0), `filter_min_likes` (Integer, default=0) vào `Campaign` model trong `models.py`
-  - [ ] 1.2: Tạo Alembic migration file
-  - [ ] 1.3: Test migration up/down — existing campaigns không bị ảnh hưởng
+- [x] Task 1: Alembic migration — thêm filter fields vào `campaigns` (AC: #1)
+  - [x] 1.1: Thêm `filter_min_views` (Integer, default=0, nullable=False), `filter_min_likes` (Integer, default=0, nullable=False) vào `Campaign` model trong `models.py`
+  - [x] 1.2: Tạo Alembic migration file `20260428_01_add_filter_fields_to_campaigns.py`
+  - [x] 1.3: Test migration up/down — existing campaigns không bị ảnh hưởng (server_default='0')
 
-- [ ] Task 2: Bổ sung stats vào Apify entry response (AC: #2)
-  - [ ] 2.1: Mở rộng `extract_metadata_apify()` trong `apify_crawler.py` — thêm `view_count`, `like_count`, `share_count`, `comment_count` vào entry dict
-  - [ ] 2.2: Map fields từ clockworks format: `item.get("playCount")` hoặc `(item.get("videoMeta") or {}).get("playCount", 0)`
-  - [ ] 2.3: Map fields từ kingscraper format: `item.get("playCount", 0)` (same field names)
-  - [ ] 2.4: Default 0 cho missing fields
+- [x] Task 2: Bổ sung stats vào Apify entry response (AC: #2)
+  - [x] 2.1: Mở rộng `extract_metadata_apify()` trong `apify_crawler.py` — thêm `view_count`, `like_count`, `share_count`, `comment_count`, `duration` vào entry dict
+  - [x] 2.2: Map fields từ clockworks format với fallback `videoMeta.*` (post-review F7)
+  - [x] 2.3: Map fields từ kingscraper format: same field names
+  - [x] 2.4: Default 0 cho missing fields, cast `int()` an toàn
 
-- [ ] Task 3: Content filter service (AC: #3)
-  - [ ] 3.1: Tạo `backend/app/services/content_filter.py`
-  - [ ] 3.2: Implement `ContentFilter` Protocol với method `apply(entry: dict, campaign: Campaign) -> FilterResult`
-  - [ ] 3.3: Implement `FilterResult` dataclass: `accepted: bool`, `reason: str | None`
-  - [ ] 3.4: Implement `QualityFilter` class
-  - [ ] 3.5: Implement `run_filters(entry: dict, campaign: Campaign, filters: list[ContentFilter]) -> FilterResult` helper
+- [x] Task 3: Content filter service (AC: #3)
+  - [x] 3.1: Tạo `backend/app/services/content_filter.py`
+  - [x] 3.2: Implement `ContentFilter` Protocol
+  - [x] 3.3: Implement `FilterResult` dataclass (+ `filter_name` extra)
+  - [x] 3.4: Implement `QualityFilter` class
+  - [x] 3.5: Implement `run_filters()` + `get_default_filters()` helper
 
-- [ ] Task 4: Tích hợp filter vào sync flow (AC: #4)
-  - [ ] 4.1: Import `content_filter` vào `campaign_jobs.py`
-  - [ ] 4.2: Thêm filter check SAU dedup check (line ~178) nhưng TRƯỚC `db_video = Video(...)` (line ~185)
-  - [ ] 4.3: Track `filtered_count` và report trong sync completion event
-  - [ ] 4.4: Truyền stats data từ entry vào filter (entry dict đã có từ Task 2)
+- [x] Task 4: Tích hợp filter vào sync flow (AC: #4)
+  - [x] 4.1: Import `get_default_filters, run_filters` vào `campaign_jobs.py`
+  - [x] 4.2: Thêm filter check SAU dedup check, TRƯỚC Video creation
+  - [x] 4.3: Track `filtered_count` và report trong sync completion event (post-review F3)
+  - [x] 4.4: Truyền stats data từ entry vào filter
+  - [x] 4.5: Hoist `filters = get_default_filters()` ra ngoài loop (post-review F4)
+  - [x] 4.6: Bỏ per-video event spam, chỉ giữ `logger.info` trong `run_filters` (post-review F2)
 
-- [ ] Task 5: API + Frontend (AC: #5)
-  - [ ] 5.1: Mở rộng `CampaignCreate` Pydantic model — thêm `filter_min_views: int = 0`, `filter_min_likes: int = 0`
-  - [ ] 5.2: Mở rộng `POST /campaigns/` — lưu filter fields
-  - [ ] 5.3: Thêm `PATCH /campaigns/{id}` endpoint (nếu chưa có) hoặc mở rộng — update filter fields
-  - [ ] 5.4: Mở rộng `serialize_campaign()` — thêm filter fields vào response
-  - [ ] 5.5: Frontend `App.jsx` — thêm 2 input fields vào campaign create/edit form
+- [x] Task 5: API + Frontend (AC: #5)
+  - [x] 5.1: Mở rộng `CampaignCreate` Pydantic model
+  - [x] 5.2: Mở rộng `POST /campaigns/` — lưu filter fields
+  - [x] 5.3: Thêm `PATCH /campaigns/{id}` endpoint mới với `CampaignUpdate` partial model
+  - [x] 5.4: Mở rộng `serialize_campaign()` — thêm filter fields vào response
+  - [x] 5.5: Frontend `App.jsx` — thêm 2 input fields
+  - [x] 5.6: Whitelist field set trong PATCH (post-review F6); normalize empty `target_page_id` (F5)
 
-- [ ] Task 6: Unit tests (AC: #1-5)
-  - [ ] 6.1: Test `QualityFilter.apply()` — accepted khi đạt ngưỡng, rejected khi không đạt
-  - [ ] 6.2: Test `QualityFilter` bypass khi min_views=0 AND min_likes=0
-  - [ ] 6.3: Test `run_filters()` chain — multiple filters, stop on first reject
-  - [ ] 6.4: Test Apify entry stats mapping — clockworks format + kingscraper format
-  - [ ] 6.5: Test `sync_campaign_content` integration — video bị filter → không tạo DB record
-  - [ ] 6.6: Test API — create campaign với filter fields, verify response
+- [x] Task 6: Unit tests (AC: #1-5)
+  - [x] 6.1: QualityFilter accept/reject + bypass + None columns (8 tests)
+  - [x] 6.2: `run_filters()` chain short-circuit (4 tests)
+  - [x] 6.3: Campaign DB persistence + defaults (2 tests)
+  - [x] 6.4: API POST/GET/PATCH với filter fields, partial update, validation (6 tests)
+  - [x] 6.5: PATCH target_page_id invalid + empty + extra-field (3 tests, post-review F8)
+  - [x] 6.6: `sync_campaign_content` integration: filtered videos không persist, summary event đúng counters (1 test, post-review F3)
+  - [x] 6.7: Apify engagement mapping + videoMeta fallback (2 tests)
 
 ## Dev Notes
 
@@ -338,14 +342,77 @@ yt-dlp `extract_info()` (fallback crawler) đã trả `view_count`, `like_count`
 - [Source: backend/app/models/models.py — Campaign model]
 - [Source: Apify clockworks/tiktok-scraper docs — playCount, diggCount fields]
 
+### Review Findings
+
+CRITICAL:
+- [x] [Review][Patch] F1 — `record_event` được gọi với `details` ở dạng positional arg trong loop filter. `observability.record_event` định nghĩa `details=` là keyword-only (sau `*`); sync sẽ raise `TypeError` ngay video đầu tiên bị filter. [`backend/app/services/campaign_jobs.py`:184-194]
+
+HIGH:
+- [x] [Review][Patch] F2 — Vi phạm anti-pattern dòng 328: ghi `record_event` cho TỪNG video bị filter. Bỏ event per-video trong loop, chuyển sang summary 1 event cuối sync. [`backend/app/services/campaign_jobs.py`:184-194]
+- [x] [Review][Patch] F3 — Thiếu aggregate `filtered_count` trong completion event (vi phạm AC4 dòng 66). Track `filtered_count: int = 0`, tăng khi reject, đính kèm vào event details cuối sync. [`backend/app/services/campaign_jobs.py`:155-243]
+
+MEDIUM:
+- [x] [Review][Patch] F4 — Vi phạm anti-pattern dòng 327: `get_default_filters()` chạy mỗi iteration vì `run_filters(entry, campaign)` không truyền `filters=`. Hoist `filters = get_default_filters()` ra ngoài loop. [`backend/app/services/campaign_jobs.py`:182]
+- [x] [Review][Patch] F5 — PATCH `target_page_id=""` bypass FacebookPage lookup (truthy check) nhưng vẫn `setattr` empty string. Hoặc reject `""`, hoặc normalize về `None`. [`backend/app/api/campaigns.py`:234-245]
+- [x] [Review][Patch] F6 — Mass-assignment qua `setattr(campaign, key, value)` cho mọi key từ `model_dump()`. Whitelist explicit field set để chống regression nếu Pydantic model mở rộng sau này. [`backend/app/api/campaigns.py`:240-246]
+- [x] [Review][Patch] F7 — Apify mapping thiếu fallback `(item.get("videoMeta") or {}).get("playCount")` theo spec dòng 167-170 cho `view_count`/`like_count`/`share_count`/`comment_count`. [`backend/app/services/apify_crawler.py`:182-193]
+- [x] [Review][Patch] F8 — Thiếu test PATCH `target_page_id` invalid (rỗng + non-existent page) → finding F5 không bị bắt. [`backend/tests/test_content_filter.py`]
+
+LOW:
+- [x] [Review][Patch] F9 — Test có dead code `if False else None` trong `test_post_campaign_persists_filter_fields`. Bỏ block và đơn giản hóa. [`backend/tests/test_content_filter.py`:206-211]
+- [x] [Review][Patch] F11 — `serialize_campaign` dùng `campaign.filter_min_views or 0` trong khi column `nullable=False default=0` → `or 0` thừa và che inconsistency. Trả thẳng giá trị. [`backend/app/api/campaigns.py`:104-105]
+- [x] [Review][Patch] F15 — Tick checkboxes Task 1-6 trong story và điền `File List` + `Completion Notes` trong Dev Agent Record.
+
+DEFERRED:
+- [x] [Review][Defer] F10 — Migration explicit backfill UPDATE — deferred, defensive cross-DB; SQLite test đã pass. [`backend/alembic/versions/20260428_01_add_filter_fields_to_campaigns.py`]
+- [x] [Review][Defer] F12 — `int()` defensive guard cho Apify string values — deferred, Apify pipeline hiện normalize ints sẵn. [`backend/app/services/content_filter.py`:46-47]
+- [x] [Review][Defer] F14 — `run_filters` log INFO → DEBUG level để tránh log spam khi feed lớn — deferred, tối ưu nhẹ. [`backend/app/services/content_filter.py`:84-89]
+
+
 ## Dev Agent Record
 
 ### Agent Model Used
 
+claude-sonnet-4-5 (dev) + claude-opus-4-7 (review pass) via BMad workflow.
+
 ### Debug Log References
+
+- Initial run: 85/85 backend tests pass
+- Post-review run: 90/90 backend tests pass (5 new tests cho F3/F7/F8)
+- Migration head: `20260428_01` (chained sau `20260406_01`)
 
 ### Completion Notes List
 
+- **Task 2 đã có sẵn từ Story 6.1**: `apify_crawler.py` đã map view/like/comment/share counts. Story 9.1 chỉ thêm fallback `videoMeta.*` (F7) và cast `int()` defensive.
+- **Code review đã fix 11 patches**:
+  - CRITICAL F1: `record_event` positional arg → đã bỏ luôn per-video event (F2 cùng cluster)
+  - HIGH F2/F3: bỏ per-video event spam, thêm `filtered_count` aggregate vào completion event
+  - MEDIUM F4: hoist `filters = get_default_filters()` ngoài loop
+  - MEDIUM F5/F6: PATCH whitelist fields + normalize empty `target_page_id` về None
+  - MEDIUM F7: Apify fallback `videoMeta.*` cho 4 stat fields
+  - MEDIUM F8: thêm 3 PATCH validation tests
+  - LOW F9/F11/F15: cleanup
+- **Defer**: F10 (migration backfill cross-DB), F12 (int defensive), F14 (log level) — ghi vào `deferred-work.md`
+
 ### Change Log
 
+| Date | Phase | Files | Notes |
+|------|-------|-------|-------|
+| 2026-04-28 | Dev | models.py, alembic/20260428_01, content_filter.py, campaign_jobs.py, campaigns.py, App.jsx, test_content_filter.py | Initial implementation, 85/85 tests pass |
+| 2026-04-28 | Review | campaign_jobs.py, campaigns.py, apify_crawler.py, test_content_filter.py, story file | 11 patches áp dụng, 90/90 tests pass |
+
 ### File List
+
+**New:**
+- `backend/alembic/versions/20260428_01_add_filter_fields_to_campaigns.py`
+- `backend/app/services/content_filter.py`
+- `backend/tests/test_content_filter.py`
+
+**Modified:**
+- `backend/app/models/models.py` (+3 lines: filter columns)
+- `backend/app/services/apify_crawler.py` (+ videoMeta fallback)
+- `backend/app/services/campaign_jobs.py` (filter integration + filtered_count counter)
+- `backend/app/api/campaigns.py` (CampaignCreate, CampaignUpdate, PATCH endpoint, serialize_campaign)
+- `frontend/src/App.jsx` (2 filter inputs)
+- `_bmad-output/implementation-artifacts/sprint-status.yaml` (status transitions)
+- `_bmad-output/implementation-artifacts/deferred-work.md` (F10/F12/F14)

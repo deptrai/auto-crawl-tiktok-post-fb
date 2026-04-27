@@ -387,7 +387,7 @@ function App() {
   const [videos, setVideos] = useState([]);
   const [interactions, setInteractions] = useState([]);
   const [systemInfo, setSystemInfo] = useState(null);
-  const [formData, setFormData] = useState({ name: '', source_url: '', auto_post: false, target_page_id: '', schedule_interval: 30 });
+  const [formData, setFormData] = useState({ name: '', source_url: '', auto_post: false, target_page_id: '', schedule_interval: 30, filter_min_views: 0, filter_min_likes: 0 });
   const [fbPages, setFbPages] = useState([]);
   const [fbForm, setFbForm] = useState({ page_id: '', page_name: '', long_lived_access_token: '' });
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -636,7 +636,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      setFormData((current) => ({ ...current, name: '', source_url: '', auto_post: false }));
+      setFormData((current) => ({ ...current, name: '', source_url: '', auto_post: false, filter_min_views: 0, filter_min_likes: 0 }));
       return payload;
     });
   };
@@ -1033,6 +1033,14 @@ function App() {
           <label className="space-y-2">
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Khoảng cách đăng (phút)</span>
             <input required type="number" min="0" className={FIELD_CLASS} value={formData.schedule_interval} onChange={(event) => setFormData({ ...formData, schedule_interval: parseInt(event.target.value, 10) || 0 })} />
+          </label>
+          <label className="space-y-2">
+            <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Lượt xem tối thiểu</span>
+            <input type="number" min="0" className={FIELD_CLASS} placeholder="0 = không lọc" value={formData.filter_min_views} onChange={(event) => setFormData({ ...formData, filter_min_views: parseInt(event.target.value, 10) || 0 })} />
+          </label>
+          <label className="space-y-2">
+            <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Lượt thích tối thiểu</span>
+            <input type="number" min="0" className={FIELD_CLASS} placeholder="0 = không lọc" value={formData.filter_min_likes} onChange={(event) => setFormData({ ...formData, filter_min_likes: parseInt(event.target.value, 10) || 0 })} />
           </label>
           <label className="space-y-2 md:col-span-2">
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Nguồn TikTok</span>

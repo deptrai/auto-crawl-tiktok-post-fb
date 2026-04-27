@@ -13,6 +13,7 @@ from app.services.ai_generator import generate_reply
 from app.services.fb_graph import reply_to_comment
 from app.services.observability import record_event
 from app.services.security import decrypt_secret
+from app.services.content_filter import get_default_filters, run_filters
 from app.services.tiktok_crawler import download_video, extract_metadata
 
 
@@ -150,7 +151,10 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
             campaign.schedule_interval or 0,
         )
         added_count = 0
+        filtered_count = 0
         interrupted_reason = None
+        # Story 9.1: Hoist filter chain ra ngoài loop (anti-pattern: instantiate per-iteration)
+        content_filters = get_default_filters()
 
         for entry in entries:
             db.expire_all()
@@ -175,6 +179,15 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
                 .first()
             )
             if existing_vid:
+                continue
+
+            # Story 9.1: Content quality filter — short-circuit before any download work.
+            # Per-video log đã có trong run_filters (logger.info). KHÔNG ghi event store
+            # cho TỪNG video (anti-pattern spec dòng 328); chỉ tăng counter để ghi summary
+            # ở completion event cuối sync.
+            filter_result = run_filters(entry, campaign, content_filters)
+            if not filter_result.accepted:
+                filtered_count += 1
                 continue
 
             publish_time = start_time + timedelta(minutes=added_count * (campaign.schedule_interval or 0))
@@ -213,7 +226,12 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
                     "warning",
                     "Đồng bộ chiến dịch bị dừng giữa chừng.",
                     db=db,
-                    details={"campaign_id": campaign_id, "reason": interrupted_reason},
+                    details={
+                        "campaign_id": campaign_id,
+                        "reason": interrupted_reason,
+                        "videos_added": added_count,
+                        "filtered_count": filtered_count,
+                    },
                 )
             else:
                 set_campaign_sync_state(campaign, "completed", None, datetime.now(timezone.utc).replace(tzinfo=None))
@@ -222,7 +240,11 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
                     "info",
                     "Đồng bộ chiến dịch hoàn tất.",
                     db=db,
-                    details={"campaign_id": campaign_id, "videos_added": added_count},
+                    details={
+                        "campaign_id": campaign_id,
+                        "videos_added": added_count,
+                        "filtered_count": filtered_count,
+                    },
                 )
             db.commit()
 

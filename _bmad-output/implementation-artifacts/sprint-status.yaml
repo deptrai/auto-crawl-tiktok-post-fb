@@ -51,7 +51,7 @@
 # QW5: Blocklist keywords — array config đơn giản trong campaign settings (Story 9.2 preview)
 
 generated: 2026-04-04T13:05:00+07:00
-last_updated: 2026-04-26T12:00:00+07:00
+last_updated: 2026-04-28T15:30:00+07:00
 project: auto-crawl-tiktok-post-fb
 project_key: NOKEY
 tracking_system: file-system
@@ -107,7 +107,7 @@ development_status:
   # ─── PHASE 2 — SPRINT 2 ──────────────────────────────────────────────────
   # Priority: HIGH — Smart content filtering
   epic-9: in-progress
-  9-1-cham-diem-chat-luong-video-tu-dong: ready-for-dev
+  9-1-cham-diem-chat-luong-video-tu-dong: done
   9-2-bo-loc-hashtag-tu-khoa: ready-for-dev
   9-3-phat-hien-noi-dung-trung-lap: ready-for-dev
   epic-9-retrospective: optional

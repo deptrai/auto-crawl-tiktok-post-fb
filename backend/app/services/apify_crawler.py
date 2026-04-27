@@ -178,18 +178,20 @@ def extract_metadata_apify(source_url: str, results_per_page: int = 20) -> dict:
         author_name = (item.get("authorMeta") or {}).get("name", "unknown")
         webpage_url = item.get("webVideoUrl") or f"https://www.tiktok.com/@{author_name}/video/{video_id}"
 
-        # F-11: Thêm engagement metrics và duration
+        # F-11 + Story 9.1: Engagement metrics + duration. Fallback từ videoMeta theo
+        # spec dòng 167-170 (clockworks/tiktok-scraper đôi khi chỉ trả nested videoMeta).
+        video_meta = item.get("videoMeta") or {}
         entry = {
             "id": video_id,
             "webpage_url": webpage_url,
             "title": description,
             "description": description,
             "_apify_download_url": download_url,
-            "view_count": item.get("playCount") or item.get("views") or 0,
-            "like_count": item.get("diggCount") or item.get("likes") or 0,
-            "comment_count": item.get("commentCount") or item.get("comments") or 0,
-            "share_count": item.get("shareCount") or item.get("shares") or 0,
-            "duration": item.get("videoMeta", {}).get("duration") or item.get("duration") or 0,
+            "view_count": int(item.get("playCount") or video_meta.get("playCount") or item.get("views") or 0),
+            "like_count": int(item.get("diggCount") or video_meta.get("diggCount") or item.get("likes") or 0),
+            "comment_count": int(item.get("commentCount") or video_meta.get("commentCount") or item.get("comments") or 0),
+            "share_count": int(item.get("shareCount") or video_meta.get("shareCount") or item.get("shares") or 0),
+            "duration": int(video_meta.get("duration") or item.get("duration") or 0),
         }
         entries.append(entry)
 

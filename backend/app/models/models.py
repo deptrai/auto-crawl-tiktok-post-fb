@@ -62,6 +62,9 @@ class Campaign(Base):
     last_synced_at = Column(DateTime, nullable=True)
     last_sync_status = Column(String, default="idle")
     last_sync_error = Column(String, nullable=True)
+    # Story 9.1: Content quality filter thresholds (0 = disabled)
+    filter_min_views = Column(Integer, default=0, nullable=False)
+    filter_min_likes = Column(Integer, default=0, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

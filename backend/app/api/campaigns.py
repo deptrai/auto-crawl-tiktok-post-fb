@@ -28,6 +28,19 @@ class CampaignCreate(BaseModel):
     auto_post: bool = False
     target_page_id: str | None = None
     schedule_interval: int = Field(default=0, ge=0)
+    # Story 9.1: Content-quality filter thresholds (0 = disabled)
+    filter_min_views: int = Field(default=0, ge=0)
+    filter_min_likes: int = Field(default=0, ge=0)
+
+
+class CampaignUpdate(BaseModel):
+    """Story 9.1: Partial update for campaign settings (filters first)."""
+    name: str | None = None
+    auto_post: bool | None = None
+    target_page_id: str | None = None
+    schedule_interval: int | None = Field(default=None, ge=0)
+    filter_min_views: int | None = Field(default=None, ge=0)
+    filter_min_likes: int | None = Field(default=None, ge=0)
 
 
 class VideoCaptionUpdate(BaseModel):
@@ -90,6 +103,8 @@ def serialize_campaign(campaign: Campaign, summary_map, page_name_map):
         "target_page_id": campaign.target_page_id,
         "target_page_name": page_name_map.get(campaign.target_page_id),
         "schedule_interval": campaign.schedule_interval,
+        "filter_min_views": campaign.filter_min_views,
+        "filter_min_likes": campaign.filter_min_likes,
         "last_synced_at": serialize_datetime(campaign.last_synced_at),
         "last_sync_status": campaign.last_sync_status or "idle",
         "last_sync_error": campaign.last_sync_error,
@@ -171,6 +186,8 @@ def create_campaign(campaign_in: CampaignCreate, db: Session = Depends(get_db)):
         auto_post=campaign_in.auto_post,
         target_page_id=campaign_in.target_page_id,
         schedule_interval=campaign_in.schedule_interval,
+        filter_min_views=campaign_in.filter_min_views,
+        filter_min_likes=campaign_in.filter_min_likes,
         status=CampaignStatus.active,
         last_sync_status="queued",
     )
@@ -207,6 +224,60 @@ def get_campaigns(db: Session = Depends(get_db)):
     page_name_map = build_page_name_map(db)
     summary_map = build_campaign_summary_map(db)
     return [serialize_campaign(campaign, summary_map, page_name_map) for campaign in campaigns]
+
+
+@router.patch("/{campaign_id}")
+def update_campaign(campaign_id: str, payload: CampaignUpdate, db: Session = Depends(get_db)):
+    """Story 9.1: Update campaign settings (filters, schedule, target page, name)."""
+    campaign = get_campaign_or_404(db, campaign_id)
+
+    update_data = payload.model_dump(exclude_unset=True)
+
+    # F5: Normalize empty-string target_page_id sent by frontend to None;
+    # validate non-empty values against FacebookPage.
+    if "target_page_id" in update_data:
+        new_page_id = update_data["target_page_id"]
+        if isinstance(new_page_id, str):
+            new_page_id = new_page_id.strip() or None
+            update_data["target_page_id"] = new_page_id
+        if new_page_id:
+            page = db.query(FacebookPage).filter(FacebookPage.page_id == new_page_id).first()
+            if not page:
+                raise HTTPException(status_code=400, detail="Trang đích chưa được cấu hình trong hệ thống.")
+
+    if "name" in update_data:
+        name_value = update_data["name"]
+        if isinstance(name_value, str):
+            name_value = name_value.strip()
+            if not name_value:
+                raise HTTPException(status_code=400, detail="Tên chiến dịch không được để trống.")
+            update_data["name"] = name_value
+
+    # F6: Whitelist explicit fields thay vì setattr với key tùy ý từ payload.
+    ALLOWED_FIELDS = {"name", "auto_post", "target_page_id", "schedule_interval", "filter_min_views", "filter_min_likes"}
+    changed: dict[str, object] = {}
+    for key, value in update_data.items():
+        if key not in ALLOWED_FIELDS:
+            continue
+        setattr(campaign, key, value)
+        changed[key] = value
+    db.commit()
+    db.refresh(campaign)
+
+    record_event(
+        "campaign",
+        "info",
+        "Đã cập nhật cài đặt chiến dịch.",
+        db=db,
+        details={"campaign_id": str(campaign.id), "changed": list(changed.keys())},
+    )
+
+    page_name_map = build_page_name_map(db)
+    summary_map = build_campaign_summary_map(db)
+    return {
+        "message": "Đã cập nhật cài đặt chiến dịch.",
+        "campaign": serialize_campaign(campaign, summary_map, page_name_map),
+    }
 
 
 @router.post("/{campaign_id}/sync")
