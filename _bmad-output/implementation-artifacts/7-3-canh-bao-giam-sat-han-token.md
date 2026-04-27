@@ -1,6 +1,6 @@
 # Story 7.3: Cảnh Báo & Giám Sát Hạn Token (Token Expiry Monitor & Dashboard Alerts)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -112,7 +112,7 @@ so that có đủ thời gian can thiệp thủ công nếu auto-refresh thất 
   - [ ] 3.4: Integrate vào Facebook Page card — hiển thị badge bên cạnh page name
 
 - [ ] Task 4: Frontend — Dashboard warning banner (AC: #3)
-  - [ ] 4.1: Gọi `GET /facebook/token-summary` khi load Dashboard
+  - [ ] 4.1: Include `GET /facebook/token-summary` trong `fetchDashboard()` hiện tại (App.jsx:516) — **KHÔNG** tạo interval riêng. `fetchDashboard` đã poll mỗi 5s, token summary phải được gọi cùng trong vòng poll đó để banner luôn up-to-date mà không cần hard reload.
   - [ ] 4.2: Tạo component function `TokenAlertBanner({ summary })` — banner đỏ (expired/invalid) hoặc vàng (expiring_soon)
   - [ ] 4.3: Render banner ở đầu Dashboard, trên các section cards
   - [ ] 4.4: Link "Xem chi tiết →" scroll đến Facebook Config section
@@ -300,6 +300,30 @@ def check_all_tokens(db: Session):
 - [Source: backend/app/services/observability.py — record_event()]
 - [Source: frontend/src/App.jsx — lucide-react icons, Tailwind classes, API patterns]
 - [Source: backend/app/models/models.py — FacebookPage, SystemEvent models]
+
+### Review Findings
+
+#### Decision Needed (resolved)
+- [x] [Review][Decision] F-01: `_STATUS_PRIORITY` — giữ unknown > valid, thêm unknown count vào banner + guard `parts.length === 0` → FIXED
+- [x] [Review][Decision] F-02: Banner text — giữ format hiện tại (liệt kê số lượng cụ thể, thông tin hơn) → ACCEPTED
+
+#### Patch (all fixed)
+- [x] [Review][Patch] F-03: Event storm — skip event khi `new_status = HEALTH_UNKNOWN` [token_lifecycle.py:172]
+- [x] [Review][Patch] F-04: `TokenAlertBanner` guard `parts.length === 0 → return null` + thêm unknown count [App.jsx:244-254]
+- [x] [Review][Patch] F-05: `GET /facebook/config` thêm fallback `or "unknown"` [facebook.py:128]
+- [x] [Review][Patch] F-06: Icon `valid` → `CircleCheck` thay vì `ShieldCheck` [App.jsx:226]
+- [x] [Review][Patch] F-07: Thêm `onNavigate` prop + button "Xem chi tiết →" trong banner [App.jsx:248-257]
+- [x] [Review][Patch] F-08: Fetch `/token-summary` sau `handleCheckHealth` thành công [App.jsx:677]
+- [x] [Review][Patch] F-09: Tách `/token-summary` ra khỏi `Promise.all`, dùng `.catch(() => null)` [App.jsx:495]
+- [x] [Review][Patch] F-10: Thêm 3 integration tests cho `GET /check-health` endpoint [test_token_monitor.py]
+- [x] [Review][Patch] F-11: Fix `showNotice` dùng `payload.health_status` thay vì `payload.message` [App.jsx:662]
+
+#### Defer (pre-existing, not caused by Story 7-3)
+- [x] [Review][Defer] F-12: Timezone anti-pattern `.replace(tzinfo=None)` xuyên suốt codebase — pre-existing từ Story 7.1 [token_lifecycle.py, facebook.py:94]
+- [x] [Review][Defer] F-13: `check_all_tokens` không try/except từng page — 1 page lỗi crash batch — pre-existing từ Story 7.1 [token_lifecycle.py:165]
+- [x] [Review][Defer] F-14: `time.sleep()` blocking trong `_exchange_user_token` retry — pre-existing từ Story 7.2 [token_lifecycle.py:209]
+- [x] [Review][Defer] F-15: `page.token_expires_at` stale sau `db.commit()` trong `refresh_long_lived_token` — pre-existing từ Story 7.2 [token_lifecycle.py:437]
+- [x] [Review][Defer] F-16: Token fragment có thể leak vào error message/event log qua `_derive_page_token` — pre-existing từ Story 7.2 [token_lifecycle.py:274]
 
 ## Dev Agent Record
 

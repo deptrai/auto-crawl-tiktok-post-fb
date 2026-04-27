@@ -222,6 +222,43 @@ function StatusPill({ tone = 'slate', icon: Icon, children, className = '' }) {
   );
 }
 
+const TOKEN_HEALTH_META = {
+  valid:         { label: 'Token hợp lệ',      tone: 'emerald', Icon: CircleCheck },
+  expiring_soon: { label: 'Sắp hết hạn',       tone: 'amber',   Icon: Clock },
+  expired:       { label: 'Đã hết hạn',         tone: 'rose',    Icon: AlertTriangle },
+  invalid:       { label: 'Token không hợp lệ', tone: 'rose',    Icon: CircleX },
+  unknown:       { label: 'Chưa kiểm tra',      tone: 'slate',   Icon: Clock },
+};
+
+function TokenHealthBadge({ status, daysRemaining }) {
+  const meta = TOKEN_HEALTH_META[status] || TOKEN_HEALTH_META.unknown;
+  const { label, tone, Icon } = meta;
+  const detail = status === 'expiring_soon' && daysRemaining != null ? ` (còn ${daysRemaining} ngày)` : '';
+  return <StatusPill tone={tone} icon={Icon}>{label}{detail}</StatusPill>;
+}
+
+function TokenAlertBanner({ summary, onNavigate }) {
+  if (!summary || summary.worst_status === 'valid') return null;
+  const isError = summary.worst_status === 'expired' || summary.worst_status === 'invalid';
+  const tone = isError ? 'rose' : 'amber';
+  const Icon = isError ? AlertTriangle : Clock;
+  const parts = [];
+  if (summary.expired > 0) parts.push(`${summary.expired} trang token đã hết hạn`);
+  if (summary.invalid > 0) parts.push(`${summary.invalid} trang token không hợp lệ`);
+  if (summary.expiring_soon > 0) parts.push(`${summary.expiring_soon} trang sắp hết hạn`);
+  if (summary.unknown > 0) parts.push(`${summary.unknown} trang chưa kiểm tra`);
+  if (parts.length === 0) return null;
+  return (
+    <div className={cx('flex items-start gap-3 rounded-[22px] border px-4 py-3', TONE_CLASSES[tone] || TONE_CLASSES.slate)}>
+      <Icon className="mt-0.5 h-4 w-4 shrink-0" />
+      <span className="text-sm">
+        {parts.join(', ')}.{' '}
+        <button type="button" className="underline underline-offset-2 hover:opacity-80" onClick={onNavigate}>Xem chi tiết →</button>
+      </span>
+    </div>
+  );
+}
+
 function MetricCard({ icon, label, value, detail, tone = 'slate' }) {
   const IconComponent = icon;
   return (
@@ -379,6 +416,7 @@ function App() {
   const [runtimeForm, setRuntimeForm] = useState(DEFAULT_RUNTIME_FORM);
   const [userForm, setUserForm] = useState({ username: '', display_name: '', password: '', role: 'operator' });
   const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '' });
+  const [tokenSummary, setTokenSummary] = useState(null);
   const [activeSection, setActiveSection] = useState(localStorage.getItem('dashboard-active-section') || 'overview');
   const [taskPage, setTaskPage] = useState(1);
   const [eventPage, setEventPage] = useState(1);
@@ -455,6 +493,7 @@ function App() {
         requestJson(`${API_URL}/system/workers`),
         meData?.role === 'admin' ? requestJson(`${API_URL}/users/`) : Promise.resolve({ users: [] }),
       ]);
+      const tokenSummaryData = await requestJson(`${API_URL}/facebook/token-summary`).catch(() => null);
 
       setCurrentUser(meData);
       setCampaigns(campaignsData);
@@ -470,6 +509,7 @@ function App() {
       setEvents(eventData.events || []);
       setWorkers(workerData.workers || []);
       setUsers(userData.users || []);
+      setTokenSummary(tokenSummaryData);
       setLastUpdatedAt(new Date().toISOString());
     } catch (error) {
       showNotice('error', error.message);
@@ -619,12 +659,26 @@ function App() {
     try {
       const payload = await requestJson(`${API_URL}/facebook/config/${pageId}/validate`);
       setPageChecks((current) => ({ ...current, [pageId]: { ...payload, checked_at: new Date().toISOString() } }));
-      showNotice('success', payload.message);
+      showNotice('success', `Token hợp lệ (${payload.health_status})`);
     } catch (error) {
       setPageChecks((current) => ({ ...current, [pageId]: { ok: false, message: error.message, checked_at: new Date().toISOString() } }));
       showNotice('error', error.message);
     } finally {
       setBusy(`page-validate-${pageId}`, false);
+    }
+  };
+
+  const handleCheckHealth = async (pageId) => {
+    setBusy(`page-health-${pageId}`, true);
+    try {
+      const payload = await requestJson(`${API_URL}/facebook/config/${pageId}/check-health`);
+      setFbPages((current) => current.map((p) => p.page_id === pageId ? { ...p, token_health_status: payload.health_status, days_remaining: payload.days_remaining } : p));
+      showNotice('success', `Token: ${payload.health_status}${payload.days_remaining != null ? ` (còn ${payload.days_remaining} ngày)` : ''}`);
+      requestJson(`${API_URL}/facebook/token-summary`).then(setTokenSummary).catch(() => {});
+    } catch (error) {
+      showNotice('error', error.message);
+    } finally {
+      setBusy(`page-health-${pageId}`, false);
     }
   };
 
@@ -786,6 +840,7 @@ function App() {
 
   const renderOverviewSection = () => (
     <div className="grid gap-6 2xl:grid-cols-12">
+      {tokenSummary && <div className="2xl:col-span-12"><TokenAlertBanner summary={tokenSummary} onNavigate={() => handleSectionChange('campaigns')} /></div>}
       <Panel
         className="2xl:col-span-8"
         eyebrow="Kết nối công khai"
@@ -894,6 +949,9 @@ function App() {
                       <div className="mt-1 text-xs text-[var(--text-muted)]">{pageItem.page_id}</div>
                     </div>
                     <StatusPill tone={tokenMeta.tone}>{tokenMeta.label}</StatusPill>
+                  </div>
+                  <div className="mt-2">
+                    <TokenHealthBadge status={pageItem.token_health_status} daysRemaining={pageItem.days_remaining} />
                   </div>
                   <div className="mt-3 text-sm text-[var(--text-soft)]">{pageItem.token_preview || 'Chưa có token để hiển thị.'}</div>
                 </div>
@@ -1034,6 +1092,9 @@ function App() {
                     </div>
                     <StatusPill tone={tokenMeta.tone}>{tokenMeta.label}</StatusPill>
                   </div>
+                  <div className="mt-2">
+                    <TokenHealthBadge status={pageItem.token_health_status} daysRemaining={pageItem.days_remaining} />
+                  </div>
                   <div className="mt-3 text-sm text-[var(--text-soft)]">{pageItem.token_preview || 'Chưa có token để hiển thị.'}</div>
                   {validation ? (
                     <div className={cx('mt-3 rounded-2xl border px-3 py-3 text-sm', validation.ok ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100' : 'border-rose-400/20 bg-rose-400/10 text-rose-100')}>
@@ -1041,7 +1102,11 @@ function App() {
                       <div className="mt-1 text-xs opacity-80">Kiểm tra lúc {formatDateTime(validation.checked_at)}</div>
                     </div>
                   ) : null}
-                  <div className="mt-4 flex justify-end">
+                  <div className="mt-4 flex flex-wrap justify-end gap-2">
+                    <button type="button" className={BUTTON_SECONDARY} onClick={() => handleCheckHealth(pageItem.page_id)} disabled={actionState[`page-health-${pageItem.page_id}`]}>
+                      <ShieldCheck className="h-4 w-4" />
+                      {actionState[`page-health-${pageItem.page_id}`] ? 'Đang kiểm tra...' : 'Kiểm tra Token'}
+                    </button>
                     <button type="button" className={BUTTON_SECONDARY} onClick={() => handleValidatePage(pageItem.page_id)} disabled={actionState[`page-validate-${pageItem.page_id}`]}>
                       <ShieldCheck className="h-4 w-4" />
                       {actionState[`page-validate-${pageItem.page_id}`] ? 'Đang kiểm tra...' : 'Xác minh token'}

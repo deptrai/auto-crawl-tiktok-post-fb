@@ -101,7 +101,7 @@ development_status:
   epic-7: done
   7-1-ho-tro-system-user-token-khong-het-han: done
   7-2-tu-dong-lam-moi-long-lived-token: done
-  7-3-canh-bao-giam-sat-han-token: ready-for-dev
+  7-3-canh-bao-giam-sat-han-token: done
   epic-7-retrospective: optional
 
   # ─── PHASE 2 — SPRINT 2 ──────────────────────────────────────────────────

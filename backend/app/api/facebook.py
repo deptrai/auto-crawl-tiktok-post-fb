@@ -125,7 +125,7 @@ def get_facebook_config(db: Session = Depends(get_db)):
                 "token_is_encrypted": bool(raw_token and is_secret_encrypted(raw_token)),
                 "token_type": page.token_type.value if page.token_type else None,
                 "token_expires_at": page.token_expires_at.isoformat() if page.token_expires_at else None,
-                "token_health_status": page.token_health_status,
+                "token_health_status": page.token_health_status or "unknown",
                 "token_last_checked_at": page.token_last_checked_at.isoformat() if page.token_last_checked_at else None,
                 "days_remaining": _calc_days_remaining(page.token_expires_at),
                 # Story 7.2: auto-refresh fields
@@ -140,6 +140,41 @@ def get_facebook_config(db: Session = Depends(get_db)):
         db.commit()
 
     return normalized_pages
+
+
+_STATUS_PRIORITY = ["invalid", "expired", "expiring_soon", "unknown", "valid"]
+
+
+@router.get("/token-summary")
+def get_token_summary(db: Session = Depends(get_db)):
+    """Aggregate token health counts across all configured Facebook pages."""
+    pages = db.query(FacebookPage).filter(
+        FacebookPage.long_lived_access_token.isnot(None)
+    ).all()
+
+    counts: dict[str, int] = {"valid": 0, "expiring_soon": 0, "expired": 0, "invalid": 0, "unknown": 0}
+    for page in pages:
+        status = page.token_health_status or "unknown"
+        if status in counts:
+            counts[status] += 1
+        else:
+            counts["unknown"] += 1
+
+    worst = "valid"
+    for p in _STATUS_PRIORITY:
+        if counts.get(p, 0) > 0:
+            worst = p
+            break
+
+    return {
+        "total_pages": len(pages),
+        "healthy": counts["valid"],
+        "expiring_soon": counts["expiring_soon"],
+        "expired": counts["expired"],
+        "invalid": counts["invalid"],
+        "unknown": counts["unknown"],
+        "worst_status": worst,
+    }
 
 
 @router.post("/config/{page_id}/refresh-token")

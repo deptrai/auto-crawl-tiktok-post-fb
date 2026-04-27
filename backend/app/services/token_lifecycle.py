@@ -150,13 +150,42 @@ def check_token_health(page_id: str, db: Session, *, page: FacebookPage | None =
         )
 
 
+_EVENT_LEVEL = {
+    HEALTH_EXPIRING_SOON: "warning",
+    HEALTH_EXPIRED: "error",
+    HEALTH_INVALID: "error",
+    HEALTH_UNKNOWN: "warning",
+    HEALTH_VALID: "info",
+}
+
+
 def check_all_tokens(db: Session) -> list[TokenHealthResult]:
     pages = db.query(FacebookPage).filter(FacebookPage.long_lived_access_token.isnot(None)).all()
     results = []
     for page in pages:
+        previous_status = page.token_health_status
         result = check_token_health(page.page_id, db, page=page)
         if result:
             results.append(result)
+            new_status = result.health_status
+            # Smart logging: only write event when status actually changes.
+            # Skip HEALTH_UNKNOWN — transient network errors don't commit to DB,
+            # so previous_status stays stale and would trigger duplicate events.
+            if new_status != previous_status and new_status != HEALTH_UNKNOWN:
+                level = _EVENT_LEVEL.get(new_status, "info")
+                record_event(
+                    "token",
+                    level,
+                    f"Token health changed: {previous_status} → {new_status} for page {page.page_name}",
+                    db=db,
+                    details={
+                        "page_id": page.page_id,
+                        "page_name": page.page_name,
+                        "previous_status": previous_status,
+                        "new_status": new_status,
+                        "days_remaining": result.days_remaining,
+                    },
+                )
     return results
 
 
