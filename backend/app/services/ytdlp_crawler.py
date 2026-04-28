@@ -18,11 +18,42 @@ RETRIES = int(os.getenv("YTDLP_RETRIES", "2"))
 
 
 def _get_impersonate_target():
-    """Chọn impersonation target để bypass TikTok TLS fingerprinting."""
+    """Chọn impersonation target để bypass TikTok TLS fingerprinting.
+
+    Adaptive: query yt-dlp xem những target nào thật sự khả dụng
+    (phụ thuộc vào curl_cffi version), ưu tiên chrome mới nhất.
+    Nếu không có target nào available → return None (yt-dlp tự fallback).
+    """
     try:
+        from yt_dlp import YoutubeDL
         from yt_dlp.networking.impersonate import ImpersonateTarget
-        return ImpersonateTarget(client='chrome', version='136', os='macos', os_version='15')
-    except (ImportError, Exception):
+
+        # Probe available targets
+        with YoutubeDL({'quiet': True, 'no_warnings': True}) as ydl:
+            available = ydl._get_available_impersonate_targets()
+        if not available:
+            return None
+
+        # Prefer chrome > edge > firefox; pick highest version available
+        def _score(target_pair):
+            target, _rh = target_pair
+            client = (target.client or '').lower()
+            client_rank = {'chrome': 3, 'edge': 2, 'firefox': 1}.get(client, 0)
+            try:
+                version = int(target.version or 0)
+            except (TypeError, ValueError):
+                version = 0
+            return (client_rank, version)
+
+        best = max(available, key=_score)
+        target, _rh = best
+        return ImpersonateTarget(
+            client=target.client,
+            version=target.version,
+            os=target.os,
+            os_version=target.os_version,
+        )
+    except Exception:
         return None
 
 
