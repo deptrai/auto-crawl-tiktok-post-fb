@@ -387,7 +387,7 @@ function App() {
   const [videos, setVideos] = useState([]);
   const [interactions, setInteractions] = useState([]);
   const [systemInfo, setSystemInfo] = useState(null);
-  const [formData, setFormData] = useState({ name: '', source_url: '', auto_post: false, target_page_id: '', schedule_interval: 30, filter_min_views: 0, filter_min_likes: 0 });
+  const [formData, setFormData] = useState({ name: '', source_url: '', auto_post: false, target_page_id: '', schedule_interval: 30, filter_min_views: 0, filter_min_likes: 0, filter_blocklist_keywords: [], filter_allowlist_hashtags: [] });
   const [fbPages, setFbPages] = useState([]);
   const [fbForm, setFbForm] = useState({ page_id: '', page_name: '', long_lived_access_token: '' });
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -636,7 +636,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      setFormData((current) => ({ ...current, name: '', source_url: '', auto_post: false, filter_min_views: 0, filter_min_likes: 0 }));
+      setFormData((current) => ({ ...current, name: '', source_url: '', auto_post: false, filter_min_views: 0, filter_min_likes: 0, filter_blocklist_keywords: [], filter_allowlist_hashtags: [] }));
       return payload;
     });
   };
@@ -1041,6 +1041,28 @@ function App() {
           <label className="space-y-2">
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Lượt thích tối thiểu</span>
             <input type="number" min="0" className={FIELD_CLASS} placeholder="0 = không lọc" value={formData.filter_min_likes} onChange={(event) => setFormData({ ...formData, filter_min_likes: parseInt(event.target.value, 10) || 0 })} />
+          </label>
+          <label className="space-y-2 md:col-span-2">
+            <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Từ khóa chặn (mỗi dòng 1 từ)</span>
+            <textarea
+              className={FIELD_CLASS}
+              rows={3}
+              value={(formData.filter_blocklist_keywords || []).join('\n')}
+              onChange={(event) => setFormData({ ...formData, filter_blocklist_keywords: event.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
+              placeholder={'casino\n18+\nspam'}
+            />
+            <span className="text-xs text-[var(--text-soft)]">Để trống = không chặn</span>
+          </label>
+          <label className="space-y-2 md:col-span-2">
+            <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Hashtag cho phép (mỗi dòng 1 hashtag)</span>
+            <textarea
+              className={FIELD_CLASS}
+              rows={3}
+              value={(formData.filter_allowlist_hashtags || []).join('\n')}
+              onChange={(event) => setFormData({ ...formData, filter_allowlist_hashtags: event.target.value.split('\n').map((s) => s.trim()).filter(Boolean) })}
+              placeholder={'cooking\nrecipe\nfood'}
+            />
+            <span className="text-xs text-[var(--text-soft)]">Để trống = cho phép tất cả</span>
           </label>
           <label className="space-y-2 md:col-span-2">
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Nguồn TikTok</span>

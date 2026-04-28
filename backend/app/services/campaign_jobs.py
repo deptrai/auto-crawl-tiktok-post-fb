@@ -151,9 +151,10 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
             campaign.schedule_interval or 0,
         )
         added_count = 0
-        filtered_count = 0
+        filtered_by_quality = 0
+        filtered_by_keyword = 0
         interrupted_reason = None
-        # Story 9.1: Hoist filter chain ra ngoài loop (anti-pattern: instantiate per-iteration)
+        # Hoist filter chain outside loop — avoid re-instantiating per-iteration
         content_filters = get_default_filters()
 
         for entry in entries:
@@ -181,13 +182,16 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
             if existing_vid:
                 continue
 
-            # Story 9.1: Content quality filter — short-circuit before any download work.
-            # Per-video log đã có trong run_filters (logger.info). KHÔNG ghi event store
-            # cho TỪNG video (anti-pattern spec dòng 328); chỉ tăng counter để ghi summary
-            # ở completion event cuối sync.
+            # Content filter pipeline — short-circuit before any download work.
+            # Per-entry log in run_filters (logger.info). KHÔNG ghi event per video.
+            # Only summary at end of sync (anti-pattern: event per video).
             filter_result = run_filters(entry, campaign, content_filters)
             if not filter_result.accepted:
-                filtered_count += 1
+                # P2 (review): use filter_name as discriminator instead of brittle reason.startswith()
+                if filter_result.filter_name == "quality":
+                    filtered_by_quality += 1
+                else:
+                    filtered_by_keyword += 1
                 continue
 
             publish_time = start_time + timedelta(minutes=added_count * (campaign.schedule_interval or 0))
@@ -230,7 +234,9 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
                         "campaign_id": campaign_id,
                         "reason": interrupted_reason,
                         "videos_added": added_count,
-                        "filtered_count": filtered_count,
+                        "filtered_by_quality": filtered_by_quality,
+                        "filtered_by_keyword": filtered_by_keyword,
+                        "filtered_total": filtered_by_quality + filtered_by_keyword,
                     },
                 )
             else:
@@ -243,9 +249,23 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
                     details={
                         "campaign_id": campaign_id,
                         "videos_added": added_count,
-                        "filtered_count": filtered_count,
+                        "filtered_by_quality": filtered_by_quality,
+                        "filtered_by_keyword": filtered_by_keyword,
+                        "filtered_total": filtered_by_quality + filtered_by_keyword,
                     },
                 )
+                # P1 (review): AC5 — summary event when keyword filter rejected any video
+                if filtered_by_keyword > 0:
+                    record_event(
+                        "campaign",
+                        "info",
+                        f"{filtered_by_keyword} video bị lọc bởi từ khóa",
+                        db=db,
+                        details={
+                            "campaign_id": campaign_id,
+                            "count": filtered_by_keyword,
+                        },
+                    )
             db.commit()
 
         return {"ok": interrupted_reason is None, "campaign_id": campaign_id, "videos_added": added_count}

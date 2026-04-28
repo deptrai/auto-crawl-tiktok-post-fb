@@ -3,6 +3,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 import os
 import uuid
+from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -31,16 +32,23 @@ class CampaignCreate(BaseModel):
     # Story 9.1: Content-quality filter thresholds (0 = disabled)
     filter_min_views: int = Field(default=0, ge=0)
     filter_min_likes: int = Field(default=0, ge=0)
+    # Story 9.2: Keyword filter — blocklist / allowlist
+    # P3 (review): bound list size + per-string length to prevent DoS/jsonb blowup
+    filter_blocklist_keywords: list[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=500)
+    filter_allowlist_hashtags: list[Annotated[str, Field(max_length=100)]] = Field(default_factory=list, max_length=500)
 
 
 class CampaignUpdate(BaseModel):
-    """Story 9.1: Partial update for campaign settings (filters first)."""
+    """Partial update for campaign settings (filters, schedule, target page, name)."""
     name: str | None = None
     auto_post: bool | None = None
     target_page_id: str | None = None
     schedule_interval: int | None = Field(default=None, ge=0)
     filter_min_views: int | None = Field(default=None, ge=0)
     filter_min_likes: int | None = Field(default=None, ge=0)
+    # Story 9.2: Keyword filter — blocklist / allowlist (same bounds as Create)
+    filter_blocklist_keywords: list[Annotated[str, Field(max_length=200)]] | None = Field(default=None, max_length=500)
+    filter_allowlist_hashtags: list[Annotated[str, Field(max_length=100)]] | None = Field(default=None, max_length=500)
 
 
 class VideoCaptionUpdate(BaseModel):
@@ -105,6 +113,8 @@ def serialize_campaign(campaign: Campaign, summary_map, page_name_map):
         "schedule_interval": campaign.schedule_interval,
         "filter_min_views": campaign.filter_min_views,
         "filter_min_likes": campaign.filter_min_likes,
+        "filter_blocklist_keywords": campaign.filter_blocklist_keywords or [],
+        "filter_allowlist_hashtags": campaign.filter_allowlist_hashtags or [],
         "last_synced_at": serialize_datetime(campaign.last_synced_at),
         "last_sync_status": campaign.last_sync_status or "idle",
         "last_sync_error": campaign.last_sync_error,
@@ -188,6 +198,8 @@ def create_campaign(campaign_in: CampaignCreate, db: Session = Depends(get_db)):
         schedule_interval=campaign_in.schedule_interval,
         filter_min_views=campaign_in.filter_min_views,
         filter_min_likes=campaign_in.filter_min_likes,
+        filter_blocklist_keywords=campaign_in.filter_blocklist_keywords,
+        filter_allowlist_hashtags=campaign_in.filter_allowlist_hashtags,
         status=CampaignStatus.active,
         last_sync_status="queued",
     )
@@ -253,8 +265,12 @@ def update_campaign(campaign_id: str, payload: CampaignUpdate, db: Session = Dep
                 raise HTTPException(status_code=400, detail="Tên chiến dịch không được để trống.")
             update_data["name"] = name_value
 
-    # F6: Whitelist explicit fields thay vì setattr với key tùy ý từ payload.
-    ALLOWED_FIELDS = {"name", "auto_post", "target_page_id", "schedule_interval", "filter_min_views", "filter_min_likes"}
+    # Whitelist explicit fields to prevent mass-assignment vulnerabilities
+    ALLOWED_FIELDS = {
+        "name", "auto_post", "target_page_id", "schedule_interval",
+        "filter_min_views", "filter_min_likes",
+        "filter_blocklist_keywords", "filter_allowlist_hashtags",
+    }
     changed: dict[str, object] = {}
     for key, value in update_data.items():
         if key not in ALLOWED_FIELDS:

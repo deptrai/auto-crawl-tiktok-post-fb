@@ -4,8 +4,8 @@
     {
       "name": "Backend API",
       "runtimeExecutable": "/Users/luisphan/Documents/GitHub/auto-crawl-tiktok-post-fb/backend/.venv/bin/uvicorn",
-      "runtimeArgs": ["app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
-      "port": 8000,
+      "runtimeArgs": ["app.main:app", "--host", "0.0.0.0", "--port", "8001", "--reload"],
+      "port": 8001,
       "autoPort": false,
       "cwd": "/Users/luisphan/Documents/GitHub/auto-crawl-tiktok-post-fb/backend"
     },

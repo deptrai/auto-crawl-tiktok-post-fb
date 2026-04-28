@@ -411,10 +411,13 @@ class TestSyncCampaignFilterIntegration:
             ids = {v.original_id for v in videos}
             assert ids == {"high"}, f"Expected only high to persist, got {ids}"
 
-        # Completion event phải có filtered_count=1, videos_added=1
+        # Completion event phải có filtered_total=1, videos_added=1
+        # Story 9.2: filtered_count split into filtered_by_quality + filtered_by_keyword + filtered_total
         completion = next((e for e in captured_events if "hoàn tất" in e["message"]), None)
         assert completion is not None, f"No completion event in {[e['message'] for e in captured_events]}"
-        assert completion["details"]["filtered_count"] == 1
+        assert completion["details"]["filtered_total"] == 1
+        assert completion["details"]["filtered_by_quality"] == 1
+        assert completion["details"]["filtered_by_keyword"] == 0
         assert completion["details"]["videos_added"] == 1
 
         # AC4 anti-pattern: KHÔNG có per-video event "Video bị lọc"

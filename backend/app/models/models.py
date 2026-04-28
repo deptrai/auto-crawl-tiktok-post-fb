@@ -65,6 +65,9 @@ class Campaign(Base):
     # Story 9.1: Content quality filter thresholds (0 = disabled)
     filter_min_views = Column(Integer, default=0, nullable=False)
     filter_min_likes = Column(Integer, default=0, nullable=False)
+    # Story 9.2: Keyword filter — blocklist / allowlist per campaign
+    filter_blocklist_keywords = Column(JSON_TYPE, default=list)
+    filter_allowlist_hashtags = Column(JSON_TYPE, default=list)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

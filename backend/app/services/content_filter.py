@@ -1,14 +1,16 @@
-"""Story 9.1: Content quality filter chain.
+"""Stories 9.1-9.3: Content filter chain.
 
 Provides a Chain-of-Responsibility style filter pipeline that decides whether
 a crawled video entry should be accepted into a campaign.
 
-Stories 9.2 (KeywordFilter) and 9.3 (CrossCampaignDedup) will plug additional
-filters into this chain via the ContentFilter Protocol.
+Story 9.1: QualityFilter — view/like thresholds
+Story 9.2: KeywordFilter — blocklist / allowlist per campaign
+Story 9.3: CrossCampaignDedup — duplicate detection across campaigns
 """
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -64,12 +66,83 @@ class QualityFilter:
         return FilterResult(accepted=True, filter_name=self.name)
 
 
+def _extract_hashtags(text: str) -> set[str]:
+    """Extract all hashtags from text; returns lowercase tags WITHOUT the leading #.
+
+    Example: "#Food #Cooking recipe" → {"food", "cooking"}
+    """
+    return {tag.lower() for tag in re.findall(r"#(\w+)", text)}
+
+
+class KeywordFilter:
+    """Reject videos that match a per-campaign blocklist, or fail an allowlist check.
+
+    Blocklist  — substring match (case-insensitive) on the video caption.
+    Allowlist  — hashtag match (#tags extracted from caption). Empty allowlist → accept all.
+    Blocklist is checked FIRST; if matched, allowlist is skipped.
+    """
+    name = "keyword"
+
+    def __init__(self):
+        # P4 (review): memoize per-campaign normalization to avoid recomputing per entry.
+        # Sync loop processes 100s of entries per campaign — cache invalidates on campaign change.
+        self._cache_key: object = None
+        self._cache_blocklist: list[str] = []
+        self._cache_allowlist_normalized: set[str] = set()
+
+    def _get_normalized(self, campaign: Campaign) -> tuple[list[str], set[str]]:
+        """Return (blocklist_clean, allowlist_normalized_set) cached per-campaign."""
+        # Use campaign id as cache key when available, else identity
+        cache_key = getattr(campaign, "id", None) or id(campaign)
+        if cache_key != self._cache_key:
+            blocklist_raw = getattr(campaign, "filter_blocklist_keywords", None) or []
+            allowlist_raw = getattr(campaign, "filter_allowlist_hashtags", None) or []
+            self._cache_blocklist = [k.strip().lower() for k in blocklist_raw if k and k.strip()]
+            self._cache_allowlist_normalized = {
+                h.lstrip("#").lower() for h in allowlist_raw if h and h.strip()
+            }
+            self._cache_key = cache_key
+        return self._cache_blocklist, self._cache_allowlist_normalized
+
+    def apply(self, entry: dict, campaign: Campaign) -> FilterResult:
+        blocklist, allowlist_normalized = self._get_normalized(campaign)
+
+        # Short-circuit: nothing to check
+        if not blocklist and not allowlist_normalized:
+            return FilterResult(accepted=True, filter_name=self.name)
+
+        caption = (entry.get("description") or entry.get("title") or "").lower()
+
+        # Blocklist check — simple substring (already lowercased + stripped)
+        for keyword in blocklist:
+            if keyword in caption:
+                return FilterResult(
+                    accepted=False,
+                    reason=f"blocklist_match:{keyword}",
+                    filter_name=self.name,
+                )
+
+        # Allowlist check — hashtag matching (only when allowlist is non-empty after normalize)
+        if allowlist_normalized:
+            caption_tags = _extract_hashtags(caption)
+            if not caption_tags.intersection(allowlist_normalized):
+                return FilterResult(
+                    accepted=False,
+                    reason="allowlist_no_match",
+                    filter_name=self.name,
+                )
+
+        return FilterResult(accepted=True, filter_name=self.name)
+
+
 def get_default_filters() -> list[ContentFilter]:
     """Return the default ordered filter chain.
 
-    Stories 9.2/9.3 will append KeywordFilter and CrossCampaignDedup here.
+    Story 9.1: QualityFilter
+    Story 9.2: KeywordFilter
+    Story 9.3 will append CrossCampaignDedup here.
     """
-    return [QualityFilter()]
+    return [QualityFilter(), KeywordFilter()]
 
 
 def run_filters(
