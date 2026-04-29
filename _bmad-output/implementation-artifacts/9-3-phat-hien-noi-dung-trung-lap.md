@@ -1,6 +1,6 @@
 # Story 9.3: Phát Hiện Nội Dung Trùng Lặp (Cross-Campaign Dedup)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -82,29 +82,29 @@ LIMIT 1
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: CrossCampaignDedup filter class (AC: #1, #3)
-  - [ ] 1.1: Thêm `CrossCampaignDedup` class vào `content_filter.py`
-  - [ ] 1.2: Constructor nhận `db: Session`
-  - [ ] 1.3: Implement `apply()` — query videos JOIN campaigns, filter by `target_page_id` + `original_id` + status NOT `failed`
-  - [ ] 1.4: Bypass khi `campaign.target_page_id` is None
+- [x] Task 1: CrossCampaignDedup filter class (AC: #1, #3)
+  - [x] 1.1: Thêm `CrossCampaignDedup` class vào `content_filter.py`
+  - [x] 1.2: Constructor nhận `db: Session`
+  - [x] 1.3: Implement `apply()` — query videos JOIN campaigns, filter by `target_page_id` + `original_id` + status NOT `failed`
+  - [x] 1.4: Bypass khi `campaign.target_page_id` is None
 
-- [ ] Task 2: Tích hợp vào filter pipeline (AC: #2)
-  - [ ] 2.1: Mở rộng filters list trong `campaign_jobs.py`: `[QualityFilter(), KeywordFilter(), CrossCampaignDedup(db)]`
-  - [ ] 2.2: Khởi tạo `CrossCampaignDedup(db)` TRƯỚC loop (db session đã có)
-  - [ ] 2.3: Track `filtered_by_dedup` riêng biệt trong sync loop
+- [x] Task 2: Tích hợp vào filter pipeline (AC: #2)
+  - [x] 2.1: Mở rộng filters list trong `campaign_jobs.py`: `[QualityFilter(), KeywordFilter(), CrossCampaignDedup(db)]`
+  - [x] 2.2: Khởi tạo `CrossCampaignDedup(db)` TRƯỚC loop (db session đã có)
+  - [x] 2.3: Track `filtered_by_dedup` riêng biệt trong sync loop
 
-- [ ] Task 3: Sync report enhancement (AC: #4)
-  - [ ] 3.1: Phân loại filter reason: quality / keyword / dedup dựa trên `filter_result.reason` prefix
-  - [ ] 3.2: Thêm `filtered_by_dedup` vào completion event details
+- [x] Task 3: Sync report enhancement (AC: #4)
+  - [x] 3.1: Phân loại filter: dùng `filter_result.filter_name` thay vì reason prefix (consistent với P2 review fix)
+  - [x] 3.2: Thêm `filtered_by_dedup` vào cả interrupted và completion event details
 
-- [ ] Task 4: Unit tests (AC: #1-5)
-  - [ ] 4.1: Test `CrossCampaignDedup` — video `posted` trên cùng page → rejected
-  - [ ] 4.2: Test `CrossCampaignDedup` — video `failed` trên cùng page → accepted (cho retry)
-  - [ ] 4.3: Test `CrossCampaignDedup` — video `ready`/`downloading`/`pending` trên cùng page → rejected
-  - [ ] 4.4: Test `CrossCampaignDedup` — video trên KHÁC page → accepted (khác fanpage thì OK)
-  - [ ] 4.5: Test `CrossCampaignDedup` — campaign không có `target_page_id` → bypass, accepted
-  - [ ] 4.6: Test full pipeline chain — QualityFilter + KeywordFilter + CrossCampaignDedup
-  - [ ] 4.7: Test sync report — verify `filtered_by_dedup` count
+- [x] Task 4: Unit tests (AC: #1-5)
+  - [x] 4.1: Test `CrossCampaignDedup` — video `posted` trên cùng page → rejected
+  - [x] 4.2: Test `CrossCampaignDedup` — video `failed` trên cùng page → accepted (cho retry)
+  - [x] 4.3: Test `CrossCampaignDedup` — video `ready`/`downloading`/`pending` trên cùng page → rejected
+  - [x] 4.4: Test `CrossCampaignDedup` — video trên KHÁC page → accepted (khác fanpage thì OK)
+  - [x] 4.5: Test `CrossCampaignDedup` — campaign không có `target_page_id` → bypass, accepted
+  - [x] 4.6: Test full pipeline chain — QualityFilter + KeywordFilter + CrossCampaignDedup
+  - [x] 4.7: Test sync report — verify `filtered_by_dedup` count
 
 ## Dev Notes
 
@@ -293,11 +293,38 @@ def classify_filter_reason(reason: str | None) -> str:
 ## Dev Agent Record
 
 ### Agent Model Used
+Claude Opus 4.5 (1M context) — bmad-dev-story workflow
 
 ### Debug Log References
+- 155/155 tests pass (full regression suite)
+- 15/15 new tests pass (test_cross_campaign_dedup.py)
 
 ### Completion Notes List
+- `get_default_filters()` signature extended: `db: Session | None = None`. Backward-compatible — callers without `db` get 2-filter chain (9.1+9.2 behavior). Callers with `db` get 3-filter chain including `CrossCampaignDedup`.
+- Filter discrimination dùng `filter_result.filter_name` (nhất quán với P2 review fix từ Story 9.2), không dùng `reason.startswith()`.
+- `CrossCampaignDedup` dùng `TYPE_CHECKING` guard để import `Session` — tránh circular import.
+- `filtered_by_dedup` được thêm vào cả `interrupted` event lẫn `completed` event trong sync report.
+- Không cần schema migration — dùng existing `Video.original_id` (indexed) và `Campaign.target_page_id`.
 
 ### Change Log
+- `backend/app/services/content_filter.py`: Thêm `CrossCampaignDedup` class + import `Video, VideoStatus`. Update `get_default_filters(db=None)` để append `CrossCampaignDedup(db)` khi `db` được cung cấp.
+- `backend/app/services/campaign_jobs.py`: Import `CrossCampaignDedup`. Thêm `filtered_by_dedup = 0`. Thay `get_default_filters()` → `get_default_filters(db=db)`. Thêm `elif filter_name == "cross_campaign_dedup"` branch. Thêm `filtered_by_dedup` vào cả 2 completion events.
+- `backend/tests/test_cross_campaign_dedup.py`: NEW — 15 test cases covering AC1-5.
 
 ### File List
+- `backend/app/services/content_filter.py` (modified)
+- `backend/app/services/campaign_jobs.py` (modified)
+- `backend/tests/test_cross_campaign_dedup.py` (new)
+
+### Review Findings
+
+- [x] [Review][Patch] `else` branch fragility — mọi filter unknown đếm vào `filtered_by_keyword` [`backend/app/services/campaign_jobs.py:194-199`] — đổi sang `elif filter_name == "keyword"` rõ ràng + log warning cho unknown filter
+- [x] [Review][Patch] Test `assert len(filters) == 3` brittle nếu chain mở rộng [`backend/tests/test_cross_campaign_dedup.py: test_pipeline_dedup_comes_after_quality_and_keyword`] — đổi sang `len >= 3` + assert relative ordering
+- [x] [Review][Patch] Unused imports trong test file [`backend/tests/test_cross_campaign_dedup.py:13-23`] — bỏ `MagicMock`, `uuid`, `SessionLocal`, `FilterResult`, `KeywordFilter`, `QualityFilter`, top-level `patch`, top-level `pytest`, inner `call`
+- [x] [Review][Patch] Tests 4.3 thiếu assert `filter_name` [`backend/tests/test_cross_campaign_dedup.py: test_rejects_{ready,downloading,pending}_video_on_same_page`] — thêm `assert result.filter_name == "cross_campaign_dedup"` để strict hơn
+- [x] [Review][Defer] Race condition giữa 2 workers cùng target_page — pre-existing, schema không có DB-level guard
+- [x] [Review][Defer] `entry.get("id", str(uuid.uuid4()))` fallback inconsistent với filter — pre-existing, rare edge case
+- [x] [Review][Defer] Within-campaign dedup không filter status — story explicit "KHÔNG thay đổi within-campaign dedup logic"
+- [x] [Review][Defer] Thiếu composite index `(target_page_id, original_id)` — story Dev Notes explicit defer
+- [x] [Review][Defer] Hard-delete campaign CASCADE xóa Video → mất lịch sử dedup — schema concern (pre-existing CASCADE từ Story 1.x)
+- [x] [Review][Defer] `get_default_filters(db=None)` silent fallback — design choice cho backward-compat per Completion Notes

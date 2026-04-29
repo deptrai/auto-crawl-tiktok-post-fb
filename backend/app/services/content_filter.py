@@ -12,9 +12,12 @@ from __future__ import annotations
 import logging
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-from app.models.models import Campaign
+from app.models.models import Campaign, Video, VideoStatus
+
+if TYPE_CHECKING:
+    from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
@@ -135,14 +138,69 @@ class KeywordFilter:
         return FilterResult(accepted=True, filter_name=self.name)
 
 
-def get_default_filters() -> list[ContentFilter]:
+class CrossCampaignDedup:
+    """Filter thứ 3: phát hiện video đã tồn tại trên cùng Facebook Page từ campaign khác.
+
+    Story 9.3 — Cross-Campaign Duplicate Detection.
+
+    Logic:
+    - Query videos JOIN campaigns WHERE target_page_id = <current> AND original_id = <entry>
+      AND campaign_id != <current_campaign> AND status != 'failed'
+    - Status 'failed' → accept (cho phép campaign mới retry)
+    - Mọi status khác (posted / ready / downloading / pending) → reject
+    - Nếu campaign chưa assign target_page_id → bypass hoàn toàn
+    """
+
+    name = "cross_campaign_dedup"
+
+    def __init__(self, db: "Session") -> None:
+        self._db = db
+
+    def apply(self, entry: dict, campaign: Campaign) -> FilterResult:
+        # Bypass nếu campaign chưa assign page
+        if not campaign.target_page_id:
+            return FilterResult(accepted=True, filter_name=self.name)
+
+        original_id = entry.get("id", "")
+        if not original_id:
+            return FilterResult(accepted=True, filter_name=self.name)
+
+        # Query: có video nào cùng original_id, cùng target_page, status != failed,
+        # từ campaign KHÁC không?
+        existing = (
+            self._db.query(Video.id, Video.status, Campaign.name)
+            .join(Campaign, Video.campaign_id == Campaign.id)
+            .filter(
+                Campaign.target_page_id == campaign.target_page_id,
+                Video.original_id == original_id,
+                Video.campaign_id != campaign.id,
+                Video.status != VideoStatus.failed,
+            )
+            .first()
+        )
+
+        if existing:
+            _, _status, source_campaign = existing
+            return FilterResult(
+                accepted=False,
+                reason=f"cross_campaign_duplicate:{source_campaign}",
+                filter_name=self.name,
+            )
+
+        return FilterResult(accepted=True, filter_name=self.name)
+
+
+def get_default_filters(db: "Session | None" = None) -> list[ContentFilter]:
     """Return the default ordered filter chain.
 
     Story 9.1: QualityFilter
     Story 9.2: KeywordFilter
-    Story 9.3 will append CrossCampaignDedup here.
+    Story 9.3: CrossCampaignDedup (only when db session is provided)
     """
-    return [QualityFilter(), KeywordFilter()]
+    chain: list[ContentFilter] = [QualityFilter(), KeywordFilter()]
+    if db is not None:
+        chain.append(CrossCampaignDedup(db))
+    return chain
 
 
 def run_filters(

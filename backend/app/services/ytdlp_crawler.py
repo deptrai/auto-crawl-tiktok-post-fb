@@ -1,10 +1,13 @@
 from __future__ import annotations
+import logging
 import yt_dlp
 import os
 import uuid
 from pathlib import Path
 
 from app.core.config import settings
+
+logger = logging.getLogger(__name__)
 
 DOWNLOAD_DIR = settings.DOWNLOAD_DIR
 
@@ -98,14 +101,30 @@ def download_video(url: str, filename_prefix: str = "video"):
 
     ydl_opts = _get_base_opts()
     ydl_opts.update({
-        'format': 'best[vcodec^=h264]/best[vcodec^=avc]/best',
+        # Broaden format chain: prefer h264/avc, then mp4 container merge, then mp4 ext, then bare best.
+        # Avoids "No video formats found" when TikTok strips codec metadata from format list.
+        'format': 'best[vcodec^=h264]/best[vcodec^=avc]/bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         'outtmpl': out_path,
     })
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
+        # Validate file exists and is non-empty (silent yt-dlp failures leave 0-byte files)
+        if not os.path.exists(out_path) or os.path.getsize(out_path) == 0:
+            logger.error("yt-dlp download produced missing/empty file for url=%s", url)
+            if os.path.exists(out_path):
+                try:
+                    os.remove(out_path)
+                except OSError:
+                    pass
+            return None, None
         return out_path, video_id
     except Exception as e:
-        print(f"Lỗi tải video {url}: {e}")
+        logger.error("yt-dlp download failed for url=%s exc=%s: %s", url, type(e).__name__, e)
+        if os.path.exists(out_path):
+            try:
+                os.remove(out_path)
+            except OSError:
+                pass
         return None, None

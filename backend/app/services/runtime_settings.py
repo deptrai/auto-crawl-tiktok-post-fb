@@ -42,6 +42,24 @@ RUNTIME_SETTING_SPECS = {
         "is_secret": True,
         "requires_restart": True,
     },
+    "APIFY_API_TOKEN": {
+        "label": "APIFY_API_TOKEN",
+        "description": "Token Apify để crawl TikTok (thay thế yt-dlp)",
+        "is_secret": True,
+        "requires_restart": False,
+    },
+    "APIFY_ACTOR_ID": {
+        "label": "APIFY_ACTOR_ID",
+        "description": "Actor ID Apify (vd: clockworks~tiktok-scraper)",
+        "is_secret": False,
+        "requires_restart": False,
+    },
+    "TIKTOK_CRAWLER_MODE": {
+        "label": "TIKTOK_CRAWLER_MODE",
+        "description": "Chế độ crawl TikTok: auto | apify | ytdlp",
+        "is_secret": False,
+        "requires_restart": False,
+    },
 }
 
 

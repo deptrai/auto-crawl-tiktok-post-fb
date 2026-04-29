@@ -63,6 +63,8 @@ class Settings:
     except (ValueError, TypeError):
         APIFY_ACTOR_TIMEOUT: int = 300
     TIKTOK_CRAWLER_MODE: str = os.getenv("TIKTOK_CRAWLER_MODE", "auto")  # apify | ytdlp | auto
+    # Facebook publish processing delay (seconds) — tune via FB_PUBLISH_SLEEP_SECONDS env var
+    FB_PUBLISH_SLEEP_SECONDS: int = int(os.getenv("FB_PUBLISH_SLEEP_SECONDS", "20"))
 
 
 settings = Settings()

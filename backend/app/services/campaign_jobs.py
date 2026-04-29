@@ -13,7 +13,7 @@ from app.services.ai_generator import generate_reply
 from app.services.fb_graph import reply_to_comment
 from app.services.observability import record_event
 from app.services.security import decrypt_secret
-from app.services.content_filter import get_default_filters, run_filters
+from app.services.content_filter import CrossCampaignDedup, get_default_filters, run_filters
 from app.services.tiktok_crawler import download_video, extract_metadata
 
 
@@ -153,9 +153,11 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
         added_count = 0
         filtered_by_quality = 0
         filtered_by_keyword = 0
+        filtered_by_dedup = 0
         interrupted_reason = None
-        # Hoist filter chain outside loop — avoid re-instantiating per-iteration
-        content_filters = get_default_filters()
+        # Hoist filter chain outside loop — avoid re-instantiating per-iteration.
+        # CrossCampaignDedup receives the DB session so it can query cross-campaign videos.
+        content_filters = get_default_filters(db=db)
 
         for entry in entries:
             db.expire_all()
@@ -187,10 +189,20 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
             # Only summary at end of sync (anti-pattern: event per video).
             filter_result = run_filters(entry, campaign, content_filters)
             if not filter_result.accepted:
-                # P2 (review): use filter_name as discriminator instead of brittle reason.startswith()
+                # Use filter_name as discriminator (P2 review: avoids brittle reason.startswith())
                 if filter_result.filter_name == "quality":
                     filtered_by_quality += 1
+                elif filter_result.filter_name == "cross_campaign_dedup":
+                    filtered_by_dedup += 1
+                elif filter_result.filter_name == "keyword":
+                    filtered_by_keyword += 1
                 else:
+                    import logging as _logging
+                    _logging.getLogger(__name__).warning(
+                        "unknown filter rejected entry: filter_name=%s reason=%s",
+                        filter_result.filter_name,
+                        filter_result.reason,
+                    )
                     filtered_by_keyword += 1
                 continue
 
@@ -236,7 +248,8 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
                         "videos_added": added_count,
                         "filtered_by_quality": filtered_by_quality,
                         "filtered_by_keyword": filtered_by_keyword,
-                        "filtered_total": filtered_by_quality + filtered_by_keyword,
+                        "filtered_by_dedup": filtered_by_dedup,
+                        "filtered_total": filtered_by_quality + filtered_by_keyword + filtered_by_dedup,
                     },
                 )
             else:
@@ -251,7 +264,8 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
                         "videos_added": added_count,
                         "filtered_by_quality": filtered_by_quality,
                         "filtered_by_keyword": filtered_by_keyword,
-                        "filtered_total": filtered_by_quality + filtered_by_keyword,
+                        "filtered_by_dedup": filtered_by_dedup,
+                        "filtered_total": filtered_by_quality + filtered_by_keyword + filtered_by_dedup,
                     },
                 )
                 # P1 (review): AC5 — summary event when keyword filter rejected any video

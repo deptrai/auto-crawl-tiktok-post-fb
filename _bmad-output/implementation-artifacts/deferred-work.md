@@ -18,3 +18,12 @@
 
 - **F11:** `decrypt_secret` trong `check_token_health` không được catch — nằm ngoài try/except block (token_lifecycle.py:62), fail sẽ skip tất cả pages tiếp theo trong vòng lặp. Pre-existing từ Story 7.1.
 - **F12:** `datetime.utcnow()` deprecated trong Python 3.12+ — pattern cũ toàn codebase, code mới nên dùng `datetime.now(timezone.utc)` nhưng không phải scope Story 7.2.
+
+## Deferred from: code review of 9-3-phat-hien-noi-dung-trung-lap (2026-04-28)
+
+- **D1 (High):** Race condition giữa 2 workers — `sync_campaign_content` chạy đồng thời cho 2 campaigns cùng `target_page_id`, cả hai query CrossCampaignDedup TRƯỚC khi commit Video → cả hai cùng tạo Video → đăng trùng lên cùng Page. Cần partial UNIQUE index `(target_page_id, original_id) WHERE status != 'failed'` (Postgres) hoặc advisory lock. **Đề tài Story riêng — Story 9.3 explicit không add migration.**
+- **D2 (High):** `entry.get("id", str(uuid.uuid4()))` ở `campaign_jobs.py:178` vs `entry.get("id", "")` ở `CrossCampaignDedup` — entries không có `id` (rare từ Apify) sẽ luôn bypass dedup và lưu Video với UUID ngẫu nhiên → không bao giờ match cross-campaign. Cần unify: hoặc skip entry không có id, hoặc deterministic hash từ URL.
+- **D3 (High):** Within-campaign dedup (campaign_jobs.py:179-184) KHÔNG filter status, cross-campaign dedup CHO PHÉP retry `failed` → asymmetric retry policy: user có thể retry video failed ở campaign khác nhưng không trong cùng campaign. Inconsistent UX.
+- **D4 (Medium):** Thiếu composite index `(target_page_id, original_id)` trên `videos`/`campaigns` — N entries × DB query/iteration với potential seq scan trên `campaigns.target_page_id`. Performance issue khi scale lên hàng trăm campaigns × hàng trăm entries/sync.
+- **D5 (Medium):** `Video.campaign_id` FK có `ondelete="CASCADE"` — khi user xóa campaign cũ, lịch sử "đã đăng" mất theo → sync campaign mới cùng page sẽ re-post. Cần soft-delete Video hoặc bảng audit `posted_videos_by_page` riêng.
+- **D6 (Low):** `get_default_filters(db=None)` silent fallback chỉ 2 filters → caller nào quên truyền `db` mất dedup mà không cảnh báo. Pattern fragile; cân nhắc tách thành 2 hàm explicit hoặc raise/log warning khi `db is None`.

@@ -6,6 +6,8 @@ from json import JSONDecodeError
 
 import requests
 
+from app.core.config import settings
+
 logger = logging.getLogger(__name__)
 
 GRAPH_API_BASE = "https://graph.facebook.com/v19.0"
@@ -74,8 +76,9 @@ def upload_video_to_facebook(file_path: str, caption: str, page_id: str, access_
             return {'error': f"Lỗi tải video (RUpload): {res_upload_data.get('error', {}).get('message', 'Tải video thất bại')}"}
 
         # Giai đoạn 3: Hoàn tất và công bố
-        logger.info("Đợi 20 giây để Facebook xử lý video trước khi công bố...")
-        time.sleep(20) # Thời gian chờ rất quan trọng cho video lớn
+        _sleep = settings.FB_PUBLISH_SLEEP_SECONDS
+        logger.info("Đợi %d giây để Facebook xử lý video trước khi công bố...", _sleep)
+        time.sleep(_sleep)  # Tunable via FB_PUBLISH_SLEEP_SECONDS env var (default: 20s)
 
         logger.info("Đang hoàn tất và công bố Reel...")
         publish_url = f"{GRAPH_API_BASE}/{page_id}/video_reels"
