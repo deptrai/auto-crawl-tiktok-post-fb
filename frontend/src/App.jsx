@@ -388,7 +388,18 @@ function App() {
   const [videos, setVideos] = useState([]);
   const [interactions, setInteractions] = useState([]);
   const [systemInfo, setSystemInfo] = useState(null);
-  const [formData, setFormData] = useState({ name: '', source_url: '', auto_post: false, target_page_id: '', schedule_interval: 30, filter_min_views: 0, filter_min_likes: 0, filter_blocklist_keywords: [], filter_allowlist_hashtags: [] });
+  const [formData, setFormData] = useState({
+    name: '',
+    source_url: '',
+    auto_post: false,
+    target_page_id: '',
+    schedule_interval: 30,
+    filter_min_views: 0,
+    filter_min_likes: 0,
+    filter_blocklist_keywords: [],
+    filter_allowlist_hashtags: [],
+    caption_language: 'auto',
+  });
   const [fbPages, setFbPages] = useState([]);
   const [fbForm, setFbForm] = useState({ page_id: '', page_name: '', long_lived_access_token: '', brand_voice: '', brand_voice_preset: 'casual' });
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -1057,10 +1068,21 @@ function App() {
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Tên chiến dịch</span>
             <input required type="text" className={FIELD_CLASS} placeholder="Ví dụ: Giải trí mỗi ngày" value={formData.name} onChange={(event) => setFormData({ ...formData, name: event.target.value })} />
           </label>
-          <label className="space-y-2">
-            <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Khoảng cách đăng (phút)</span>
-            <input required type="number" min="0" className={FIELD_CLASS} value={formData.schedule_interval} onChange={(event) => setFormData({ ...formData, schedule_interval: parseInt(event.target.value, 10) || 0 })} />
-          </label>
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block space-y-2">
+              <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Giãn cách (phút)</span>
+              <input required type="number" min="0" className={FIELD_CLASS} value={formData.schedule_interval} onChange={(event) => setFormData({ ...formData, schedule_interval: parseInt(event.target.value, 10) || 0 })} />
+            </label>
+            <label className="block space-y-2">
+              <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Ngôn ngữ Caption</span>
+              <select className={FIELD_CLASS} value={formData.caption_language} onChange={(event) => setFormData({ ...formData, caption_language: event.target.value })}>
+                <option value="auto" style={{ color: '#06101a' }}>Tự động (theo video gốc)</option>
+                <option value="vi" style={{ color: '#06101a' }}>Tiếng Việt</option>
+                <option value="en" style={{ color: '#06101a' }}>Tiếng Anh</option>
+              </select>
+            </label>
+          </div>
+
           <label className="space-y-2">
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Lượt xem tối thiểu</span>
             <input type="number" min="0" className={FIELD_CLASS} placeholder="0 = không lọc" value={formData.filter_min_views} onChange={(event) => setFormData({ ...formData, filter_min_views: parseInt(event.target.value, 10) || 0 })} />

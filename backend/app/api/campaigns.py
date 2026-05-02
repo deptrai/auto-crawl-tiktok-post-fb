@@ -3,7 +3,7 @@ from collections import defaultdict
 from datetime import datetime, timedelta, timezone
 import os
 import uuid
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
@@ -36,6 +36,8 @@ class CampaignCreate(BaseModel):
     # P3 (review): bound list size + per-string length to prevent DoS/jsonb blowup
     filter_blocklist_keywords: list[Annotated[str, Field(max_length=200)]] = Field(default_factory=list, max_length=500)
     filter_allowlist_hashtags: list[Annotated[str, Field(max_length=100)]] = Field(default_factory=list, max_length=500)
+    # Story 10.2: Multilingual caption config
+    caption_language: Literal["vi", "en", "auto"] = "auto"
 
 
 class CampaignUpdate(BaseModel):
@@ -49,6 +51,8 @@ class CampaignUpdate(BaseModel):
     # Story 9.2: Keyword filter — blocklist / allowlist (same bounds as Create)
     filter_blocklist_keywords: list[Annotated[str, Field(max_length=200)]] | None = Field(default=None, max_length=500)
     filter_allowlist_hashtags: list[Annotated[str, Field(max_length=100)]] | None = Field(default=None, max_length=500)
+    # Story 10.2: Multilingual caption config
+    caption_language: Literal["vi", "en", "auto"] | None = None
 
 
 class VideoCaptionUpdate(BaseModel):
@@ -115,6 +119,7 @@ def serialize_campaign(campaign: Campaign, summary_map, page_name_map):
         "filter_min_likes": campaign.filter_min_likes,
         "filter_blocklist_keywords": campaign.filter_blocklist_keywords or [],
         "filter_allowlist_hashtags": campaign.filter_allowlist_hashtags or [],
+        "captionLanguage": campaign.caption_language,
         "last_synced_at": serialize_datetime(campaign.last_synced_at),
         "last_sync_status": campaign.last_sync_status or "idle",
         "last_sync_error": campaign.last_sync_error,
@@ -200,6 +205,7 @@ def create_campaign(campaign_in: CampaignCreate, db: Session = Depends(get_db)):
         filter_min_likes=campaign_in.filter_min_likes,
         filter_blocklist_keywords=campaign_in.filter_blocklist_keywords,
         filter_allowlist_hashtags=campaign_in.filter_allowlist_hashtags,
+        caption_language=campaign_in.caption_language,
         status=CampaignStatus.active,
         last_sync_status="queued",
     )
@@ -270,6 +276,7 @@ def update_campaign(campaign_id: str, payload: CampaignUpdate, db: Session = Dep
         "name", "auto_post", "target_page_id", "schedule_interval",
         "filter_min_views", "filter_min_likes",
         "filter_blocklist_keywords", "filter_allowlist_hashtags",
+        "caption_language",
     }
     changed: dict[str, object] = {}
     for key, value in update_data.items():
@@ -503,20 +510,23 @@ def regenerate_video_caption(video_id: str, db: Session = Depends(get_db)):
     # ở từng bước (campaign có thể null nếu cascade race; target_page_id có thể null).
     brand_voice = None
     brand_voice_preset = "casual"
-    target_page_id = (
-        video.campaign.target_page_id if video.campaign is not None else None
-    )
-    if target_page_id:
-        page = db.query(FacebookPage).filter(FacebookPage.page_id == target_page_id).first()
-        if page:
-            brand_voice = page.brand_voice
-            brand_voice_preset = page.brand_voice_preset or "casual"
+    caption_language = "auto"
+
+    if video.campaign:
+        caption_language = video.campaign.caption_language or "auto"
+        target_page_id = video.campaign.target_page_id
+        if target_page_id:
+            page = db.query(FacebookPage).filter(FacebookPage.page_id == target_page_id).first()
+            if page:
+                brand_voice = page.brand_voice
+                brand_voice_preset = page.brand_voice_preset or "casual"
 
     try:
         video.ai_caption = generate_caption(
             video.original_caption,
             brand_voice=brand_voice,
-            brand_voice_preset=brand_voice_preset
+            brand_voice_preset=brand_voice_preset,
+            target_language=caption_language
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Không thể tạo chú thích AI lúc này: {exc}") from exc

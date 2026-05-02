@@ -68,8 +68,17 @@ class Campaign(Base):
     # Story 9.2: Keyword filter — blocklist / allowlist per campaign
     filter_blocklist_keywords = Column(JSON_TYPE, default=list)
     filter_allowlist_hashtags = Column(JSON_TYPE, default=list)
+    # Story 10.2: Multilingual caption config
+    caption_language = Column(String(16), default="auto", nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    __table_args__ = (
+        CheckConstraint(
+            "caption_language IN ('vi','en','auto')",
+            name="campaigns_caption_language_check",
+        ),
+    )
 
     videos = relationship("Video", back_populates="campaign")
 
