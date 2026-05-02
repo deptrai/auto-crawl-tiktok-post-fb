@@ -215,13 +215,13 @@ def download_video_apify(download_url: str, filename_prefix: str = "tiktok") -> 
     ):
         raise ValueError(f"SSRF protection: hostname '{hostname}' not in allowlist")
 
-    Path(DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
+    Path(settings.DOWNLOAD_DIR).mkdir(parents=True, exist_ok=True)
     video_id = str(uuid.uuid4())
 
     # F-03: Sanitize filename_prefix để tránh path traversal
     safe_prefix = re.sub(r"[^a-zA-Z0-9_-]", "_", filename_prefix)
     filename = f"{safe_prefix}_{video_id}.mp4"
-    out_path = os.path.join(DOWNLOAD_DIR, filename)
+    out_path = os.path.join(settings.DOWNLOAD_DIR, filename)
 
     try:
         # F-05: Dùng exact hostname match thay vì substring "in url"

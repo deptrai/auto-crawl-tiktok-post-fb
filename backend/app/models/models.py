@@ -3,7 +3,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import JSON, Boolean, CheckConstraint, Column, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -114,6 +114,18 @@ class FacebookPage(Base):
     auto_refresh_enabled = Column(Boolean, default=False, nullable=False)
     token_refresh_error = Column(String, nullable=True)
     last_refresh_at = Column(DateTime, nullable=True)
+
+    # Story 10.1: Brand Voice Config — DB-level length cap + enum check
+    brand_voice = Column(String(500), nullable=True)
+    brand_voice_preset = Column(String(32), default="casual", nullable=False)
+
+    __table_args__ = (
+        CheckConstraint(
+            "brand_voice_preset IN ('professional','casual','gen-z','corporate','viral')",
+            name="facebook_pages_brand_voice_preset_check",
+        ),
+    )
+
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

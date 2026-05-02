@@ -494,12 +494,30 @@ def update_video_caption(video_id: str, payload: VideoCaptionUpdate, db: Session
 
 @router.post("/videos/{video_id}/generate-caption")
 def regenerate_video_caption(video_id: str, db: Session = Depends(get_db)):
+    from app.models.models import FacebookPage
     video = get_video_or_404(db, video_id)
     if not video.original_caption:
         raise HTTPException(status_code=400, detail="Video này không có chú thích gốc để AI viết lại.")
 
+    # Lấy thông tin Brand Voice từ Page đích của Campaign — guard None
+    # ở từng bước (campaign có thể null nếu cascade race; target_page_id có thể null).
+    brand_voice = None
+    brand_voice_preset = "casual"
+    target_page_id = (
+        video.campaign.target_page_id if video.campaign is not None else None
+    )
+    if target_page_id:
+        page = db.query(FacebookPage).filter(FacebookPage.page_id == target_page_id).first()
+        if page:
+            brand_voice = page.brand_voice
+            brand_voice_preset = page.brand_voice_preset or "casual"
+
     try:
-        video.ai_caption = generate_caption(video.original_caption)
+        video.ai_caption = generate_caption(
+            video.original_caption,
+            brand_voice=brand_voice,
+            brand_voice_preset=brand_voice_preset
+        )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Không thể tạo chú thích AI lúc này: {exc}") from exc
     video.last_error = None

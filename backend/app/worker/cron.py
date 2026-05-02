@@ -84,7 +84,11 @@ def auto_post_job():
 
             if not vid.ai_caption:
                 try:
-                    vid.ai_caption = generate_caption(vid.original_caption)
+                    vid.ai_caption = generate_caption(
+                        vid.original_caption,
+                        brand_voice=page.brand_voice,
+                        brand_voice_preset=page.brand_voice_preset
+                    )
                     db.commit()
                 except Exception as exc:
                     vid.status = VideoStatus.failed

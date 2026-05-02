@@ -238,7 +238,7 @@ class TestConfig:
         """AC4: Settings có APIFY_ACTOR_ID và là string hợp lệ (format owner/name)."""
         from app.core.config import settings
         assert isinstance(settings.APIFY_ACTOR_ID, str)
-        assert "/" in settings.APIFY_ACTOR_ID  # format: owner/actor-name
+        assert "/" in settings.APIFY_ACTOR_ID or "~" in settings.APIFY_ACTOR_ID  # format: owner/actor-name or owner~actor-name
 
     def test_default_crawler_mode(self):
         """AC4: Default mode là 'auto' hoặc được override qua env."""

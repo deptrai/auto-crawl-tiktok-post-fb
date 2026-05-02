@@ -20,6 +20,7 @@ import {
   Radio,
   RefreshCw,
   Server,
+  Settings2,
   Share2,
   ShieldCheck,
   Terminal,
@@ -389,7 +390,7 @@ function App() {
   const [systemInfo, setSystemInfo] = useState(null);
   const [formData, setFormData] = useState({ name: '', source_url: '', auto_post: false, target_page_id: '', schedule_interval: 30, filter_min_views: 0, filter_min_likes: 0, filter_blocklist_keywords: [], filter_allowlist_hashtags: [] });
   const [fbPages, setFbPages] = useState([]);
-  const [fbForm, setFbForm] = useState({ page_id: '', page_name: '', long_lived_access_token: '' });
+  const [fbForm, setFbForm] = useState({ page_id: '', page_name: '', long_lived_access_token: '', brand_voice: '', brand_voice_preset: 'casual' });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [stats, setStats] = useState(DEFAULT_STATS);
   const [page, setPage] = useState(1);
@@ -641,6 +642,10 @@ function App() {
     });
   };
 
+  const resetFbForm = () => {
+    setFbForm({ page_id: '', page_name: '', long_lived_access_token: '', brand_voice: '', brand_voice_preset: 'casual' });
+  };
+
   const handleFbSubmit = async (event) => {
     event.preventDefault();
     await runAction('save-page', async () => {
@@ -649,9 +654,31 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(fbForm),
       });
-      setFbForm({ page_id: '', page_name: '', long_lived_access_token: '' });
+      resetFbForm();
+      // Refresh page list ngay sau khi save để UI hiện brand_voice mới.
+      try {
+        await fetchDashboard();
+      } catch (e) {
+        // fetchDashboard tự show notice; không cần handle thêm.
+      }
       return payload;
     });
+  };
+
+  const handleEditPage = (pageItem) => {
+    setFbForm({
+      page_id: pageItem.page_id,
+      page_name: pageItem.page_name,
+      long_lived_access_token: '', // Không populate token vì lý do bảo mật và nó đã được mã hóa/mask
+      brand_voice: pageItem.brand_voice || '',
+      brand_voice_preset: pageItem.brand_voice_preset || 'casual',
+    });
+    // Scroll lên form
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleCancelEdit = () => {
+    resetFbForm();
   };
 
   const handleValidatePage = async (pageId) => {
@@ -1096,8 +1123,34 @@ function App() {
           </label>
           <label className="block space-y-2">
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Page Access Token</span>
-            <input required type="password" className={FIELD_CLASS} placeholder="Dán token trang Facebook thật" value={fbForm.long_lived_access_token} onChange={(event) => setFbForm({ ...fbForm, long_lived_access_token: event.target.value })} />
+            <input required={!fbForm.page_id} type="password" className={FIELD_CLASS} placeholder={fbForm.page_id ? "Để trống nếu không muốn đổi token" : "Dán token trang Facebook thật"} value={fbForm.long_lived_access_token} onChange={(event) => setFbForm({ ...fbForm, long_lived_access_token: event.target.value })} />
           </label>
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <label className="block space-y-2">
+              <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Phong cách (Preset)</span>
+              <select className={FIELD_CLASS} value={fbForm.brand_voice_preset} onChange={(event) => setFbForm({ ...fbForm, brand_voice_preset: event.target.value })}>
+                <option value="professional" style={{ color: '#06101a' }}>Chuyên nghiệp (Professional)</option>
+                <option value="casual" style={{ color: '#06101a' }}>Thân thiện (Casual)</option>
+                <option value="gen-z" style={{ color: '#06101a' }}>Gen Z năng động</option>
+                <option value="corporate" style={{ color: '#06101a' }}>Doanh nghiệp (Corporate)</option>
+                <option value="viral" style={{ color: '#06101a' }}>Viral giật gân</option>
+              </select>
+            </label>
+            <label className="block space-y-2">
+              <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Giọng văn tùy chỉnh</span>
+              <input type="text" className={FIELD_CLASS} placeholder="VD: Trẻ trung, dùng nhiều emoji..." value={fbForm.brand_voice || ''} onChange={(event) => setFbForm({ ...fbForm, brand_voice: event.target.value })} maxLength={500} />
+            </label>
+          </div>
+
+          {fbForm.page_id ? (
+            <div className="rounded-lg border border-[var(--accent)]/40 bg-[var(--accent)]/10 px-3 py-2 text-xs text-[var(--accent)]">
+              Đang chỉnh sửa: <strong>{fbForm.page_name || fbForm.page_id}</strong>
+              <button type="button" onClick={handleCancelEdit} className="ml-3 underline hover:text-white">
+                Hủy
+              </button>
+            </div>
+          ) : null}
           <button type="submit" disabled={actionState['save-page']} className={cx(BUTTON_PRIMARY, 'w-full')}>
             <Globe2 className="h-4 w-4" />
             {actionState['save-page'] ? 'Đang lưu token...' : 'Lưu cấu hình fanpage'}
@@ -1133,6 +1186,10 @@ function App() {
                     </div>
                   ) : null}
                   <div className="mt-4 flex flex-wrap justify-end gap-2">
+                    <button type="button" className={BUTTON_SECONDARY} onClick={() => handleEditPage(pageItem)}>
+                      <Settings2 className="h-4 w-4" />
+                      Chỉnh sửa
+                    </button>
                     <button type="button" className={BUTTON_SECONDARY} onClick={() => handleCheckHealth(pageItem.page_id)} disabled={actionState[`page-health-${pageItem.page_id}`]}>
                       <ShieldCheck className="h-4 w-4" />
                       {actionState[`page-health-${pageItem.page_id}`] ? 'Đang kiểm tra...' : 'Kiểm tra Token'}

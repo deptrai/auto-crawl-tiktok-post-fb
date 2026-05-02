@@ -77,6 +77,12 @@ class Settings:
     # Cleanup Configuration
     CLEANUP_FAILED_VIDEO_DAYS: int = int(os.getenv("CLEANUP_FAILED_VIDEO_DAYS", "7"))
 
+    # Gemini Model Configuration — default to stable production model.
+    # Override at runtime to try preview models (gemini-3-flash-preview,
+    # gemini-3.1-flash-lite-preview, etc.) without redeploy.
+    GEMINI_MODEL_CAPTION: str = os.getenv("GEMINI_MODEL_CAPTION", "gemini-2.5-flash")
+    GEMINI_MODEL_REPLY: str = os.getenv("GEMINI_MODEL_REPLY", "gemini-2.5-flash")
+
 
 settings = Settings()
 

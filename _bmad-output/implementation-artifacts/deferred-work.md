@@ -41,3 +41,8 @@
 - **`record_event` sau `db.rollback()` trong cleanup error handler** — Risk thấp vì `record_event` tự quản lý session; deferred. [backend/app/worker/cron.py:326-336]
 - **`traceback.format_exc()` có thể vượt JSON column size limit** — JSONB Postgres không giới hạn thực tế; deferred truncation. [backend/app/worker/cron.py:243,333]
 - **Async / `run_in_executor` cho `storage.delete` trong cleanup** — Đã deferred Round 1; reconsider khi tích hợp asyncio path. [backend/app/worker/cron.py:285,307]
+
+## Deferred from: code review of story-10.1 (2026-05-02)
+
+- **Optimistic locking cho `FacebookPage`** — Race brand_voice edit vs token refresh có thể last-writer-wins. Cần `updated_at` check hoặc version column. Broader concern, không scope 10.1. [backend/app/api/facebook.py:81-86]
+- **i18n: brand_voice preset descriptions hardcoded tiếng Việt** — Khi Story 10.2 thêm `caption_language=en/auto`, preset descriptions vẫn là tiếng Việt → Gemini có thể leak VI text vào EN output. Reconsider khi implement 10.2. [backend/app/services/ai_generator.py:13-17]

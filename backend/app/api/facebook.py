@@ -3,7 +3,8 @@ import logging
 from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, Field
+from typing import Literal
 from app.core.database import get_db
 from app.models.models import FacebookPage
 from app.services.observability import record_event
@@ -18,11 +19,24 @@ router = APIRouter(prefix="/facebook", tags=["Trang Facebook"])
 _MAX_TOKEN_LENGTH = 2048  # Facebook token thông thường < 300 chars; 2048 là đủ an toàn
 
 class FacebookPageCreate(BaseModel):
-    page_id: str
-    page_name: str
-    long_lived_access_token: str
+    page_id: str = Field(..., min_length=1)
+    page_name: str = Field(..., min_length=1)
+    long_lived_access_token: str | None = None
     user_access_token: str | None = None
     auto_refresh_enabled: bool | None = None
+    brand_voice: str | None = Field(None, max_length=500)
+    # `Literal[...] = "casual"` không có `| None` — DB column nullable=False.
+    # Client không gửi field → default casual; gửi null → 422.
+    brand_voice_preset: Literal["professional", "casual", "gen-z", "corporate", "viral"] = "casual"
+
+    @field_validator("page_id", "page_name", mode="before")
+    @classmethod
+    def _strip_required_str(cls, v):
+        if isinstance(v, str):
+            v = v.strip()
+        if not v:
+            raise ValueError("Trường này không được để trống.")
+        return v
 
     @field_validator("long_lived_access_token", "user_access_token", mode="before")
     @classmethod
@@ -44,9 +58,9 @@ def get_token_kind(token: str | None) -> str:
 
 @router.post("/config")
 def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_db)):
-    normalized_token = page_in.long_lived_access_token.strip()
+    normalized_token = page_in.long_lived_access_token.strip() if page_in.long_lived_access_token else None
 
-    if get_token_kind(normalized_token) == "legacy_webhook":
+    if normalized_token and get_token_kind(normalized_token) == "legacy_webhook":
         raise HTTPException(
             status_code=400,
             detail="Hãy nhập mã truy cập trang Facebook thật. Liên kết webhook cũ không còn dùng để đăng bài hoặc trả lời bình luận."
@@ -55,8 +69,11 @@ def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_d
     page = db.query(FacebookPage).filter(FacebookPage.page_id == page_in.page_id).first()
     if page:
         page.page_name = page_in.page_name
-        page.long_lived_access_token = encrypt_secret(normalized_token)
+        if normalized_token:
+            page.long_lived_access_token = encrypt_secret(normalized_token)
     else:
+        if not normalized_token:
+            raise HTTPException(status_code=400, detail="Cần cung cấp mã truy cập cho trang mới.")
         page = FacebookPage(
             page_id=page_in.page_id,
             page_name=page_in.page_name,
@@ -70,6 +87,14 @@ def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_d
         page.user_access_token = encrypt_secret(raw_user_token) if raw_user_token else None
     if page_in.auto_refresh_enabled is not None:
         page.auto_refresh_enabled = page_in.auto_refresh_enabled
+
+    # Story 10.1: cập nhật brand_voice và brand_voice_preset
+    # Empty string → None (clear intent rõ ràng từ frontend, KHÔNG ghi đè im lặng).
+    if page_in.brand_voice is not None:
+        cleaned_voice = page_in.brand_voice.strip()
+        page.brand_voice = cleaned_voice or None
+    # brand_voice_preset luôn có value (Literal default "casual"); update unconditional.
+    page.brand_voice_preset = page_in.brand_voice_preset
 
     db.commit()
 
@@ -133,6 +158,9 @@ def get_facebook_config(db: Session = Depends(get_db)):
                 "has_user_token": bool(page.user_access_token),
                 "last_refresh_at": page.last_refresh_at.isoformat() if page.last_refresh_at else None,
                 "token_refresh_error": page.token_refresh_error,
+                # Story 10.1: brand voice fields
+                "brand_voice": page.brand_voice,
+                "brand_voice_preset": page.brand_voice_preset,
             }
         )
 
