@@ -3,7 +3,7 @@ import logging
 import os
 import socket
 import traceback
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.models.models import Campaign, CampaignStatus, FacebookPage, Video, VideoStatus
+from app.models.models import Campaign, CampaignStatus, FacebookPage, Video, VideoStatus, TaskQueue, TaskStatus
 from app.services.ai_generator import generate_caption
 from app.services.fb_graph import upload_video_to_facebook
 from app.services.observability import record_event, update_worker_heartbeat
@@ -162,11 +162,10 @@ def auto_post_job():
                         vid.fb_post_id = res["id"]
                         vid.status = VideoStatus.posted
                         vid.last_error = None
-                        # Ghi nhớ stored path để xóa SAU commit thành công.
+                        # Ghi nhớ stored path để xóa.
                         stored_path_to_cleanup = vid.file_path
-                        vid.file_path = None
-                        # Commit DB TRƯỚC khi xóa storage để tránh mất file mà DB chưa
-                        # ghi nhận trạng thái posted (orphan ngược).
+                        # KHÔNG set vid.file_path = None ở đây ngay. 
+                        # Đợi đến khi thực sự xóa thành công trên storage.
                         db.commit()
                         record_event(
                             "video",
@@ -197,15 +196,9 @@ def auto_post_job():
 
                 # Xóa storage SAU khi DB đã commit thành công (post success path).
                 if stored_path_to_cleanup:
+                    delete_ok = False
                     try:
-                        if not storage.delete(stored_path_to_cleanup):
-                            record_event(
-                                "video",
-                                "warning",
-                                "Không xóa được tệp gốc trên storage sau khi post; có thể orphan.",
-                                db=db,
-                                details={"video_id": str(vid.id), "file_path": stored_path_to_cleanup},
-                            )
+                        delete_ok = bool(storage.delete(stored_path_to_cleanup))
                     except Exception as exc:
                         record_event(
                             "video",
@@ -213,6 +206,35 @@ def auto_post_job():
                             "Lỗi khi xóa tệp gốc trên storage sau khi post.",
                             db=db,
                             details={"video_id": str(vid.id), "file_path": stored_path_to_cleanup, "error": str(exc)},
+                        )
+
+                    if delete_ok:
+                        # Refresh + clear DB ref. Bọc try/except: vid có thể bị xóa
+                        # concurrent (admin xóa video) → ObjectDeletedError; lúc này
+                        # file đã mất, không có gì cần làm thêm.
+                        try:
+                            db.refresh(vid)
+                            vid.file_path = None
+                            db.commit()
+                        except Exception as exc:
+                            try:
+                                db.rollback()
+                            except Exception:
+                                pass
+                            record_event(
+                                "video",
+                                "warning",
+                                "Đã xóa file storage nhưng không cập nhật được DB; cleanup_job sẽ reconcile.",
+                                db=db,
+                                details={"video_id": str(vid.id), "file_path": stored_path_to_cleanup, "error": str(exc)},
+                            )
+                    else:
+                        record_event(
+                            "video",
+                            "warning",
+                            "Không xóa được tệp gốc trên storage; giữ tham chiếu để job cleanup xử lý sau.",
+                            db=db,
+                            details={"video_id": str(vid.id), "file_path": stored_path_to_cleanup},
                         )
             except Exception as per_video_exc:
                 # Một video lỗi bất ngờ không nên crash batch.
@@ -239,6 +261,149 @@ def auto_post_job():
         )
     finally:
         update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="idle", db=db)
+        db.close()
+
+
+# Task types được coi là "đang giữ" file_path để retry; cleanup phải skip các video
+# này để không xóa file đang được tham chiếu.
+_RETRY_TASK_TYPES = ("retry_video_download",)
+
+_CLEANUP_BATCH_SIZE = 100
+
+
+def _cleanup_one(db: Session, storage, video: Video) -> bool:
+    """Xóa file của 1 video qua storage. Trả True nếu file_path nên được clear.
+
+    Phân biệt:
+    - delete trả True → xóa thành công, clear DB ref.
+    - delete trả False (file đã không còn / lỗi đã log) → vẫn clear DB ref vì
+      mục tiêu cleanup là DB-storage consistent; file thực tế không tồn tại
+      nên giữ path là vô nghĩa.
+    - delete raise → giữ DB ref, lần cleanup sau sẽ retry.
+    """
+    try:
+        storage.delete(video.file_path)
+        return True
+    except Exception as exc:
+        logger.warning("storage_cleanup_job: lỗi khi xóa %s: %s", video.file_path, exc)
+        return False
+
+
+def storage_cleanup_job():
+    db: Session = SessionLocal()
+    storage = get_storage()
+    cleaned_posted = 0
+    cleaned_failed = 0
+
+    try:
+        now = datetime.now(timezone.utc).replace(tzinfo=None)
+        cutoff = now - timedelta(hours=24)
+
+        # 1. Dọn dẹp video đã posted > 24h. ORDER BY publish_time ASC để đảm bảo
+        # video cũ nhất được xử lý trước (tránh starve khi backlog lớn).
+        # Filter publish_time NULLS-LAST: NULL coi như đủ tuổi (cleanup được).
+        from sqlalchemy import or_
+
+        posted_videos = (
+            db.query(Video)
+            .filter(
+                Video.status == VideoStatus.posted,
+                Video.file_path.isnot(None),
+                Video.file_path != "",
+                or_(Video.publish_time < cutoff, Video.publish_time.is_(None)),
+            )
+            .order_by(Video.publish_time.asc().nullsfirst())
+            .limit(_CLEANUP_BATCH_SIZE)
+            .all()
+        )
+
+        for video in posted_videos:
+            # Skip nếu đang có active retry task cho chính video này.
+            active_task = (
+                db.query(TaskQueue)
+                .filter(
+                    TaskQueue.entity_id == str(video.id),
+                    TaskQueue.task_type.in_(_RETRY_TASK_TYPES),
+                    TaskQueue.status.in_([TaskStatus.queued, TaskStatus.processing]),
+                )
+                .first()
+            )
+            if active_task:
+                logger.debug("Skip dọn dẹp video %s — đang trong retry queue.", video.id)
+                continue
+
+            if _cleanup_one(db, storage, video):
+                video.file_path = None
+                cleaned_posted += 1
+
+        # Commit nhóm posted trước khi sang nhóm failed — tránh exception
+        # ở nhóm failed làm rollback luôn nhóm posted (orphan ngược).
+        try:
+            db.commit()
+        except Exception as exc:
+            db.rollback()
+            logger.error("storage_cleanup_job: commit nhóm posted thất bại: %s", exc)
+            raise
+
+        # 2. Dọn dẹp video failed lâu ngày (nếu cấu hình).
+        if settings.CLEANUP_FAILED_VIDEO_DAYS > 0:
+            failed_cutoff = now - timedelta(days=settings.CLEANUP_FAILED_VIDEO_DAYS)
+            failed_videos = (
+                db.query(Video)
+                .filter(
+                    Video.status == VideoStatus.failed,
+                    Video.file_path.isnot(None),
+                    Video.file_path != "",
+                    Video.updated_at < failed_cutoff,
+                )
+                .order_by(Video.updated_at.asc())
+                .limit(_CLEANUP_BATCH_SIZE)
+                .all()
+            )
+            for video in failed_videos:
+                if _cleanup_one(db, storage, video):
+                    video.file_path = None
+                    cleaned_failed += 1
+
+            try:
+                db.commit()
+            except Exception as exc:
+                db.rollback()
+                logger.error("storage_cleanup_job: commit nhóm failed thất bại: %s", exc)
+
+        cleaned_count = cleaned_posted + cleaned_failed
+        # Debug log mỗi lần chạy (không tạo DB event nếu 0 — tránh spam).
+        logger.info(
+            "storage_cleanup_job hoàn tất: cleaned_posted=%s cleaned_failed=%s",
+            cleaned_posted, cleaned_failed,
+        )
+
+        if cleaned_count > 0:
+            record_event(
+                "cleanup",
+                "info",
+                f"Đã dọn dẹp {cleaned_count} file video.",
+                db=db,
+                details={
+                    "cleaned_count": cleaned_count,
+                    "cleaned_posted": cleaned_posted,
+                    "cleaned_failed": cleaned_failed,
+                },
+            )
+
+    except Exception as exc:
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        record_event(
+            "cleanup",
+            "error",
+            "Tác vụ dọn dẹp file gặp lỗi.",
+            db=db,
+            details={"error": str(exc), "traceback": traceback.format_exc()},
+        )
+    finally:
         db.close()
 
 
@@ -351,6 +516,18 @@ def start_scheduler():
             max_instances=1,
             coalesce=True,
             next_run_time=datetime.now(timezone.utc).replace(tzinfo=None)
+        )
+    if not scheduler.get_job("storage_cleanup_job"):
+        scheduler.add_job(
+            storage_cleanup_job,
+            "interval",
+            hours=6,
+            id="storage_cleanup_job",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+            # First run sau 10 phút từ lúc khởi động
+            next_run_time=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
         )
     if not scheduler.running:
         scheduler.start()

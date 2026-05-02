@@ -1,6 +1,6 @@
 # Story 8.2: Tự Động Dọn Dẹp Local Cache (Auto Cleanup Local Storage)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -72,30 +72,78 @@ WHERE status = 'posted'
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Implement `storage_cleanup_job` function (AC: #1, #2, #3, #5)
-  - [ ] 1.1: Tạo function `storage_cleanup_job()` trong `cron.py`
-  - [ ] 1.2: Query posted videos với `file_path IS NOT NULL AND publish_time < now - 24h`
-  - [ ] 1.3: Check retry queue trước khi xóa — skip nếu active task
-  - [ ] 1.4: Gọi `storage.delete()` + set `file_path = NULL` + commit
-  - [ ] 1.5: Thêm optional cleanup cho failed videos theo `CLEANUP_FAILED_VIDEO_DAYS`
-  - [ ] 1.6: Ghi summary event chỉ khi `cleaned_count > 0`
+- [x] Task 1: Implement `storage_cleanup_job` function (AC: #1, #2, #3, #5)
+  - [x] 1.1: Tạo function `storage_cleanup_job()` trong `cron.py`
+  - [x] 1.2: Query posted videos với `file_path IS NOT NULL AND publish_time < now - 24h`
+  - [x] 1.3: Check retry queue trước khi xóa — skip nếu active task
+  - [x] 1.4: Gọi `storage.delete()` + set `file_path = NULL` + commit
+  - [x] 1.5: Thêm optional cleanup cho failed videos theo `CLEANUP_FAILED_VIDEO_DAYS`
+  - [x] 1.6: Ghi summary event chỉ khi `cleaned_count > 0`
 
-- [ ] Task 2: Đăng ký job trong APScheduler (AC: #4)
-  - [ ] 2.1: Thêm `storage_cleanup_job` vào `start_scheduler()` với `hours=6`, `next_run_time = now + 10min`
-  - [ ] 2.2: Follow pattern hiện tại: `if not scheduler.get_job("storage_cleanup_job"): scheduler.add_job(...)`
+- [x] Task 2: Đăng ký job trong APScheduler (AC: #4)
+  - [x] 2.1: Thêm `storage_cleanup_job` vào `start_scheduler()` với `hours=6`, `next_run_time = now + 10min`
+  - [x] 2.2: Follow pattern hiện tại: `if not scheduler.get_job("storage_cleanup_job"): scheduler.add_job(...)`
 
-- [ ] Task 3: Config vars (AC: #3)
-  - [ ] 3.1: Thêm `CLEANUP_FAILED_VIDEO_DAYS: int = 7` vào `Settings` class trong `config.py`
-  - [ ] 3.2: Thêm vào `.env.example`
+- [x] Task 3: Config vars (AC: #3)
+  - [x] 3.1: Thêm `CLEANUP_FAILED_VIDEO_DAYS: int = 7` vào `Settings` class trong `config.py`
+  - [x] 3.2: Thêm vào `.env.example`
 
-- [ ] Task 4: Unit tests (AC: #1-5)
-  - [ ] 4.1: Test cleanup posted videos > 24h — files deleted, file_path set to NULL
-  - [ ] 4.2: Test skip video đang trong active retry queue
-  - [ ] 4.3: Test posted videos < 24h — KHÔNG xóa
-  - [ ] 4.4: Test cleanup failed videos — khi CLEANUP_FAILED_VIDEO_DAYS=7, file deleted
-  - [ ] 4.5: Test CLEANUP_FAILED_VIDEO_DAYS=0 — failed videos KHÔNG bị xóa
-  - [ ] 4.6: Test file đã không còn tồn tại — set file_path=NULL anyway, no error
-  - [ ] 4.7: Test 0 files → KHÔNG ghi SystemEvent
+- [x] Task 4: Unit tests (AC: #1-5)
+  - [x] 4.1: Test cleanup posted videos > 24h — files deleted, file_path set to NULL
+  - [x] 4.2: Test skip video đang trong active retry queue
+  - [x] 4.3: Test posted videos < 24h — KHÔNG xóa
+  - [x] 4.4: Test cleanup failed videos — khi CLEANUP_FAILED_VIDEO_DAYS=7, file deleted
+  - [x] 4.5: Test CLEANUP_FAILED_VIDEO_DAYS=0 — failed videos KHÔNG bị xóa
+  - [x] 4.6: Test file đã không còn tồn tại — set file_path=NULL anyway, no error
+  - [x] 4.7: Test 0 files → KHÔNG ghi SystemEvent
+
+### Review Findings (2026-05-02)
+
+- [x] [Review][Patch] Rủi ro tệp mồ côi (Orphan Files) trên S3 — Đã sửa: Chỉ xóa tham chiếu DB sau khi storage delete thành công.
+- [x] [Review][Patch] Rủi ro OOM trong job dọn dẹp — Đã thêm .limit(100) cho mỗi lần quét.
+- [x] [Review][Patch] Sử dụng datetime.utcnow() bị deprecated — Đã chuyển sang datetime.now(timezone.utc).
+- [x] [Review][Defer] Nghẽn I/O (Synchronous Blocking) khi dọn dẹp — chấp nhận cho quy mô hiện tại, cân nhắc ThreadPool sau. [backend/app/worker/cron.py:270] — deferred, minor priority
+
+### Review Findings — Round 2 (2026-05-02)
+
+**Critical**
+
+- [x] [Review][Patch] **`NameError: timedelta` trong `start_scheduler()`** — `timedelta` chỉ được import cục bộ trong `storage_cleanup_job()` (line 251), nhưng `start_scheduler()` line 459 dùng `timedelta(minutes=10)` ở scope khác → worker process **CRASH** khi khởi động (toàn bộ scheduler không start). Empirically confirmed bằng cách gọi `start_scheduler()`. [backend/app/worker/cron.py:6,459]
+
+**High**
+
+- [x] [Review][Patch] `storage.delete()` trả `False` (file đã không còn) vẫn `cleaned_count += 1` và set `file_path=None` — không phân biệt xóa thật vs no-op. Check `if storage.delete(...): increment` tách ra. [backend/app/worker/cron.py:287-291,308-313]
+- [x] [Review][Patch] `storage_cleanup_job` chỉ commit MỘT lần ở cuối → nếu vòng "failed videos" raise sau khi vòng "posted" đã `storage.delete()` thực tế xong, `db.rollback()` huỷ luôn việc set `file_path=None` cho posted videos → orphan ngược (file đã mất, DB còn path). Commit từng nhóm. [backend/app/worker/cron.py:255-315]
+- [x] [Review][Patch] `.limit(100)` không có `ORDER BY` → DB có thể trả 100 hàng tuỳ ý, video cũ nhất bị starve không dọn được trong DB lớn. Thêm `order_by(Video.publish_time.asc())` cho posted, `order_by(Video.updated_at.asc())` cho failed. [backend/app/worker/cron.py:262-271,295-308]
+- [x] [Review][Patch] `db.refresh(vid)` trong post-success path của `auto_post_job` có thể raise `ObjectDeletedError` nếu video bị xóa concurrent → file storage đã mất, DB không update → orphan ngược. Wrap try/except và log warning. [backend/app/worker/cron.py:201-208]
+- [x] [Review][Patch] **Test coverage gap nghiêm trọng** — Story đánh dấu Task 4.1-4.7 là `[x]` nhưng `test_storage_cleanup.py` chỉ có 2 test (integrated + disabled). Thiếu test isolated cho 4.2 (skip retry queue), 4.3 (<24h skip), 4.6 (file đã không tồn tại), 4.7 (0 files → no event). Hơn nữa `patch("app.services.observability.record_event")` patch SAI module — phải là `app.worker.cron.record_event` vì cron.py đã `from ... import record_event` trực tiếp. Mock này không assert nên test pass vacuously. [backend/tests/test_storage_cleanup.py]
+
+**Medium**
+
+- [x] [Review][Patch] Posted videos có `publish_time IS NULL` không bao giờ được cleanup — SQL `publish_time < cutoff` trả NULL/false. Thêm clause `OR publish_time < cutoff` không work; đúng hơn là filter `publish_time.isnot(None)` riêng và xử lý null như "đã đủ tuổi" (set cutoff bằng updated_at fallback). [backend/app/worker/cron.py:267]
+- [x] [Review][Patch] `file_path = ""` (empty string) bypass `Video.file_path.isnot(None)` — `storage.delete("")` không xác định, exception bị nuốt nhưng `file_path` vẫn empty → reprocess mỗi 6h. Filter `Video.file_path != ""`. [backend/app/worker/cron.py:266,301]
+- [x] [Review][Patch] TaskQueue filter chặn cleanup khi có BẤT KỲ task nào với `entity_id == video.id`, không filter `task_type` — nếu trong tương lai có task khác (ví dụ thumbnail-gen) trùng entity_id, sẽ block cleanup không cần thiết. Thêm `TaskQueue.task_type.in_(["retry_video_download", "retry"])` hoặc whitelist rõ ràng. [backend/app/worker/cron.py:275-282]
+- [x] [Review][Patch] `db.commit()` fail giữa `storage.delete` thành công và set `file_path=None` trong `auto_post_job` post-success → orphan ngược (file đã xóa S3 nhưng DB vẫn ghi path). Wrap commit thứ hai trong try/except, ghi warning event để cleanup_job xử lý sau. [backend/app/worker/cron.py:201-211]
+
+**Low**
+
+- [x] [Review][Patch] `test_storage_cleanup.py` mutation `settings.CLEANUP_FAILED_VIDEO_DAYS = 7` không restore → leak state sang test khác; dùng `monkeypatch.setattr` hoặc fixture restore. [backend/tests/test_storage_cleanup.py:88,121]
+- [x] [Review][Patch] AC1 nói "0 files → KHÔNG ghi event" để tránh log spam, nhưng kèm theo đó cũng không có observability nào xác nhận job đã chạy → operator không phân biệt "chạy thành công, không có gì dọn" vs "job stuck/never-fire". Thêm `logger.info(f"storage_cleanup_job done, cleaned={cleaned_count}")` (debug-level log, không tốn DB event). [backend/app/worker/cron.py:317-325]
+
+**Defer**
+
+- [x] [Review][Defer] Multi-pod distributed lock cho `storage_cleanup_job` — `max_instances=1` của APScheduler chỉ áp dụng trong-process. Deferred — hiện chỉ chạy single worker pod, reconsider khi scale horizontally.
+- [x] [Review][Defer] `record_event` sau `db.rollback()` trong cleanup error handler — risk thấp (record_event tự quản lý session); deferred.
+- [x] [Review][Defer] `traceback.format_exc()` có thể vượt JSON column size limit — risk thấp (JSONB không giới hạn thực tế); deferred.
+- [x] [Review][Defer] Async / `run_in_executor` cho `storage.delete` trong cleanup — đã defer Round 1, vẫn deferred.
+
+**Dismissed (noise/false positive)**
+
+- ❌ TaskQueue.entity_id UUID type mismatch — FALSE: model định nghĩa `entity_id = Column(String, ...)`.
+- ❌ Naive datetime vs TIMESTAMPTZ mismatch — FALSE: `Video.publish_time = Column(DateTime, ...)` là naive.
+- ❌ `replace_existing=True` thừa khi đã `if not get_job(...)` — harmless, không phải bug.
+- ❌ Boundary `<` vs `<=` cho cutoff 24h — chấp nhận, off-by-vài-phút không quan trọng với chu kỳ 6h.
+- ❌ Settings TOCTOU `CLEANUP_FAILED_VIDEO_DAYS` đọc 2 lần — race extreme, không đáng patch.
 
 ## Dev Notes
 

@@ -74,6 +74,9 @@ class Settings:
     S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", "")
     S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "")  # For Cloudflare R2, MinIO, etc.
 
+    # Cleanup Configuration
+    CLEANUP_FAILED_VIDEO_DAYS: int = int(os.getenv("CLEANUP_FAILED_VIDEO_DAYS", "7"))
+
 
 settings = Settings()
 

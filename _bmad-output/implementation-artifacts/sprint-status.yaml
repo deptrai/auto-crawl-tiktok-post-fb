@@ -115,7 +115,7 @@ development_status:
   # ─── PHASE 2 — SPRINT 3 ──────────────────────────────────────────────────
   epic-8: in-progress
   8-1-tich-hop-cloud-object-storage: done
-  8-2-tu-dong-don-dep-local-cache: ready-for-dev
+  8-2-tu-dong-don-dep-local-cache: done
   epic-8-retrospective: optional
 
   epic-10: in-progress

@@ -34,3 +34,10 @@
 - **`/tmp` disk quota check** — Khi nhiều worker download song song video lớn, /tmp có thể đầy. Deferred — infra/container concern, theo dõi qua observability/disk metrics. [backend/app/services/storage_backend.py]
 - **Validate hostname/port của `S3_ENDPOINT_URL`** — Hiện chỉ check prefix `http(s)://`. Deferred — runtime endpoint connectivity check là đủ với cấu hình admin trusted. [backend/app/services/storage_backend.py:118-121]
 - **S3 secrets dùng plaintext env (không qua `decrypt_secret`)** — Khác convention với FB token (DB + decrypt). Deferred — chấp nhận cho infrastructure config qua env, không lưu DB. [backend/app/core/config.py:69-73]
+
+## Deferred from: code review of story-8.2 (2026-05-02)
+
+- **Multi-pod distributed lock cho `storage_cleanup_job`** — `max_instances=1` của APScheduler chỉ áp dụng trong-process; nếu scale horizontally (>1 worker pod) cần distributed lock (Postgres advisory lock hoặc Redis). [backend/app/worker/cron.py:248]
+- **`record_event` sau `db.rollback()` trong cleanup error handler** — Risk thấp vì `record_event` tự quản lý session; deferred. [backend/app/worker/cron.py:326-336]
+- **`traceback.format_exc()` có thể vượt JSON column size limit** — JSONB Postgres không giới hạn thực tế; deferred truncation. [backend/app/worker/cron.py:243,333]
+- **Async / `run_in_executor` cho `storage.delete` trong cleanup** — Đã deferred Round 1; reconsider khi tích hợp asyncio path. [backend/app/worker/cron.py:285,307]
