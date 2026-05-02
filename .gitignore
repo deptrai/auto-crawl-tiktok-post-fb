@@ -42,12 +42,29 @@ dist/
 
 # Project Specific
 videos_storage/
+{output_folder}/
+rawdata.json
+formats.txt
 debug_logs.txt
 backend_cron.txt
 backend/runtime.env
+backend/downloads/
+backend/.pytest_cache/
+test_venv/
+.mcp.json
+.agent/
+.agents/
+.augment/
+.claude/
 database/*.sqlite
 database/*.db
 database/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
 # OS
 .DS_Store
-Thumbs.db

@@ -27,3 +27,10 @@
 - **D4 (Medium):** Thiếu composite index `(target_page_id, original_id)` trên `videos`/`campaigns` — N entries × DB query/iteration với potential seq scan trên `campaigns.target_page_id`. Performance issue khi scale lên hàng trăm campaigns × hàng trăm entries/sync.
 - **D5 (Medium):** `Video.campaign_id` FK có `ondelete="CASCADE"` — khi user xóa campaign cũ, lịch sử "đã đăng" mất theo → sync campaign mới cùng page sẽ re-post. Cần soft-delete Video hoặc bảng audit `posted_videos_by_page` riêng.
 - **D6 (Low):** `get_default_filters(db=None)` silent fallback chỉ 2 filters → caller nào quên truyền `db` mất dedup mà không cảnh báo. Pattern fragile; cân nhắc tách thành 2 hàm explicit hoặc raise/log warning khi `db is None`.
+
+## Deferred from: code review of story-8.1 (2026-05-02)
+
+- **boto3 async / `run_in_executor`** — App hiện đồng bộ (sync), chưa có asyncio path. Reconsider khi tích hợp FastAPI async endpoints chạm vào storage hoặc khi scale worker concurrency cao. [backend/app/services/storage_backend.py]
+- **`/tmp` disk quota check** — Khi nhiều worker download song song video lớn, /tmp có thể đầy. Deferred — infra/container concern, theo dõi qua observability/disk metrics. [backend/app/services/storage_backend.py]
+- **Validate hostname/port của `S3_ENDPOINT_URL`** — Hiện chỉ check prefix `http(s)://`. Deferred — runtime endpoint connectivity check là đủ với cấu hình admin trusted. [backend/app/services/storage_backend.py:118-121]
+- **S3 secrets dùng plaintext env (không qua `decrypt_secret`)** — Khác convention với FB token (DB + decrypt). Deferred — chấp nhận cho infrastructure config qua env, không lưu DB. [backend/app/core/config.py:69-73]

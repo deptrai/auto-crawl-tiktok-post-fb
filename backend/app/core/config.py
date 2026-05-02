@@ -66,6 +66,14 @@ class Settings:
     # Facebook publish processing delay (seconds) — tune via FB_PUBLISH_SLEEP_SECONDS env var
     FB_PUBLISH_SLEEP_SECONDS: int = int(os.getenv("FB_PUBLISH_SLEEP_SECONDS", "20"))
 
+    # Storage Backend Configuration
+    STORAGE_BACKEND: str = os.getenv("STORAGE_BACKEND", "local")  # local | s3
+    S3_BUCKET: str = os.getenv("S3_BUCKET", "")
+    S3_REGION: str = os.getenv("S3_REGION", "us-east-1")
+    S3_ACCESS_KEY: str = os.getenv("S3_ACCESS_KEY", "")
+    S3_SECRET_KEY: str = os.getenv("S3_SECRET_KEY", "")
+    S3_ENDPOINT_URL: str = os.getenv("S3_ENDPOINT_URL", "")  # For Cloudflare R2, MinIO, etc.
+
 
 settings = Settings()
 

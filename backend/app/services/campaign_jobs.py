@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timedelta, timezone
 import os
 import uuid
@@ -15,6 +16,25 @@ from app.services.observability import record_event
 from app.services.security import decrypt_secret
 from app.services.content_filter import CrossCampaignDedup, get_default_filters, run_filters
 from app.services.tiktok_crawler import download_video, extract_metadata
+from app.services.storage_backend import S3Storage, build_s3_key, get_storage
+from app.core.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+def _is_path_managed_by(storage, path: str) -> bool:
+    """True nếu `path` thuộc scheme mà `storage` hiện tại có thể xử lý.
+
+    Tránh gọi storage.delete trên path khác scheme (vd. backend đã đổi từ s3
+    sang local — file_path cũ là 's3://...' thì LocalStorage.delete sẽ không
+    làm gì hữu ích, mà còn dễ gây nhầm lẫn).
+    """
+    if not path:
+        return False
+    is_s3_path = path.startswith("s3://")
+    if isinstance(storage, S3Storage):
+        return is_s3_path
+    return not is_s3_path
 
 
 def parse_uuid_or_none(raw_id: str):
@@ -77,22 +97,76 @@ def retry_video_download(video_id: str) -> dict:
         if not video:
             raise ValueError("Không tìm thấy video cần thử lại.")
 
+        storage = get_storage()
         out_path, _ = download_video(video.source_video_url, "tiktok")
         if out_path:
-            safe_remove_file(video.file_path)
-            video.file_path = out_path
-            video.status = VideoStatus.ready
-            video.publish_time = datetime.now(timezone.utc).replace(tzinfo=None)
-            video.last_error = None
-            db.commit()
-            record_event(
-                "video",
-                "info",
-                "Đã tải lại video thành công.",
-                db=db,
-                details={"video_id": str(video.id), "original_id": video.original_id},
-            )
-            return {"ok": True, "video_id": str(video.id)}
+            # Guard: download_video có thể trả file 0-byte trong edge case → skip.
+            try:
+                if os.path.getsize(out_path) == 0:
+                    safe_remove_file(out_path)
+                    mark_video_failed(video, "Tệp video tải về rỗng.")
+                    db.commit()
+                    return {"ok": False, "video_id": str(video.id)}
+            except OSError:
+                pass
+
+            stored_path: str | None = None
+            old_path = video.file_path
+            try:
+                s3_key = build_s3_key(out_path)
+                stored_path = storage.save(out_path, s3_key)
+
+                video.file_path = stored_path
+                video.status = VideoStatus.ready
+                video.publish_time = datetime.now(timezone.utc).replace(tzinfo=None)
+                video.last_error = None
+                try:
+                    db.commit()
+                except Exception:
+                    # DB commit fail SAU khi đã upload S3 → cleanup S3 để tránh orphan.
+                    db.rollback()
+                    if stored_path and storage.requires_temp_copy():
+                        try:
+                            storage.delete(stored_path)
+                        except Exception:
+                            logger.warning("Không cleanup được S3 object sau DB commit fail: %s", stored_path)
+                    raise
+
+                # Cleanup file cũ chỉ khi nó là path do storage hiện tại quản lý
+                # (tránh xóa nhầm file local khi backend đã chuyển sang S3 hoặc ngược lại).
+                if old_path and old_path != stored_path:
+                    if _is_path_managed_by(storage, old_path):
+                        try:
+                            storage.delete(old_path)
+                        except Exception:
+                            logger.warning("Không xóa được file cũ %s", old_path)
+                if storage.requires_temp_copy():
+                    safe_remove_file(out_path)
+
+                record_event(
+                    "video",
+                    "info",
+                    "Đã tải lại video thành công.",
+                    db=db,
+                    details={"video_id": str(video.id), "original_id": video.original_id, "storage": settings.STORAGE_BACKEND},
+                )
+                return {"ok": True, "video_id": str(video.id)}
+            except Exception as storage_exc:
+                # Fallback: storage.save lỗi → giữ local path. KHÔNG xóa file_path cũ
+                # nếu nó là remote (S3) — sẽ orphan/xóa nhầm. Để janitor reconcile sau.
+                record_event(
+                    "video",
+                    "warning",
+                    "Lỗi khi lưu video vào storage backend, sử dụng local fallback.",
+                    db=db,
+                    details={"video_id": str(video.id), "error": str(storage_exc)},
+                )
+                video.file_path = out_path
+                video.status = VideoStatus.ready
+                video.publish_time = datetime.now(timezone.utc).replace(tzinfo=None)
+                video.last_error = None
+                db.commit()
+                return {"ok": True, "video_id": str(video.id)}
 
         mark_video_failed(video, "Tải lại video thất bại.")
         db.commit()
@@ -158,6 +232,7 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
         # Hoist filter chain outside loop — avoid re-instantiating per-iteration.
         # CrossCampaignDedup receives the DB session so it can query cross-campaign videos.
         content_filters = get_default_filters(db=db)
+        storage = get_storage()
 
         for entry in entries:
             db.expire_all()
@@ -226,12 +301,53 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
 
             out_path, _ = download_video(download_url, "tiktok")
             if out_path:
-                db_video.file_path = out_path
-                db_video.status = VideoStatus.ready
-                db_video.last_error = None
+                # Guard 0-byte: bỏ qua, đánh dấu failed, không tốn S3 quota.
+                try:
+                    file_size = os.path.getsize(out_path)
+                except OSError:
+                    file_size = 0
+                if file_size == 0:
+                    safe_remove_file(out_path)
+                    mark_video_failed(db_video, "Tệp video tải về rỗng.")
+                    db.commit()
+                    continue
+
+                stored_path: str | None = None
+                try:
+                    s3_key = build_s3_key(out_path)
+                    stored_path = storage.save(out_path, s3_key)
+                    db_video.file_path = stored_path
+                    db_video.status = VideoStatus.ready
+                    db_video.last_error = None
+                    try:
+                        db.commit()
+                    except Exception:
+                        # DB commit fail sau khi đã upload S3 → cleanup để tránh orphan.
+                        db.rollback()
+                        if stored_path and storage.requires_temp_copy():
+                            try:
+                                storage.delete(stored_path)
+                            except Exception:
+                                pass
+                        raise
+                    if storage.requires_temp_copy():
+                        safe_remove_file(out_path)
+                except Exception as storage_exc:
+                    # Graceful fallback: Nếu upload S3 lỗi, giữ local path và tiếp tục.
+                    record_event(
+                        "video",
+                        "warning",
+                        "Lỗi khi lưu video vào storage backend, sử dụng local fallback.",
+                        db=db,
+                        details={"video_id": str(db_video.id), "error": str(storage_exc)},
+                    )
+                    db_video.file_path = out_path
+                    db_video.status = VideoStatus.ready
+                    db_video.last_error = None
+                    db.commit()
             else:
                 mark_video_failed(db_video, "Tải video thất bại.")
-            db.commit()
+                db.commit()
 
         campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
         if campaign:

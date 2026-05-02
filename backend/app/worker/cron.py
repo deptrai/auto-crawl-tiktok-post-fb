@@ -17,6 +17,7 @@ from app.services.ai_generator import generate_caption
 from app.services.fb_graph import upload_video_to_facebook
 from app.services.observability import record_event, update_worker_heartbeat
 from app.services.security import decrypt_secret
+from app.services.storage_backend import get_storage
 from app.worker.tasks import process_task_queue
 from app.services.token_lifecycle import (
     check_all_tokens,
@@ -33,6 +34,7 @@ WORKER_NAME = f"{settings.APP_ROLE}@{socket.gethostname()}"
 def auto_post_job():
     db: Session = SessionLocal()
     update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="quét lịch đăng", db=db)
+    storage = get_storage()
     try:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
         pages = db.query(FacebookPage).all()
@@ -98,62 +100,135 @@ def auto_post_job():
                     )
                     continue
 
-            if not vid.file_path or not os.path.exists(vid.file_path):
-                vid.status = VideoStatus.failed
-                vid.last_error = "Tệp video không tồn tại hoặc đã bị xóa."
-                vid.retry_count = (vid.retry_count or 0) + 1
-                db.commit()
-                record_event(
-                    "video",
-                    "warning",
-                    "Bỏ qua video do tệp không tồn tại.",
-                    db=db,
-                    details={"video_id": str(vid.id), "file_path": vid.file_path},
-                )
-                continue
+            # Per-video try/except: một video lỗi không được crash cả batch.
+            try:
+                try:
+                    file_exists = bool(vid.file_path) and storage.exists(vid.file_path)
+                except Exception as exc:
+                    # storage.exists raise (auth/network) → không kết luận file biến mất,
+                    # log và bỏ qua lượt này để retry tick sau.
+                    record_event(
+                        "video",
+                        "warning",
+                        "Không kiểm tra được trạng thái tệp trên storage, bỏ qua tick này.",
+                        db=db,
+                        details={"video_id": str(vid.id), "file_path": vid.file_path, "error": str(exc)},
+                    )
+                    continue
 
-            res = upload_video_to_facebook(
-                file_path=vid.file_path,
-                caption=vid.ai_caption,
-                page_id=page.page_id,
-                access_token=access_token,
-            )
+                if not file_exists:
+                    vid.status = VideoStatus.failed
+                    vid.last_error = "Tệp video không tồn tại hoặc đã bị xóa."
+                    vid.retry_count = (vid.retry_count or 0) + 1
+                    db.commit()
+                    record_event(
+                        "video",
+                        "warning",
+                        "Bỏ qua video do tệp không tồn tại.",
+                        db=db,
+                        details={"video_id": str(vid.id), "file_path": vid.file_path},
+                    )
+                    continue
 
-            if "id" in res:
-                vid.fb_post_id = res["id"]
-                vid.status = VideoStatus.posted
-                vid.last_error = None
-                record_event(
-                    "video",
-                    "info",
-                    "Đã đăng video thành công.",
-                    db=db,
-                    details={"video_id": str(vid.id), "page_id": page.page_id, "fb_post_id": vid.fb_post_id},
-                )
-                if vid.file_path and os.path.exists(vid.file_path):
+                # Lấy bản sao local (download từ S3 nếu cần). Có thể raise RuntimeError.
+                try:
+                    local_path = storage.get_local_copy(vid.file_path)
+                except Exception as exc:
+                    vid.status = VideoStatus.failed
+                    vid.last_error = f"Không tải được bản sao local: {exc}"
+                    vid.retry_count = (vid.retry_count or 0) + 1
+                    db.commit()
+                    record_event(
+                        "video",
+                        "error",
+                        "Không tải được bản sao local từ storage.",
+                        db=db,
+                        details={"video_id": str(vid.id), "file_path": vid.file_path, "error": str(exc)},
+                    )
+                    continue
+
+                is_temp_copy = storage.requires_temp_copy()
+                stored_path_to_cleanup: str | None = None
+
+                try:
+                    res = upload_video_to_facebook(
+                        file_path=local_path,
+                        caption=vid.ai_caption,
+                        page_id=page.page_id,
+                        access_token=access_token,
+                    )
+
+                    if "id" in res:
+                        vid.fb_post_id = res["id"]
+                        vid.status = VideoStatus.posted
+                        vid.last_error = None
+                        # Ghi nhớ stored path để xóa SAU commit thành công.
+                        stored_path_to_cleanup = vid.file_path
+                        vid.file_path = None
+                        # Commit DB TRƯỚC khi xóa storage để tránh mất file mà DB chưa
+                        # ghi nhận trạng thái posted (orphan ngược).
+                        db.commit()
+                        record_event(
+                            "video",
+                            "info",
+                            "Đã đăng video thành công.",
+                            db=db,
+                            details={"video_id": str(vid.id), "page_id": page.page_id, "fb_post_id": vid.fb_post_id},
+                        )
+                    else:
+                        vid.status = VideoStatus.failed
+                        vid.last_error = str(res.get("error", res))
+                        vid.retry_count = (vid.retry_count or 0) + 1
+                        db.commit()
+                        record_event(
+                            "video",
+                            "error",
+                            "Đăng video lên Facebook thất bại.",
+                            db=db,
+                            details={"video_id": str(vid.id), "page_id": page.page_id, "response": res},
+                        )
+                finally:
+                    # Cleanup tệp tạm local trong mọi trường hợp.
+                    if is_temp_copy and local_path and os.path.exists(local_path):
+                        try:
+                            os.remove(local_path)
+                        except Exception as exc:
+                            logger.warning("Không thể xóa file tạm %s: %s", local_path, exc)
+
+                # Xóa storage SAU khi DB đã commit thành công (post success path).
+                if stored_path_to_cleanup:
                     try:
-                        os.remove(vid.file_path)
+                        if not storage.delete(stored_path_to_cleanup):
+                            record_event(
+                                "video",
+                                "warning",
+                                "Không xóa được tệp gốc trên storage sau khi post; có thể orphan.",
+                                db=db,
+                                details={"video_id": str(vid.id), "file_path": stored_path_to_cleanup},
+                            )
                     except Exception as exc:
                         record_event(
                             "video",
                             "warning",
-                            "Không thể xóa tệp tạm sau khi đăng.",
+                            "Lỗi khi xóa tệp gốc trên storage sau khi post.",
                             db=db,
-                            details={"video_id": str(vid.id), "file_path": vid.file_path, "error": str(exc)},
+                            details={"video_id": str(vid.id), "file_path": stored_path_to_cleanup, "error": str(exc)},
                         )
-            else:
-                vid.status = VideoStatus.failed
-                vid.last_error = str(res.get("error", res))
-                vid.retry_count = (vid.retry_count or 0) + 1
+            except Exception as per_video_exc:
+                # Một video lỗi bất ngờ không nên crash batch.
+                logger.exception("auto_post per-video error: %s", per_video_exc)
+                try:
+                    db.rollback()
+                except Exception:
+                    pass
                 record_event(
                     "video",
                     "error",
-                    "Đăng video lên Facebook thất bại.",
+                    "Lỗi không mong đợi khi xử lý video trong auto_post.",
                     db=db,
-                    details={"video_id": str(vid.id), "page_id": page.page_id, "response": res},
+                    details={"video_id": str(vid.id), "page_id": page.page_id, "error": str(per_video_exc)},
                 )
-
-            db.commit()
+                continue
     except Exception as exc:
         record_event(
             "worker",

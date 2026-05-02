@@ -1,6 +1,6 @@
 # Story 8.1: Tích Hợp Cloud Object Storage (Cloud Storage Integration)
 
-Status: ready-for-dev
+Status: done
 
 ## Story
 
@@ -102,41 +102,99 @@ if os.path.exists(vid.file_path):
 
 ## Tasks / Subtasks
 
-- [ ] Task 1: Tạo `storage_backend.py` với StorageBackend Protocol (AC: #1)
-  - [ ] 1.1: Implement `StorageBackend` Protocol (4 methods)
-  - [ ] 1.2: Implement `LocalStorage` — wrap `os.path.exists`, `os.remove`, `shutil.copy` (no-op)
-  - [ ] 1.3: Implement `S3Storage` — dùng `boto3.client("s3")`
-  - [ ] 1.4: Implement `get_storage()` factory function
-  - [ ] 1.5: `S3Storage.save()` — upload với `put_object` hoặc `upload_file`, trả `s3://bucket/key`
-  - [ ] 1.6: `S3Storage.exists()` — dùng `head_object` (try/except NoSuchKey)
-  - [ ] 1.7: `S3Storage.get_local_copy()` — download về `/tmp/storage_xxx.mp4`, trả local path
-  - [ ] 1.8: `S3Storage.delete()` — `delete_object`
+- [x] Task 1: Tạo `storage_backend.py` với StorageBackend Protocol (AC: #1)
+  - [x] 1.1: Implement `StorageBackend` Protocol (4 methods)
+  - [x] 1.2: Implement `LocalStorage` — wrap `os.path.exists`, `os.remove`, `shutil.copy` (no-op)
+  - [x] 1.3: Implement `S3Storage` — dùng `boto3.client("s3")`
+  - [x] 1.4: Implement `get_storage()` factory function
+  - [x] 1.5: `S3Storage.save()` — upload với `put_object` hoặc `upload_file`, trả `s3://bucket/key`
+  - [x] 1.6: `S3Storage.exists()` — dùng `head_object` (try/except NoSuchKey)
+  - [x] 1.7: `S3Storage.get_local_copy()` — download về `/tmp/storage_xxx.mp4`, trả local path
+  - [x] 1.8: `S3Storage.delete()` — `delete_object`
 
-- [ ] Task 2: Config vars + requirements (AC: #2)
-  - [ ] 2.1: Thêm `STORAGE_BACKEND`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_ENDPOINT_URL` vào `Settings` class
-  - [ ] 2.2: Thêm `boto3>=1.34.0` vào `requirements.txt`
-  - [ ] 2.3: Thêm vars vào `.env.example`
+- [x] Task 2: Config vars + requirements (AC: #2)
+  - [x] 2.1: Thêm `STORAGE_BACKEND`, `S3_BUCKET`, `S3_REGION`, `S3_ACCESS_KEY`, `S3_SECRET_KEY`, `S3_ENDPOINT_URL` vào `Settings` class
+  - [x] 2.2: Thêm `boto3>=1.34.0` vào `requirements.txt`
+  - [x] 2.3: Thêm vars vào `.env.example`
 
-- [ ] Task 3: Mở rộng download flow (AC: #3)
-  - [ ] 3.1: Inject `get_storage()` vào `sync_campaign_content()` TRƯỚC loop
-  - [ ] 3.2: Sau `download_video()` trả `out_path` → gọi `storage.save()` → cập nhật `file_path`
-  - [ ] 3.3: Xóa local temp khi S3 save thành công
-  - [ ] 3.4: Graceful fallback: nếu S3 save fail → log warning, giữ local path
+- [x] Task 3: Mở rộng download flow (AC: #3)
+  - [x] 3.1: Inject `get_storage()` vào `sync_campaign_content()` TRƯỚC loop
+  - [x] 3.2: Sau `download_video()` trả `out_path` → gọi `storage.save()` → cập nhật `file_path`
+  - [x] 3.3: Xóa local temp khi S3 save thành công
+  - [x] 3.4: Graceful fallback: nếu S3 save fail → log warning, giữ local path
 
-- [ ] Task 4: Mở rộng posting flow (AC: #4)
-  - [ ] 4.1: Inject `get_storage()` vào `auto_post_job()` trong `cron.py` TRƯỚC loop
-  - [ ] 4.2: Thay `os.path.exists(file_path)` → `storage.exists(file_path)`
-  - [ ] 4.3: Gọi `storage.get_local_copy(file_path)` để lấy local path trước khi upload FB
-  - [ ] 4.4: Sau upload FB thành công → `storage.delete(file_path)` thay vì `os.remove()`
-  - [ ] 4.5: Cleanup temp local file sau khi FB upload (nếu S3 backend)
+- [x] Task 4: Mở rộng posting flow (AC: #4)
+  - [x] 4.1: Inject `get_storage()` vào `auto_post_job()` trong `cron.py` TRƯỚC loop
+  - [x] 4.2: Thay `os.path.exists(file_path)` → `storage.exists(file_path)`
+  - [x] 4.3: Gọi `storage.get_local_copy(file_path)` để lấy local path trước khi upload FB
+  - [x] 4.4: Sau upload FB thành công → `storage.delete(file_path)` thay vì `os.remove()`
+  - [x] 4.5: Cleanup temp local file sau khi FB upload (nếu S3 backend)
 
-- [ ] Task 5: Unit tests (AC: #1-5)
-  - [ ] 5.1: Test `LocalStorage` — save/exists/delete/get_local_copy với mock filesystem
-  - [ ] 5.2: Test `S3Storage` — mock boto3 client, test save/exists/delete/get_local_copy
-  - [ ] 5.3: Test `get_storage()` factory — STORAGE_BACKEND=local → LocalStorage, s3 → S3Storage
-  - [ ] 5.4: Test download flow — S3 save success → file_path updated, local temp deleted
-  - [ ] 5.5: Test download flow — S3 save fail → fallback to local path
-  - [ ] 5.6: Test posting flow — S3 path → get_local_copy → upload → delete S3 → delete temp
+- [x] Task 5: Unit tests (AC: #1-5)
+  - [x] 5.1: Test `LocalStorage` — save/exists/delete/get_local_copy với mock filesystem
+  - [x] 5.2: Test `S3Storage` — mock boto3 client, test save/exists/delete/get_local_copy
+  - [x] 5.3: Test `get_storage()` factory — STORAGE_BACKEND=local → LocalStorage, s3 → S3Storage
+  - [x] 5.4: Test download flow — S3 save success → file_path updated, local temp deleted
+  - [x] 5.5: Test download flow — S3 save fail → fallback to local path
+  - [x] 5.6: Test posting flow — S3 path → get_local_copy → upload → delete S3 → delete temp
+
+### Review Findings (2026-05-02)
+
+- [x] [Review][Decision] Chiến lược dọn dẹp file tạm (/tmp) — đã giải quyết: thêm `finally` block xóa local_path khi `is_temp_copy`. [backend/app/worker/cron.py:155-161]
+- [x] [Review][Patch] Race condition trong retry_video_download — fixed: save trước, delete old sau commit. [backend/app/services/campaign_jobs.py:86-102]
+- [x] [Review][Patch] S3 Key Collision — fixed: thêm `unique_id = uuid4().hex[:8]` prefix vào filename. [backend/app/services/storage_backend.py:133-139]
+- [x] [Review][Patch] Thiếu xử lý Disk Full khi download từ S3 — fixed Round 2: thêm try/finally cleanup `tmp_path` partial khi `download_file` raise. [backend/app/services/storage_backend.py:179-198]
+- [x] [Review][Defer] Boto3 client có thể gây nghẽn I/O nếu không được bọc trong run_in_executor — deferred, app hiện tại đồng bộ (sync), chưa có asyncio path. Reconsider khi scale.
+- [x] [Review][Patch] Parse S3 Key thiếu linh hoạt với bucket name chứa dấu chấm — fixed: dùng `startswith(prefix)` + `s3_path[len(prefix):]`. [backend/app/services/storage_backend.py:69-75]
+- [x] [Review][Patch] Thiếu validation input cho S3_ENDPOINT_URL — fixed: strip + auto-prefix `https://`. [backend/app/services/storage_backend.py:118-121]
+- [x] [Review][Defer] Logging format chưa thống nhất giữa các service. [backend/app/services/campaign_jobs.py:105] — deferred, pre-existing
+- [x] [Review][Defer] Sử dụng utcnow() bị cảnh báo deprecated trong Python 3.12. [backend/app/services/storage_backend.py:122] — deferred, minor priority
+
+### Review Findings — Round 2 (2026-05-02)
+
+**Critical**
+
+- [x] [Review][Patch] Race condition giữa `auto_post_job` và `retry_video_download` — auto_post xóa `vid.file_path` rồi `= None`, retry chạy đồng thời có thể đọc/xóa cùng object. Cần `db.refresh(vid)` + status guard (`vid.status != posted`) hoặc `SELECT ... FOR UPDATE SKIP LOCKED` trước khi delete. [backend/app/worker/cron.py:142-143]
+- [x] [Review][Patch] `storage.delete` chạy TRƯỚC `db.commit()` trong auto_post — nếu commit DB fail sau khi đã xóa S3, video coi như chưa post nhưng file đã mất. Reorder: commit trước, sau đó mới delete storage; nếu delete fail thì log warning để janitor reconcile. [backend/app/worker/cron.py:142-143,163]
+- [x] [Review][Patch] `sync_campaign_content` không cleanup S3 object khi DB commit fail sau `storage.save` — orphan object vĩnh viễn. Bọc save+commit trong try; rollback S3 (delete key vừa upload) nếu DB fail. [backend/app/services/campaign_jobs.py:262-285]
+- [x] [Review][Patch] `retry_video_download` fallback xóa `video.file_path` cũ có thể xóa nhầm scheme khác (S3 path khi backend đã đổi sang local, hoặc ngược lại) — chỉ delete khi `out_path != video.file_path` và đảm bảo cùng scheme. [backend/app/services/campaign_jobs.py:120-123]
+
+**High**
+
+- [x] [Review][Patch] `auto_post_job` raise trong `get_local_copy` làm crash cả batch — wrap per-video logic trong try/except để mark single video failed và continue. [backend/app/worker/cron.py:118-163]
+- [x] [Review][Patch] `S3Storage.exists` swallow MỌI exception → trả False khi network/auth lỗi → mark video failed sai. Phân biệt `ClientError 404/NoSuchKey` (return False) vs lỗi transient (raise). [backend/app/services/storage_backend.py:89-95]
+- [x] [Review][Patch] `S3Storage.delete` swallow exception, không log → orphan object âm thầm. Log error trong except, phân biệt key-not-found (idempotent OK) với auth/network lỗi. [backend/app/services/storage_backend.py:81-87]
+- [x] [Review][Patch] `get_local_copy` partial download không cleanup `tmp_path` khi `download_file` raise giữa chừng — wrap trong try/finally để `os.remove(tmp_path)` khi exception. [backend/app/services/storage_backend.py:97-109]
+- [x] [Review][Patch] `_parse_key` fallback nguy hiểm với s3 path khác bucket — silently dùng wrong key. Raise `ValueError` khi prefix không match `s3://{self._bucket}/`. [backend/app/services/storage_backend.py:69-75]
+- [x] [Review][Patch] Boto3 client thiếu `Config(retries=adaptive, connect_timeout, read_timeout)` — video lớn upload qua mạng chậm sẽ timeout default 60s, không retry. Truyền `botocore.config.Config(retries={"max_attempts": 5, "mode": "adaptive"}, connect_timeout=10, read_timeout=120)`. [backend/app/services/storage_backend.py:56-67]
+
+**Medium**
+
+- [x] [Review][Patch] `is_temp_copy = local_path != vid.file_path` — string compare fragile (relative vs absolute path). Đề xuất: thêm method `requires_temp_copy()` vào Protocol hoặc trả tuple `(local_path, is_temp)` từ `get_local_copy`. [backend/app/worker/cron.py:120-121] [backend/app/services/campaign_jobs.py:267]
+- [x] [Review][Patch] `STORAGE_BACKEND` không validate — typo `"S3"`, `"local "` đều rơi về local mặc định, dữ liệu mong đợi vào S3 mất. Thêm `STORAGE_BACKEND.strip().lower()` và raise nếu không thuộc `{local, s3}`. [backend/app/services/storage_backend.py:114]
+- [x] [Review][Patch] `datetime.utcnow()` deprecated Python 3.12 — replace bằng `datetime.now(timezone.utc)`. [backend/app/services/storage_backend.py:135]
+- [x] [Review][Patch] `get_storage()` tạo S3Storage mới mỗi tick → boto3 client init lại, không reuse connection pool. Cache với `functools.lru_cache(maxsize=1)` hoặc module-level singleton. [backend/app/services/storage_backend.py:112-130]
+- [x] [Review][Patch] Test coverage thiếu: không test `S3Storage.delete` (cả happy path lẫn raise), không test `S3Storage.get_local_copy` (download fail → RuntimeError, partial file cleanup), không integration test fallback path của `sync_campaign_content`/`retry_video_download` khi `storage.save` raise. Bổ sung 4-5 test mới. [backend/tests/test_storage_backend.py]
+
+**Low**
+
+- [x] [Review][Patch] `build_s3_key` không sanitize tên file — ký tự đặc biệt (space, unicode, `?`, `#`, `..`) làm S3 key invalid hoặc khó list/presigned URL. Slugify basename hoặc `urllib.parse.quote`. [backend/app/services/storage_backend.py:138-139]
+- [x] [Review][Patch] `S3Storage.__init__` không có health check → credentials sai chỉ phát hiện khi save lần đầu. Thêm `head_bucket` optional + log warning hoặc raise. [backend/app/services/storage_backend.py:56-67]
+- [x] [Review][Patch] Empty/0-byte `out_path` không được check trước `storage.save` — upload file rỗng tiêu retry quota. Guard `os.path.getsize(out_path) > 0`. [backend/app/services/campaign_jobs.py:262]
+
+**Defer**
+
+- [x] [Review][Defer] `boto3` async/run_in_executor — deferred, app sync hiện chưa có asyncio path; reconsider khi tích hợp FastAPI async endpoints chạm vào storage.
+- [x] [Review][Defer] `/tmp` disk quota check khi nhiều worker download song song — deferred, infra/container concern, monitor qua observability.
+- [x] [Review][Defer] Validate hostname/port của `S3_ENDPOINT_URL` — deferred, runtime check là đủ với cấu hình admin.
+- [x] [Review][Defer] S3 secrets dùng plaintext env (không qua `decrypt_secret`) — deferred, convention khác với DB-stored token; chấp nhận cho infrastructure config.
+
+**Dismissed (noise/false positive)**
+
+- ❌ NameError `logger` chưa import trong cron.py — FALSE POSITIVE (defined at `cron.py:8`).
+- ❌ Scope creep `record_event` thêm field `storage` — beneficial cho observability, không phải lỗi.
+- ❌ Thiếu `test_local_storage_save` no-op — minor, đã cover gián tiếp qua factory test.
+- ❌ Auto-prefix `https://` cho endpoint là scope creep — đã được duyệt trong patch #6 round 1.
 
 ## Dev Notes
 
