@@ -50,5 +50,25 @@ So that có dữ liệu thực tế để đánh giá hiệu quả nội dung.
 - Đối với Facebook Graph API, `video_insights` thay đổi tên parameter đôi lần qua các version v18-v20. Luôn chắc chắn đọc giá trị reach thông qua `post_video_views` hoặc `post_impressions_unique`. Gốc call lấy metrics likes/comments chuẩn là `/{fb_post_id}?fields=likes.summary(true),comments.summary(true),shares`.
 
 ## 4. Status
-Status: `ready-for-dev`
-Note: Ultimate context engine analysis completed - comprehensive developer guide created.
+Status: `review`
+
+## 5. Tasks / Subtasks
+
+- [x] Task 1: Database Model & Schema
+  - [x] 1.1: Tạo model `VideoMetrics` trong `backend/app/models/models.py`.
+  - [x] 1.2: Viết script Alembic migration cho bảng `video_metrics`.
+- [x] Task 2: Xây dựng Metrics Collector Service
+  - [x] 2.1: Tạo `backend/app/services/metrics_collector.py` để gọi FB Graph API lấy metrics.
+  - [x] 2.2: Implement logic rate limit (max 200 calls/hour) và lưu history time-series.
+- [x] Task 3: Tích hợp Cron Job
+  - [x] 3.1: Đăng ký `metrics_job` vào APScheduler trong `backend/app/worker/cron.py` chạy mỗi 6h.
+- [x] Task 4: Kiểm thử
+  - [x] 4.1: Thêm unit tests cho parser metrics và rate limiter.
+
+## 6. Dev Agent Record
+### Agent Model Used
+Gemini 2.0 Flash
+
+### Change Log
+- 2026-05-03: Bắt đầu triển khai Story 11.1. Thêm tasks.
+

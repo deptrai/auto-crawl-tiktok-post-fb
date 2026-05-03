@@ -3,7 +3,7 @@ import enum
 import uuid
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, CheckConstraint, Column, DateTime, Enum, ForeignKey, Integer, String, UniqueConstraint, Uuid
+from sqlalchemy import JSON, Boolean, CheckConstraint, Column, DateTime, Enum, ForeignKey, Index, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
@@ -230,3 +230,23 @@ class RuntimeSetting(Base):
     updated_by_user_id = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class VideoMetrics(Base):
+    __tablename__ = "video_metrics"
+    __table_args__ = (
+        Index("ix_video_metrics_video_fetched", "video_id", "fetched_at"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    video_id = Column(Uuid(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
+    fb_post_id = Column(String, index=True, nullable=False)
+    views = Column(Integer, default=0, nullable=False)
+    likes = Column(Integer, default=0, nullable=False)
+    comments = Column(Integer, default=0, nullable=False)
+    shares = Column(Integer, default=0, nullable=False)
+    reach = Column(Integer, default=0, nullable=False)
+    fetched_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+
+    video = relationship("Video", backref="metrics")
