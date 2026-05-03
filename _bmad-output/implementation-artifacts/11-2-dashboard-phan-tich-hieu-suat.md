@@ -52,5 +52,32 @@ So that biết chiến dịch nào đang hoạt động tốt để tập trung 
 - React Charts (ví dụ thư viện `Recharts`): Để render tốt và an toàn, nhớ cung cấp trường `ResponsiveContainer` bọc ngoài, và truyền data chuẩn cấu trúc ma trận (array of dict) có đủ nhãn X Axis `[ { "date": "2026-04-01", "views": 100 } ]` và Y Axis. Nới lỏng check rendering StrictMode nếu xuất hiện hiện tượng Chart resize loop theo bug React 18+.
 
 ## 4. Status
-Status: `ready-for-dev`
-Note: Ultimate context engine analysis completed - comprehensive developer guide created.
+Status: `review`
+
+## 5. Tasks / Subtasks
+
+- [x] Task 1: Xây dựng Backend Analytics Service (SQLAlchemy)
+  - [x] 1.1: Tạo `backend/app/services/analytics_service.py`.
+  - [x] 1.2: Viết hàm query tổng quan chiến dịch (chỉ lấy metrics mới nhất của mỗi video).
+  - [x] 1.3: Viết hàm query top 5 video theo views/likes.
+  - [x] 1.4: Viết hàm query time-series data phục vụ vẽ biểu đồ (group theo ngày).
+- [x] Task 2: Tạo Router và API Endpoint
+  - [x] 2.1: Tạo `backend/app/api/analytics.py` (và khai báo schema).
+  - [x] 2.2: Mount router `/analytics` vào `backend/app/main.py` (hoặc `backend/app/api/__init__.py`).
+- [x] Task 3: Xây dựng Frontend UI Analytics Tab
+  - [x] 3.1: Cài đặt thư viện vẽ biểu đồ (`recharts`).
+  - [x] 3.2: Tạo Tab/Page Analytics trong `frontend/src/App.jsx` (hoặc tạo folder features).
+  - [x] 3.3: Dùng `useQuery` (hoặc `useEffect` fetch data) để lấy data từ backend.
+  - [x] 3.4: Hiển thị các Summary Cards (Tổng views, likes, comments, engagement rate).
+  - [x] 3.5: Hiển thị Line chart (Trend) và Bảng Top 5 video.
+- [x] Task 4: Kiểm thử
+  - [x] 4.1: Viết unit tests cho các hàm tính toán/query trong `analytics_service.py`.
+  - [x] 4.2: Đảm bảo giao diện hoạt động không bị crash.
+
+## 6. Dev Agent Record
+### Agent Model Used
+Gemini 2.0 Flash
+
+### Change Log
+- 2026-05-04: Bắt đầu triển khai Story 11.2. Thêm tasks.
+

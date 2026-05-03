@@ -27,7 +27,17 @@ import {
   Trash2,
   UserPlus,
   Zap,
+  LineChart,
 } from 'lucide-react';
+import {
+  LineChart as RechartsLineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from 'recharts';
 
 const API_URL = '/api';
 const AUTO_REFRESH_MS = 5000;
@@ -434,6 +444,12 @@ function App() {
   const [taskPage, setTaskPage] = useState(1);
   const [eventPage, setEventPage] = useState(1);
 
+  // Analytics State
+  const [analyticsCampaignId, setAnalyticsCampaignId] = useState('');
+  const [analyticsSummary, setAnalyticsSummary] = useState(null);
+  const [analyticsTopVideos, setAnalyticsTopVideos] = useState([]);
+  const [analyticsTimeSeries, setAnalyticsTimeSeries] = useState([]);
+
   const isAdmin = currentUser?.role === 'admin';
   const staleWorkers = workers.filter((worker) => !worker.is_online);
   const onlineWorkers = workers.filter((worker) => worker.is_online).length;
@@ -483,6 +499,32 @@ function App() {
 
   const setBusy = (key, value) => setActionState((current) => ({ ...current, [key]: value }));
   const showNotice = (type, message) => setNotice({ type, message });
+
+  const fetchAnalyticsData = async (campaignId) => {
+    if (!campaignId) return;
+    try {
+      const [summaryRes, topVideosRes, timeSeriesRes] = await Promise.all([
+        requestJson(`${API_URL}/analytics/${campaignId}/summary`),
+        requestJson(`${API_URL}/analytics/${campaignId}/top-videos`),
+        requestJson(`${API_URL}/analytics/${campaignId}/time-series`)
+      ]);
+      setAnalyticsSummary(summaryRes?.data || null);
+      setAnalyticsTopVideos(topVideosRes?.data || []);
+      setAnalyticsTimeSeries(timeSeriesRes?.data || []);
+    } catch (e) {
+      console.error('Failed to fetch analytics', e);
+    }
+  };
+
+  useEffect(() => {
+    if (activeSection === 'analytics' && campaigns.length > 0 && !analyticsCampaignId) {
+      setAnalyticsCampaignId(campaigns[0].id);
+    }
+  }, [activeSection, campaigns, analyticsCampaignId]);
+
+  useEffect(() => {
+    fetchAnalyticsData(analyticsCampaignId);
+  }, [analyticsCampaignId]);
 
   const fetchDashboard = async () => {
     if (!token) return;
@@ -1715,11 +1757,91 @@ function App() {
     </div>
   );
 
+  const renderAnalyticsSection = () => (
+    <div className="grid gap-6">
+      <Panel eyebrow="Phân Tích Hiệu Suất" title="Dashboard Analytics">
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <label className="flex items-center gap-3">
+            <span className="text-sm font-medium text-[var(--text-soft)]">Chọn Chiến Dịch:</span>
+            <select
+              className={cx(FIELD_CLASS, 'w-64')}
+              value={analyticsCampaignId}
+              onChange={(e) => setAnalyticsCampaignId(e.target.value)}
+            >
+              {campaigns.length === 0 && <option value="" disabled>Chưa có chiến dịch</option>}
+              {campaigns.map((c) => (
+                <option key={c.id} value={c.id} className="text-[var(--bg-card)]">{c.name || 'Chiến dịch (không tên)'}</option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        {analyticsSummary ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
+            <MetricCard icon={LineChart} label="Tổng Views" value={analyticsSummary.total_views.toLocaleString()} detail="Lượt xem trên FB" tone="sky" />
+            <MetricCard icon={LineChart} label="Tương Tác" value={(analyticsSummary.total_likes + analyticsSummary.total_comments + analyticsSummary.total_shares).toLocaleString()} detail="Likes, Comments, Shares" tone="emerald" />
+            <MetricCard icon={LineChart} label="Engagement Rate" value={`${analyticsSummary.average_engagement_rate}%`} detail="Tính trên Reach hoặc Views" tone="amber" />
+            <MetricCard icon={LineChart} label="Video Đã Đăng" value={analyticsSummary.total_videos.toLocaleString()} detail="Tổng số video" tone="slate" />
+          </div>
+        ) : (
+          <EmptyState title="Không có dữ liệu tổng quan" description="Chưa có số liệu cho chiến dịch này." />
+        )}
+
+        <div className="grid gap-6 lg:grid-cols-2">
+          <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
+            <h3 className="mb-4 font-display text-lg font-semibold text-white">Xu Hướng Tương Tác (30 ngày)</h3>
+            {analyticsTimeSeries.length > 0 ? (
+              <div className="h-64 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <RechartsLineChart data={analyticsTimeSeries}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.1)" />
+                    <XAxis dataKey="date" stroke="rgba(255,255,255,0.5)" tick={{ fontSize: 12 }} />
+                    <YAxis stroke="rgba(255,255,255,0.5)" tick={{ fontSize: 12 }} />
+                    <Tooltip
+                      contentStyle={{ backgroundColor: '#06101a', borderColor: 'rgba(255,255,255,0.1)', borderRadius: '12px' }}
+                      itemStyle={{ color: '#fff' }}
+                    />
+                    <Line type="monotone" dataKey="views" name="Lượt xem" stroke="#38bdf8" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="likes" name="Lượt thích" stroke="#34d399" strokeWidth={2} dot={false} />
+                  </RechartsLineChart>
+                </ResponsiveContainer>
+              </div>
+            ) : (
+              <div className="flex h-64 items-center justify-center text-sm text-[var(--text-soft)]">Không có dữ liệu chuỗi thời gian.</div>
+            )}
+          </div>
+
+          <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
+            <h3 className="mb-4 font-display text-lg font-semibold text-white">Top 5 Video Viral</h3>
+            {analyticsTopVideos.length > 0 ? (
+              <div className="space-y-4">
+                {analyticsTopVideos.map((video, index) => (
+                  <div key={video.video_id} className="flex items-center gap-4 rounded-xl bg-white/5 p-3">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--accent)] font-bold text-black">
+                      #{index + 1}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-white">{video.original_caption || video.original_id}</div>
+                      <div className="mt-1 text-xs text-[var(--text-soft)]">{video.views.toLocaleString()} views • {video.likes.toLocaleString()} likes</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex h-32 items-center justify-center text-sm text-[var(--text-soft)]">Chưa có bảng xếp hạng.</div>
+            )}
+          </div>
+        </div>
+      </Panel>
+    </div>
+  );
+
   const renderActiveSection = () => {
     switch (activeSection) {
       case 'campaigns': return renderCampaignSection();
       case 'queue': return renderQueueSection();
       case 'engagement': return renderEngagementSection();
+      case 'analytics': return renderAnalyticsSection();
       case 'operations': return renderOperationsSection();
       case 'security': return renderSecuritySection();
       case 'overview':
@@ -1849,6 +1971,15 @@ function App() {
                 </Panel>
               </aside>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
+    </div>
           </div>
         </div>
       </div>

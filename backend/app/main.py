@@ -61,6 +61,7 @@ app.include_router(campaigns.router, dependencies=[Depends(require_authenticated
 app.include_router(facebook.router, dependencies=[Depends(require_authenticated_user)])
 app.include_router(system.router, dependencies=[Depends(require_authenticated_user)])
 app.include_router(users.router, dependencies=[Depends(require_authenticated_user)])
+app.include_router(analytics.router, dependencies=[Depends(require_authenticated_user)])
 app.include_router(webhooks.router)
 
 os.makedirs(settings.DOWNLOAD_DIR, exist_ok=True)
