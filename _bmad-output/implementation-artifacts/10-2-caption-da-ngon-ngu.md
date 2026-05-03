@@ -45,7 +45,7 @@ So that nội dung phù hợp với thị trường mục tiêu mà không cần
 - Ở prompt của 'auto' mode: Nên quy định ngầm rằng Prompt cần ngắn gọn: 'Detect language of the original text and respond strictly in the same language. Do not output anything else'.
 
 ## 4. Status
-Status: `review`
+Status: `done`
 
 ## 5. Tasks / Subtasks
 
@@ -69,3 +69,17 @@ Gemini 2.0 Flash
 
 ### Change Log
 - 2026-05-02: Triển khai toàn bộ logic đa ngôn ngữ. Thêm trường `caption_language` vào DB, nâng cấp service AI và UI frontend.
+
+### Review Findings (2026-05-03)
+
+- [x] [Review][Patch] camelCase mapping mismatch in Campaign serialization [backend/app/api/campaigns.py:119]
+- [x] [Review][Patch] CampaignUpdate allows explicit nulls for caption_language [backend/app/api/campaigns.py:64]
+- [x] [Review][Patch] Missing required phrase in 'auto' system prompt [backend/app/services/ai_generator.py:68]
+- [x] [Review][Patch] Hardcoded inline style in <select> options [frontend/src/App.jsx:1082]
+- [x] [Review][Defer] Missing frontend Zod schema [] — deferred, pre-existing
+- [x] [Review][Defer] Hardcoded Enum values across layers [] — deferred, pre-existing
+- [x] [Review][Defer] Brittle Alembic downgrade [] — deferred, pre-existing
+- [x] [Review][Defer] Implicit fallback to 'auto' for invalid target_language values [] — deferred, pre-existing
+- [x] [Review][Defer] Worker uses fallback "auto" when campaign is missing [] — deferred, pre-existing
+- [x] [Review][Defer] Missing integration tests for language config [] — deferred, pre-existing
+- [x] [Review][Defer] Prompt numbered list fragility [] — deferred, pre-existing

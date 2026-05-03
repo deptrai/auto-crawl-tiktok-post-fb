@@ -52,7 +52,7 @@ class CampaignUpdate(BaseModel):
     filter_blocklist_keywords: list[Annotated[str, Field(max_length=200)]] | None = Field(default=None, max_length=500)
     filter_allowlist_hashtags: list[Annotated[str, Field(max_length=100)]] | None = Field(default=None, max_length=500)
     # Story 10.2: Multilingual caption config
-    caption_language: Literal["vi", "en", "auto"] | None = None
+    caption_language: Literal["vi", "en", "auto"] = Field(default=None)
 
 
 class VideoCaptionUpdate(BaseModel):
@@ -119,7 +119,7 @@ def serialize_campaign(campaign: Campaign, summary_map, page_name_map):
         "filter_min_likes": campaign.filter_min_likes,
         "filter_blocklist_keywords": campaign.filter_blocklist_keywords or [],
         "filter_allowlist_hashtags": campaign.filter_allowlist_hashtags or [],
-        "captionLanguage": campaign.caption_language,
+        "caption_language": campaign.caption_language,
         "last_synced_at": serialize_datetime(campaign.last_synced_at),
         "last_sync_status": campaign.last_sync_status or "idle",
         "last_sync_error": campaign.last_sync_error,

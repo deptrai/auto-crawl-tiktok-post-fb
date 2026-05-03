@@ -1076,9 +1076,9 @@ function App() {
             <label className="block space-y-2">
               <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Ngôn ngữ Caption</span>
               <select className={FIELD_CLASS} value={formData.caption_language} onChange={(event) => setFormData({ ...formData, caption_language: event.target.value })}>
-                <option value="auto" style={{ color: '#06101a' }}>Tự động (theo video gốc)</option>
-                <option value="vi" style={{ color: '#06101a' }}>Tiếng Việt</option>
-                <option value="en" style={{ color: '#06101a' }}>Tiếng Anh</option>
+                <option value="auto" className="text-[var(--bg-card)]">Tự động (theo video gốc)</option>
+                <option value="vi" className="text-[var(--bg-card)]">Tiếng Việt</option>
+                <option value="en" className="text-[var(--bg-card)]">Tiếng Anh</option>
               </select>
             </label>
           </div>

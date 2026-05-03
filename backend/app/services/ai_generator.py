@@ -66,7 +66,7 @@ def _build_system_instruction(
         # Chế độ 'auto': hướng dẫn model tự detect
         lang_instruction = (
             "Mệnh lệnh: Detect the language of the original text and respond strictly "
-            "in that same language."
+            "in that same language. Do not output anything else."
         )
 
     return f"""Bạn là Trùm Copywriter chuyên viral content Facebook.

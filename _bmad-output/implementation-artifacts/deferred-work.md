@@ -46,3 +46,13 @@
 
 - **Optimistic locking cho `FacebookPage`** — Race brand_voice edit vs token refresh có thể last-writer-wins. Cần `updated_at` check hoặc version column. Broader concern, không scope 10.1. [backend/app/api/facebook.py:81-86]
 - **i18n: brand_voice preset descriptions hardcoded tiếng Việt** — Khi Story 10.2 thêm `caption_language=en/auto`, preset descriptions vẫn là tiếng Việt → Gemini có thể leak VI text vào EN output. Reconsider khi implement 10.2. [backend/app/services/ai_generator.py:13-17]
+
+## Deferred from: code review of 10-2-caption-da-ngon-ngu.md (2026-05-03)
+
+- Missing frontend Zod schema
+- Hardcoded Enum values across layers
+- Brittle Alembic downgrade
+- Implicit fallback to 'auto' for invalid target_language values
+- Worker uses fallback "auto" when campaign is missing
+- Missing integration tests for language config
+- Prompt numbered list fragility
