@@ -126,7 +126,7 @@ development_status:
 
   # ─── PHASE 2 — SPRINT 4 ──────────────────────────────────────────────────
   epic-11: in-progress
-  11-1-thu-thap-engagement-metrics: review
+  11-1-thu-thap-engagement-metrics: done
   11-2-dashboard-phan-tich-hieu-suat: ready-for-dev
   epic-11-retrospective: optional
 

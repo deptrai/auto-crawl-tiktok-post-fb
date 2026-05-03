@@ -63,3 +63,8 @@
 - Hardcoded fallback tags ignore language context
 - Missing Integration Tests
 - Regex fails on emojis
+
+## Deferred from: code review of 11-1-thu-thap-engagement-metrics.md (2026-05-03)
+
+- Data Hoarding Without Pruning (inserts new row every 6 hours)
+- Job stalls on dead network

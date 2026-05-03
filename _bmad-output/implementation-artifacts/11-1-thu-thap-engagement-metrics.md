@@ -50,7 +50,7 @@ So that có dữ liệu thực tế để đánh giá hiệu quả nội dung.
 - Đối với Facebook Graph API, `video_insights` thay đổi tên parameter đôi lần qua các version v18-v20. Luôn chắc chắn đọc giá trị reach thông qua `post_video_views` hoặc `post_impressions_unique`. Gốc call lấy metrics likes/comments chuẩn là `/{fb_post_id}?fields=likes.summary(true),comments.summary(true),shares`.
 
 ## 4. Status
-Status: `review`
+Status: `done`
 
 ## 5. Tasks / Subtasks
 
@@ -72,3 +72,23 @@ Gemini 2.0 Flash
 ### Change Log
 - 2026-05-03: Bắt đầu triển khai Story 11.1. Thêm tasks.
 
+### Review Findings (2026-05-03)
+
+- [x] [Review][Patch] Synchronous Thread Blocking (`time.sleep(18)`) blocks worker thread [backend/app/services/metrics_collector.py]
+- [x] [Review][Patch] Missing Transaction Commit for System Events in job error handler [backend/app/worker/cron.py]
+- [x] [Review][Patch] Missing Transaction Commit for Rate Limit error logging [backend/app/services/metrics_collector.py]
+- [x] [Review][Patch] Integer Overflow Timebomb (`views`, `likes`, `reach` as `Integer` instead of `BigInteger`) [backend/app/models/models.py]
+- [x] [Review][Patch] Useless tenacity retry for Facebook API RateLimitError [backend/app/services/metrics_collector.py]
+- [x] [Review][Patch] Missing tests for parser logic and preventative rate limiter [backend/tests/test_metrics_collector.py]
+- [x] [Review][Patch] Blind Exception Rollbacks affects shared session across pages [backend/app/services/metrics_collector.py]
+- [x] [Review][Patch] Sloppy Chunk Iteration queries `None` key in response [backend/app/services/metrics_collector.py]
+- [x] [Review][Patch] Inconsistent Timezone Handling (`fetched_at` vs `created_at`) [backend/app/models/models.py]
+- [x] [Review][Patch] Unhandled ValueError if response is not valid JSON [backend/app/services/metrics_collector.py:27]
+- [x] [Review][Patch] AttributeError if API returns error as string instead of object [backend/app/services/metrics_collector.py:30]
+- [x] [Review][Patch] AttributeError if API returns explicit null for likes/comments/shares [backend/app/services/metrics_collector.py:86]
+- [x] [Review][Patch] AttributeError if API returns explicit null for video_insights [backend/app/services/metrics_collector.py:90]
+- [x] [Review][Patch] AttributeError if Insights values array contains null element [backend/app/services/metrics_collector.py:95]
+- [x] [Review][Patch] Memory exhaustion if hundreds of thousands of videos exist [backend/app/worker/cron.py]
+- [x] [Review][Patch] Deviation in Cron Job Naming (`scheduled_metrics_collection_job` instead of `metrics_job`) [backend/app/worker/cron.py]
+- [x] [Review][Defer] Data Hoarding Without Pruning (inserts new row every 6 hours) [backend/app/models/models.py] — deferred, pre-existing
+- [x] [Review][Defer] Job stalls on dead network [backend/app/services/metrics_collector.py:127] — deferred, pre-existing

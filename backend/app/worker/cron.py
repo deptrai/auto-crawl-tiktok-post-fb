@@ -481,14 +481,14 @@ def token_health_check_job():
         db.close()
 
 
-def scheduled_metrics_collection_job():
+def metrics_job():
     db: Session = SessionLocal()
     update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="thu thập metrics", db=db)
     
     try:
         collect_metrics_job(db)
     except Exception as exc:
-        logger.error(f"Lỗi trong scheduled_metrics_collection_job: {exc}")
+        logger.error(f"Lỗi trong metrics_job: {exc}")
         logger.error(traceback.format_exc())
         db.rollback()
         record_event(
@@ -498,6 +498,7 @@ def scheduled_metrics_collection_job():
             db=db,
             details={"error": str(exc)[:500], "traceback": traceback.format_exc()[:1000]}
         )
+        db.commit()
     finally:
         update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="idle", db=db)
         db.close()
@@ -557,12 +558,12 @@ def start_scheduler():
             # First run sau 10 phút từ lúc khởi động
             next_run_time=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
         )
-    if not scheduler.get_job("scheduled_metrics_collection_job"):
+    if not scheduler.get_job("metrics_job"):
         scheduler.add_job(
-            scheduled_metrics_collection_job,
+            metrics_job,
             "interval",
             hours=6,
-            id="scheduled_metrics_collection_job",
+            id="metrics_job",
             replace_existing=True,
             max_instances=1,
             coalesce=True,

@@ -20,22 +20,27 @@ class AuthFailedError(Exception):
 @retry(
     wait=wait_exponential(multiplier=1, min=4, max=60),
     stop=stop_after_attempt(3),
-    retry=retry_if_exception_type((requests.RequestException, RateLimitError)),
+    retry=retry_if_exception_type((requests.RequestException,)),
     reraise=True
 )
 def _fetch_batch_metrics(url: str, params: dict):
     resp = requests.get(url, params=params, timeout=30)
-    data = resp.json()
+    try:
+        data = resp.json()
+    except ValueError:
+        logger.error(f"Invalid JSON response: {resp.text}")
+        return {}
     
-    if "error" in data:
-        err_code = data["error"].get("code")
-        if err_code in [190, 102]:
-            raise AuthFailedError(f"Token expired or invalid: {data['error']}")
-        elif err_code in [4, 17, 32, 613]:
-            raise RateLimitError(f"Rate limited by Facebook: {data['error']}")
-        else:
-            logger.error(f"Graph API error: {data['error']}")
-            return {} # Other errors, return empty to skip
+    err_obj = data.get("error")
+    if err_obj:
+        if isinstance(err_obj, dict):
+            err_code = err_obj.get("code")
+            if err_code in [190, 102]:
+                raise AuthFailedError(f"Token expired or invalid: {err_obj}")
+            elif err_code in [4, 17, 32, 613]:
+                raise RateLimitError(f"Rate limited by Facebook: {err_obj}")
+        logger.error(f"Graph API error: {err_obj}")
+        return {} # Other errors, return empty to skip
             
     if resp.status_code != 200:
         logger.error(f"HTTP error {resp.status_code}: {resp.text}")
@@ -66,15 +71,12 @@ def fetch_metrics_for_page_videos(db: Session, page: FacebookPage, videos: list[
         }
         
         try:
-            # Token Bucket / Rate Limiter logic: max 200 calls/hour.
-            # To be safe, we sleep 18s per request (200 requests/3600s = 1 request/18s).
-            # We sleep BEFORE the call to ensure spacing.
-            time.sleep(18)
-            
             data = _fetch_batch_metrics(url, params)
             
             for video in chunk:
                 fb_id = video.fb_post_id
+                if not fb_id:
+                    continue
                 v_data = data.get(fb_id)
                 if not v_data:
                     continue
@@ -83,19 +85,19 @@ def fetch_metrics_for_page_videos(db: Session, page: FacebookPage, videos: list[
                     logger.warning(f"Error fetching metrics for video {fb_id}: {v_data['error']}")
                     continue
                 
-                likes = v_data.get("likes", {}).get("summary", {}).get("total_count", 0)
-                comments = v_data.get("comments", {}).get("summary", {}).get("total_count", 0)
-                shares = v_data.get("shares", {}).get("count", 0)
+                likes = (v_data.get("likes") or {}).get("summary", {}).get("total_count", 0)
+                comments = (v_data.get("comments") or {}).get("summary", {}).get("total_count", 0)
+                shares = (v_data.get("shares") or {}).get("count", 0)
                 
-                insights = v_data.get("video_insights", {}).get("data", [])
+                insights = (v_data.get("video_insights") or {}).get("data", [])
                 views = 0
                 reach = 0
                 for insight in insights:
                     name = insight.get("name")
-                    values = insight.get("values", [])
+                    values = insight.get("values") or []
                     if not values:
                         continue
-                    val = values[0].get("value", 0)
+                    val = (values[0] or {}).get("value", 0)
                     if name == "post_video_views":
                         views = val
                     elif name in ["post_impressions_unique", "post_video_views_unique"]:
@@ -126,6 +128,7 @@ def fetch_metrics_for_page_videos(db: Session, page: FacebookPage, videos: list[
         except RateLimitError as e:
             logger.error(f"RATE_LIMITED for page {page.page_id}: {e}")
             record_event("metrics_collector", "error", "RATE_LIMITED", db=db, details={"page_id": page.page_id, "error": str(e)})
+            db.commit()
             break # Stop processing this page, retry next time
         except Exception as e:
             logger.error(f"Exception fetching metrics for page {page.page_id}: {e}")
@@ -133,24 +136,28 @@ def fetch_metrics_for_page_videos(db: Session, page: FacebookPage, videos: list[
 
 def collect_metrics_job(db: Session):
     logger.info("Starting metrics collection job...")
-    videos = db.query(Video).filter(
-        Video.status.in_([VideoStatus.posted, VideoStatus.published]),
-        Video.fb_post_id.isnot(None)
-    ).all()
+    pages = db.query(FacebookPage).filter(FacebookPage.auto_refresh_enabled != False).all()
     
-    videos_by_page = {}
-    for v in videos:
-        if v.campaign and v.campaign.target_page_id:
-            page_id = v.campaign.target_page_id
-            videos_by_page.setdefault(page_id, []).append(v)
+    for page in pages:
+        # Load campaigns manually to avoid uninitialized relationship issues
+        from app.models.models import Campaign
+        campaign_ids = [c.id for c in db.query(Campaign.id).filter(Campaign.target_page_id == page.page_id).all()]
+        if not campaign_ids:
+            continue
             
-    for page_id, vids in videos_by_page.items():
-        page = db.query(FacebookPage).filter_by(page_id=page_id).first()
-        # Only collect if auto_refresh_enabled is not explicitly False? 
-        # The requirement says "tắt cron fetching cho Page bị lỗi". 
-        # We will use auto_refresh_enabled as a proxy for "active" page, or just check it.
-        # But to be safe, if we set auto_refresh_enabled to False on Auth error, we should skip it.
-        if page and page.auto_refresh_enabled is not False:
+        offset = 0
+        limit = 1000
+        while True:
+            vids = db.query(Video).filter(
+                Video.campaign_id.in_(campaign_ids),
+                Video.status.in_([VideoStatus.posted, VideoStatus.published]),
+                Video.fb_post_id.isnot(None)
+            ).order_by(Video.id).offset(offset).limit(limit).all()
+            
+            if not vids:
+                break
+                
             fetch_metrics_for_page_videos(db, page, vids)
+            offset += limit
             
     logger.info("Finished metrics collection job.")
