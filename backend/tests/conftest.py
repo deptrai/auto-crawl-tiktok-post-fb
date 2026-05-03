@@ -26,7 +26,7 @@ os.environ["SCHEDULER_ENABLED"] = "false"
 os.environ["BACKGROUND_JOBS_MODE"] = "dedicated-worker"
 os.environ["APP_ROLE"] = "api"
 
-from app.api import auth, campaigns, facebook, system, users, webhooks
+from app.api import auth, campaigns, facebook, system, users, webhooks, analytics, youtube
 from app.api.auth import require_authenticated_user
 from app.core.database import Base, SessionLocal, engine
 from app.services.accounts import ensure_default_admin
@@ -62,6 +62,8 @@ def client():
     app.include_router(facebook.router, dependencies=[Depends(require_authenticated_user)])
     app.include_router(system.router, dependencies=[Depends(require_authenticated_user)])
     app.include_router(users.router, dependencies=[Depends(require_authenticated_user)])
+    app.include_router(analytics.router, dependencies=[Depends(require_authenticated_user)])
+    app.include_router(youtube.router)
     app.include_router(webhooks.router)
     with TestClient(app) as test_client:
         yield test_client

@@ -14,7 +14,9 @@ from app.core.config import settings
 from app.core.database import SessionLocal
 from app.models.models import Campaign, CampaignStatus, FacebookPage, Video, VideoStatus, TaskQueue, TaskStatus
 from app.services.ai_generator import generate_caption
-from app.services.fb_graph import upload_video_to_facebook
+from app.services.publishers.facebook import FacebookPublisher
+from app.services.publishers.youtube import YouTubePublisher
+from app.models.models import YouTubeChannel
 from app.services.observability import record_event, update_worker_heartbeat
 from app.services.security import decrypt_secret
 from app.services.storage_backend import get_storage
@@ -37,15 +39,21 @@ def auto_post_job():
     storage = get_storage()
     try:
         now = datetime.now(timezone.utc).replace(tzinfo=None)
-        pages = db.query(FacebookPage).all()
+        
+        # Get active auto_post campaigns
+        campaigns = db.query(Campaign).filter(
+            Campaign.status == CampaignStatus.active,
+            Campaign.auto_post == True
+        ).all()
 
-        for page in pages:
+        for campaign in campaigns:
+            if not campaign.target_page_id:
+                continue
+
             vid = (
                 db.query(Video)
-                .join(Campaign)
                 .filter(
-                    Campaign.target_page_id == page.page_id,
-                    Campaign.status == CampaignStatus.active,
+                    Video.campaign_id == campaign.id,
                     Video.status == VideoStatus.ready,
                     Video.publish_time <= now,
                 )
@@ -53,7 +61,7 @@ def auto_post_job():
                 .first()
             )
 
-            if not vid or not vid.campaign.auto_post:
+            if not vid:
                 continue
 
             update_worker_heartbeat(
@@ -62,22 +70,54 @@ def auto_post_job():
                 status="đang đăng video",
                 current_task_type="auto_post",
                 current_task_id=str(vid.id),
-                details={"page_id": page.page_id, "video_id": str(vid.id)},
+                details={"campaign_id": str(campaign.id), "video_id": str(vid.id)},
                 db=db,
             )
 
-            try:
-                access_token = decrypt_secret(page.long_lived_access_token)
-            except ValueError as exc:
-                vid.status = VideoStatus.failed
-                vid.last_error = str(exc)
-                vid.retry_count = (vid.retry_count or 0) + 1
-                db.commit()
-                continue
+            platform = campaign.target_platform.value if hasattr(campaign.target_platform, "value") else campaign.target_platform
+            
+            access_token = None
+            refresh_token = None
+            page_id = campaign.target_page_id
+            brand_voice = None
+            brand_voice_preset = "casual"
+            client_id = None
+            client_secret = None
+
+            if platform == "youtube":
+                channel = db.query(YouTubeChannel).filter(YouTubeChannel.channel_id == page_id).first()
+                if not channel:
+                    vid.status = VideoStatus.failed
+                    vid.last_error = "YouTube Channel chưa được cấu hình."
+                    vid.retry_count = (vid.retry_count or 0) + 1
+                    db.commit()
+                    continue
+                access_token = channel.access_token
+                refresh_token = channel.refresh_token
+                client_id = os.environ.get("GOOGLE_CLIENT_ID")
+                client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
+            else:
+                page = db.query(FacebookPage).filter(FacebookPage.page_id == page_id).first()
+                if not page:
+                    vid.status = VideoStatus.failed
+                    vid.last_error = "Trang Facebook chưa được cấu hình."
+                    vid.retry_count = (vid.retry_count or 0) + 1
+                    db.commit()
+                    continue
+                try:
+                    access_token = decrypt_secret(page.long_lived_access_token)
+                except ValueError as exc:
+                    vid.status = VideoStatus.failed
+                    vid.last_error = str(exc)
+                    vid.retry_count = (vid.retry_count or 0) + 1
+                    db.commit()
+                    continue
+                brand_voice = page.brand_voice
+                brand_voice_preset = page.brand_voice_preset
 
             if not access_token:
                 vid.status = VideoStatus.failed
-                vid.last_error = "Trang Facebook chưa có mã truy cập hợp lệ."
+                vid.last_error = "Chưa có mã truy cập hợp lệ."
                 vid.retry_count = (vid.retry_count or 0) + 1
                 db.commit()
                 continue
@@ -86,10 +126,10 @@ def auto_post_job():
                 try:
                     vid.ai_caption = generate_caption(
                         vid.original_caption,
-                        brand_voice=page.brand_voice,
-                        brand_voice_preset=page.brand_voice_preset,
-                        target_language=vid.campaign.caption_language if vid.campaign else "auto",
-                        optimize_hashtags=vid.campaign.hashtag_optimization if vid.campaign else False
+                        brand_voice=brand_voice,
+                        brand_voice_preset=brand_voice_preset,
+                        target_language=campaign.caption_language or "auto",
+                        optimize_hashtags=campaign.hashtag_optimization or False
                     )
                     db.commit()
                 except Exception as exc:
@@ -102,17 +142,14 @@ def auto_post_job():
                         "error",
                         "Tạo chú thích AI trước khi đăng thất bại.",
                         db=db,
-                        details={"video_id": str(vid.id), "page_id": page.page_id, "error": str(exc)},
+                        details={"video_id": str(vid.id), "error": str(exc)},
                     )
                     continue
 
-            # Per-video try/except: một video lỗi không được crash cả batch.
             try:
                 try:
                     file_exists = bool(vid.file_path) and storage.exists(vid.file_path)
                 except Exception as exc:
-                    # storage.exists raise (auth/network) → không kết luận file biến mất,
-                    # log và bỏ qua lượt này để retry tick sau.
                     record_event(
                         "video",
                         "warning",
@@ -136,7 +173,6 @@ def auto_post_job():
                     )
                     continue
 
-                # Lấy bản sao local (download từ S3 nếu cần). Có thể raise RuntimeError.
                 try:
                     local_path = storage.get_local_copy(vid.file_path)
                 except Exception as exc:
@@ -157,28 +193,39 @@ def auto_post_job():
                 stored_path_to_cleanup: str | None = None
 
                 try:
-                    res = upload_video_to_facebook(
-                        file_path=local_path,
-                        caption=vid.ai_caption,
-                        page_id=page.page_id,
-                        access_token=access_token,
-                    )
+                    publisher = None
+                    if platform == "youtube":
+                        publisher = YouTubePublisher()
+                        res = publisher.upload_video(
+                            file_path=local_path,
+                            caption=vid.ai_caption,
+                            account_id=page_id,
+                            access_token=access_token,
+                            refresh_token=refresh_token,
+                            client_id=client_id,
+                            client_secret=client_secret
+                        )
+                    else:
+                        publisher = FacebookPublisher()
+                        res = publisher.upload_video(
+                            file_path=local_path,
+                            caption=vid.ai_caption,
+                            account_id=page_id,
+                            access_token=access_token
+                        )
 
                     if "id" in res:
                         vid.fb_post_id = res["id"]
                         vid.status = VideoStatus.posted
                         vid.last_error = None
-                        # Ghi nhớ stored path để xóa.
                         stored_path_to_cleanup = vid.file_path
-                        # KHÔNG set vid.file_path = None ở đây ngay. 
-                        # Đợi đến khi thực sự xóa thành công trên storage.
                         db.commit()
                         record_event(
                             "video",
                             "info",
                             "Đã đăng video thành công.",
                             db=db,
-                            details={"video_id": str(vid.id), "page_id": page.page_id, "fb_post_id": vid.fb_post_id},
+                            details={"video_id": str(vid.id), "post_id": vid.fb_post_id, "platform": platform},
                         )
                     else:
                         vid.status = VideoStatus.failed
@@ -188,19 +235,17 @@ def auto_post_job():
                         record_event(
                             "video",
                             "error",
-                            "Đăng video lên Facebook thất bại.",
+                            "Đăng video thất bại.",
                             db=db,
-                            details={"video_id": str(vid.id), "page_id": page.page_id, "response": res},
+                            details={"video_id": str(vid.id), "response": res, "platform": platform},
                         )
                 finally:
-                    # Cleanup tệp tạm local trong mọi trường hợp.
                     if is_temp_copy and local_path and os.path.exists(local_path):
                         try:
                             os.remove(local_path)
                         except Exception as exc:
                             logger.warning("Không thể xóa file tạm %s: %s", local_path, exc)
 
-                # Xóa storage SAU khi DB đã commit thành công (post success path).
                 if stored_path_to_cleanup:
                     delete_ok = False
                     try:
@@ -215,9 +260,6 @@ def auto_post_job():
                         )
 
                     if delete_ok:
-                        # Refresh + clear DB ref. Bọc try/except: vid có thể bị xóa
-                        # concurrent (admin xóa video) → ObjectDeletedError; lúc này
-                        # file đã mất, không có gì cần làm thêm.
                         try:
                             db.refresh(vid)
                             vid.file_path = None
@@ -227,13 +269,6 @@ def auto_post_job():
                                 db.rollback()
                             except Exception:
                                 pass
-                            record_event(
-                                "video",
-                                "warning",
-                                "Đã xóa file storage nhưng không cập nhật được DB; cleanup_job sẽ reconcile.",
-                                db=db,
-                                details={"video_id": str(vid.id), "file_path": stored_path_to_cleanup, "error": str(exc)},
-                            )
                     else:
                         record_event(
                             "video",
@@ -243,19 +278,11 @@ def auto_post_job():
                             details={"video_id": str(vid.id), "file_path": stored_path_to_cleanup},
                         )
             except Exception as per_video_exc:
-                # Một video lỗi bất ngờ không nên crash batch.
                 logger.exception("auto_post per-video error: %s", per_video_exc)
                 try:
                     db.rollback()
                 except Exception:
                     pass
-                record_event(
-                    "video",
-                    "error",
-                    "Lỗi không mong đợi khi xử lý video trong auto_post.",
-                    db=db,
-                    details={"video_id": str(vid.id), "page_id": page.page_id, "error": str(per_video_exc)},
-                )
                 continue
     except Exception as exc:
         record_event(
@@ -270,8 +297,6 @@ def auto_post_job():
         db.close()
 
 
-# Task types được coi là "đang giữ" file_path để retry; cleanup phải skip các video
-# này để không xóa file đang được tham chiếu.
 _RETRY_TASK_TYPES = ("retry_video_download",)
 
 _CLEANUP_BATCH_SIZE = 100

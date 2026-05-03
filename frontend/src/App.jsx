@@ -402,6 +402,7 @@ function App() {
     name: '',
     source_url: '',
     auto_post: false,
+    target_platform: 'facebook',
     target_page_id: '',
     schedule_interval: 30,
     filter_min_views: 0,
@@ -535,7 +536,7 @@ function App() {
       if (filters.status !== 'all') params.set('status', filters.status);
       if (filters.campaignId !== 'all') params.set('campaign_id', filters.campaignId);
 
-      const [campaignsData, statsData, videosData, fbData, logsData, systemData, healthData, taskData, eventData, workerData, userData] = await Promise.all([
+      const [campaignsData, statsData, videosData, fbData, logsData, systemData, healthData, taskData, eventData, workerData, userData, ytData] = await Promise.all([
         requestJson(`${API_URL}/campaigns/`),
         requestJson(`${API_URL}/campaigns/stats`),
         requestJson(`${API_URL}/campaigns/videos?${params.toString()}`),
@@ -863,6 +864,15 @@ function App() {
     }
   };
 
+  const handleConnectYouTube = async () => {
+    try {
+      const res = await requestJson(`${API_URL}/youtube/auth`);
+      if (res.url) window.location.href = res.url;
+    } catch (error) {
+      showNotice('error', error.message);
+    }
+  };
+
   const handleLogout = () => {
     setToken(null);
     setSessionExpiresAt(null);
@@ -1102,9 +1112,19 @@ function App() {
       <Panel className="2xl:col-span-7" eyebrow="Nguồn mới" title="Tạo chiến dịch đăng tự động">
         <form onSubmit={handleCampaignSubmit} className="grid gap-4 md:grid-cols-2">
           <label className="space-y-2 md:col-span-2">
-            <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Trang đích</span>
-            <select required className={FIELD_CLASS} value={formData.target_page_id} onChange={(event) => setFormData({ ...formData, target_page_id: event.target.value })} disabled={fbPages.length === 0}>
-              {fbPages.length === 0 ? <option value="">Chưa có trang nào</option> : fbPages.map((pageItem) => <option key={pageItem.page_id} value={pageItem.page_id} style={{ color: '#06101a' }}>{pageItem.page_name}</option>)}
+            <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Nền tảng đích</span>
+            <select required className={FIELD_CLASS} value={formData.target_platform} onChange={(event) => setFormData({ ...formData, target_platform: event.target.value, target_page_id: '' })}>
+              <option value="facebook" className="text-[var(--bg-card)]">Facebook</option>
+              <option value="youtube" className="text-[var(--bg-card)]">YouTube Shorts</option>
+            </select>
+          </label>
+          <label className="space-y-2 md:col-span-2">
+            <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Trang/Kênh đích</span>
+            <select required className={FIELD_CLASS} value={formData.target_page_id} onChange={(event) => setFormData({ ...formData, target_page_id: event.target.value })} disabled={(formData.target_platform === 'facebook' && fbPages.length === 0) || (formData.target_platform === 'youtube' && youtubeChannels.length === 0)}>
+              {formData.target_platform === 'facebook' && fbPages.length === 0 && <option value="">Chưa có trang Facebook nào</option>}
+              {formData.target_platform === 'youtube' && youtubeChannels.length === 0 && <option value="">Chưa có kênh YouTube nào</option>}
+              {formData.target_platform === 'facebook' && fbPages.map((pageItem) => <option key={pageItem.page_id} value={pageItem.page_id} className="text-[var(--bg-card)]">{pageItem.page_name}</option>)}
+              {formData.target_platform === 'youtube' && youtubeChannels.map((c) => <option key={c.channel_id} value={c.channel_id} className="text-[var(--bg-card)]">{c.channel_name || c.channel_id}</option>)}
             </select>
           </label>
           <label className="space-y-2">
@@ -1185,7 +1205,34 @@ function App() {
         </form>
       </Panel>
 
-      <Panel className="2xl:col-span-5" eyebrow="Fanpage" title="Kết nối hoặc cập nhật trang Facebook">
+      <Panel className="2xl:col-span-5" eyebrow="Quản lý YouTube" title="Danh sách kênh YouTube Shorts">
+        <div className="mb-4">
+          <button type="button" className={BUTTON_PRIMARY} onClick={handleConnectYouTube}>
+            <Play className="h-4 w-4" /> Kết nối kênh YouTube
+          </button>
+        </div>
+        {youtubeChannels.length === 0 ? (
+          <EmptyState title="Chưa có kênh nào" description="Bạn cần kết nối YouTube account để đăng Shorts." />
+        ) : (
+          <div className="grid gap-3">
+            {youtubeChannels.map((channel) => (
+              <div key={channel.channel_id} className="flex items-center justify-between rounded-xl bg-white/5 p-4 transition-colors hover:bg-white/10">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-600/20 text-red-500">
+                    <Play className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <div className="font-semibold text-white">{channel.channel_name || channel.channel_id}</div>
+                    <div className="text-sm text-[var(--text-soft)]">{channel.has_refresh_token ? "Sẵn sàng (Có Refresh Token)" : "Chỉ có Access Token tạm thời"}</div>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="2xl:col-span-7" eyebrow="Fanpage" title="Kết nối hoặc cập nhật trang Facebook">
         <form onSubmit={handleFbSubmit} className="space-y-4">
           <label className="block space-y-2">
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Mã trang</span>
@@ -1984,6 +2031,23 @@ export default App;
         </div>
       </div>
     </div>
+  );
+}
+
+export default App;
+
+  );
+}
+
+export default App;
+      </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
+
   );
 }
 

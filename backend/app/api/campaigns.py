@@ -40,6 +40,8 @@ class CampaignCreate(BaseModel):
     caption_language: Literal["vi", "en", "auto"] = "auto"
     # Story 10.3: Auto hashtag optimization
     hashtag_optimization: bool = Field(default=False, alias="hashtagOptimization")
+    # Story 12.1: Target platform
+    target_platform: Literal["facebook", "youtube"] = "facebook"
 
 
 class CampaignUpdate(BaseModel):
@@ -47,6 +49,7 @@ class CampaignUpdate(BaseModel):
     name: str | None = None
     auto_post: bool | None = None
     target_page_id: str | None = None
+    target_platform: Literal["facebook", "youtube"] | None = None
     schedule_interval: int | None = Field(default=None, ge=0)
     filter_min_views: int | None = Field(default=None, ge=0)
     filter_min_likes: int | None = Field(default=None, ge=0)
@@ -282,7 +285,7 @@ def update_campaign(campaign_id: str, payload: CampaignUpdate, db: Session = Dep
         "name", "auto_post", "target_page_id", "schedule_interval",
         "filter_min_views", "filter_min_likes",
         "filter_blocklist_keywords", "filter_allowlist_hashtags",
-        "caption_language",
+        "caption_language", "hashtag_optimization", "target_platform",
     }
     changed: dict[str, object] = {}
     for key, value in update_data.items():

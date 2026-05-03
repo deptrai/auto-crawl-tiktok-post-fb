@@ -49,11 +49,18 @@ class TokenType(str, enum.Enum):
     system_user = "system_user"
 
 
+class PlatformType(str, enum.Enum):
+    facebook = "facebook"
+    youtube = "youtube"
+
+
 class Campaign(Base):
     __tablename__ = "campaigns"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, index=True)
+    # Story 12.1: Platform config
+    target_platform = Column(Enum(PlatformType), default=PlatformType.facebook, nullable=False)
     source_url = Column(String)
     status = Column(Enum(CampaignStatus), default=CampaignStatus.active)
     auto_post = Column(Boolean, default=False)
@@ -251,3 +258,15 @@ class VideoMetrics(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc).replace(tzinfo=None), nullable=False)
 
     video = relationship("Video", backref="metrics")
+
+
+class YouTubeChannel(Base):
+    __tablename__ = "youtube_channels"
+
+    channel_id = Column(String, primary_key=True)
+    channel_name = Column(String, nullable=True)
+    access_token = Column(String, nullable=False)
+    refresh_token = Column(String, nullable=True)
+    token_expires_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

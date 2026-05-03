@@ -46,5 +46,33 @@ So that nội dung được phân phối sang YouTube audience mà không cần 
 - Quản lý Quota của Google rất khắt khe (10,000 unit/day default). Hàm upload tốn khoảng 1600 units/video => 1 project free chỉ upload được khoảng 6 videos/ngày. Cần hướng dẫn Document rõ cho User phải request tăng Quota.
 
 ## 4. Status
-Status: `ready-for-dev`
-Note: Ultimate context engine analysis completed - comprehensive developer guide created.
+Status: `review`
+
+## 5. Tasks / Subtasks
+
+- [x] Task 1: Database Model & Schema
+  - [x] 1.1: Thêm enum `PlatformType` (facebook, youtube). Cập nhật `Campaign` thêm `target_platform`.
+  - [x] 1.2: Tạo model `YouTubeChannel` lưu OAuth tokens (access_token, refresh_token, credentials).
+  - [x] 1.3: Tạo Alembic migration.
+- [x] Task 2: Publisher Strategy Pattern
+  - [x] 2.1: Tạo `BasePublisher` interface (`backend/app/services/publishers/base.py`).
+  - [x] 2.2: Refactor logic Facebook cũ sang `FacebookPublisher`.
+- [x] Task 3: YouTube Publisher Service
+  - [x] 3.1: Triển khai `YouTubePublisher` (Resumable Upload) sử dụng thư viện `google-api-python-client`.
+  - [x] 3.2: Tích hợp logic Auto-Refresh Google Token.
+- [x] Task 4: API & OAuth Integration
+  - [x] 4.1: Tạo router `/api/youtube` xử lý luồng OAuth2 login/callback.
+  - [x] 4.2: Cập nhật API Campaigns để hỗ trợ tạo chiến dịch với `target_platform` = 'youtube'.
+- [x] Task 5: Frontend UI
+  - [x] 5.1: Giao diện kết nối Google/YouTube Account.
+  - [x] 5.2: Cập nhật form tạo Campaign cho phép chọn Nền tảng (Facebook / YouTube).
+- [x] Task 6: Kiểm thử
+  - [x] 6.1: Unit tests cho Publisher strategy và YouTube authentication.
+
+## 6. Dev Agent Record
+### Agent Model Used
+Gemini 2.0 Flash
+
+### Change Log
+- 2026-05-04: Bắt đầu triển khai Story 12.1. Thêm tasks.
+
