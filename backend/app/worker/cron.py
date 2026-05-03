@@ -205,6 +205,16 @@ def auto_post_job():
                             client_id=client_id,
                             client_secret=client_secret
                         )
+                    elif platform == "instagram":
+                        publisher = InstagramPublisher()
+                        public_url = storage.get_public_url(vid.file_path)
+                        res = publisher.upload_video(
+                            file_path=local_path,
+                            video_url=public_url,
+                            caption=vid.ai_caption,
+                            account_id=page_id,
+                            access_token=access_token
+                        )
                     else:
                         publisher = FacebookPublisher()
                         res = publisher.upload_video(

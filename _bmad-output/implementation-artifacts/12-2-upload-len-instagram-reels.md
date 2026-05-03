@@ -43,5 +43,32 @@ So that tiếp cận thêm lượng khán giả trên nền tảng Instagram cù
 - Đối với Instagram Graph API: Thập niên mới, `media_type=REELS` là thông số bắt buộc nếu muốn nó cắn thành Reels (không truyền sẽ vào standard grid video của Instagram và hay bị fail). Share vào feed qua `share_to_feed=true`.
 
 ## 4. Status
-Status: `ready-for-dev`
-Note: Ultimate context engine analysis completed - comprehensive developer guide created.
+Status: `review`
+
+## 5. Tasks / Subtasks
+
+- [x] Task 1: Database Model & Schema
+  - [x] 1.1: Cập nhật enum `PlatformType` thêm giá trị `instagram`.
+  - [x] 1.2: Tạo Alembic migration cho thay đổi enum.
+- [x] Task 2: Instagram Publisher Service
+  - [x] 2.1: Tạo `backend/app/services/publishers/instagram.py` kế thừa `BasePublisher`.
+  - [x] 2.2: Lấy `instagram_business_account` ID từ Facebook Page.
+  - [x] 2.3: Upload MP4 lên một Storage public tạm (S3 hoặc Local có public URL ngrok) vì IG Graph API yêu cầu `video_url` thay vì multipart/form-data.
+  - [x] 2.4: Khởi tạo Container (`/ig_user_id/media?media_type=REELS&video_url=...`).
+  - [x] 2.5: Polling trạng thái Container cho đến khi `FINISHED`.
+  - [x] 2.6: Publish Container (`/ig_user_id/media_publish?creation_id=...`).
+- [x] Task 3: API & Worker Update
+  - [x] 3.1: Cập nhật `auto_post_job` để gọi `InstagramPublisher`.
+  - [x] 3.2: Cập nhật API Campaigns schema hỗ trợ `target_platform=instagram`.
+- [x] Task 4: Frontend UI
+  - [x] 4.1: Cập nhật form tạo Campaign thêm tuỳ chọn Instagram Reels.
+- [x] Task 5: Kiểm thử
+  - [x] 5.1: Unit tests cho `InstagramPublisher` và luồng polling.
+
+## 6. Dev Agent Record
+### Agent Model Used
+Gemini 2.0 Flash
+
+### Change Log
+- 2026-05-04: Bắt đầu triển khai Story 12.2. Thêm tasks.
+

@@ -40,8 +40,8 @@ class CampaignCreate(BaseModel):
     caption_language: Literal["vi", "en", "auto"] = "auto"
     # Story 10.3: Auto hashtag optimization
     hashtag_optimization: bool = Field(default=False, alias="hashtagOptimization")
-    # Story 12.1: Target platform
-    target_platform: Literal["facebook", "youtube"] = "facebook"
+    # Story 12.1, 12.2: Target platform
+    target_platform: Literal["facebook", "youtube", "instagram"] = "facebook"
 
 
 class CampaignUpdate(BaseModel):
@@ -49,7 +49,7 @@ class CampaignUpdate(BaseModel):
     name: str | None = None
     auto_post: bool | None = None
     target_page_id: str | None = None
-    target_platform: Literal["facebook", "youtube"] | None = None
+    target_platform: Literal["facebook", "youtube", "instagram"] | None = None
     schedule_interval: int | None = Field(default=None, ge=0)
     filter_min_views: int | None = Field(default=None, ge=0)
     filter_min_likes: int | None = Field(default=None, ge=0)

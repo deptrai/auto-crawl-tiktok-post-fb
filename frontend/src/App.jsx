@@ -1144,14 +1144,15 @@ function App() {
             <select required className={FIELD_CLASS} value={formData.target_platform} onChange={(event) => setFormData({ ...formData, target_platform: event.target.value, target_page_id: '' })}>
               <option value="facebook" className="text-[var(--bg-card)]">Facebook</option>
               <option value="youtube" className="text-[var(--bg-card)]">YouTube Shorts</option>
+              <option value="instagram" className="text-[var(--bg-card)]">Instagram Reels</option>
             </select>
           </label>
           <label className="space-y-2 md:col-span-2">
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Trang/Kênh đích</span>
-            <select required className={FIELD_CLASS} value={formData.target_page_id} onChange={(event) => setFormData({ ...formData, target_page_id: event.target.value })} disabled={(formData.target_platform === 'facebook' && fbPages.length === 0) || (formData.target_platform === 'youtube' && youtubeChannels.length === 0)}>
-              {formData.target_platform === 'facebook' && fbPages.length === 0 && <option value="">Chưa có trang Facebook nào</option>}
+            <select required className={FIELD_CLASS} value={formData.target_page_id} onChange={(event) => setFormData({ ...formData, target_page_id: event.target.value })} disabled={((formData.target_platform === 'facebook' || formData.target_platform === 'instagram') && fbPages.length === 0) || (formData.target_platform === 'youtube' && youtubeChannels.length === 0)}>
+              {(formData.target_platform === 'facebook' || formData.target_platform === 'instagram') && fbPages.length === 0 && <option value="">Chưa có trang Facebook nào (Insta dùng chung Page)</option>}
               {formData.target_platform === 'youtube' && youtubeChannels.length === 0 && <option value="">Chưa có kênh YouTube nào</option>}
-              {formData.target_platform === 'facebook' && fbPages.map((pageItem) => <option key={pageItem.page_id} value={pageItem.page_id} className="text-[var(--bg-card)]">{pageItem.page_name}</option>)}
+              {(formData.target_platform === 'facebook' || formData.target_platform === 'instagram') && fbPages.map((pageItem) => <option key={pageItem.page_id} value={pageItem.page_id} className="text-[var(--bg-card)]">{pageItem.page_name}</option>)}
               {formData.target_platform === 'youtube' && youtubeChannels.map((c) => <option key={c.channel_id} value={c.channel_id} className="text-[var(--bg-card)]">{c.channel_name || c.channel_id}</option>)}
             </select>
           </label>

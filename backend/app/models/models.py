@@ -52,6 +52,7 @@ class TokenType(str, enum.Enum):
 class PlatformType(str, enum.Enum):
     facebook = "facebook"
     youtube = "youtube"
+    instagram = "instagram"
 
 
 class Campaign(Base):

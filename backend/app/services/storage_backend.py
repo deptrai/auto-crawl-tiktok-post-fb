@@ -206,6 +206,19 @@ class S3Storage:
     def requires_temp_copy(self) -> bool:
         return True
 
+    def get_public_url(self, stored_path: str, expiration: int = 3600) -> str:
+        key = self._parse_key(stored_path)
+        try:
+            url = self._client.generate_presigned_url(
+                'get_object',
+                Params={'Bucket': self._bucket, 'Key': key},
+                ExpiresIn=expiration
+            )
+            return url
+        except Exception as exc:
+            logger.error("S3Storage.get_public_url lỗi key=%s: %s", key, exc)
+            raise RuntimeError(f"Không thể tạo presigned URL từ S3: {exc}") from exc
+
 
 _VALID_BACKENDS = {"local", "s3"}
 
