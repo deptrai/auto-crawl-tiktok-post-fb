@@ -39,7 +39,7 @@ class CampaignCreate(BaseModel):
     # Story 10.2: Multilingual caption config
     caption_language: Literal["vi", "en", "auto"] = "auto"
     # Story 10.3: Auto hashtag optimization
-    hashtag_optimization: bool = False
+    hashtag_optimization: bool = Field(default=False, alias="hashtagOptimization")
 
 
 class CampaignUpdate(BaseModel):
@@ -54,9 +54,9 @@ class CampaignUpdate(BaseModel):
     filter_blocklist_keywords: list[Annotated[str, Field(max_length=200)]] | None = Field(default=None, max_length=500)
     filter_allowlist_hashtags: list[Annotated[str, Field(max_length=100)]] | None = Field(default=None, max_length=500)
     # Story 10.2: Multilingual caption config
-    caption_language: Literal["vi", "en", "auto"] | None = Field(default=None)
+    caption_language: Literal["vi", "en", "auto"] = Field(default=None)
     # Story 10.3: Auto hashtag optimization
-    hashtag_optimization: bool | None = None
+    hashtag_optimization: bool | None = Field(default=None, alias="hashtagOptimization")
 
 
 class VideoCaptionUpdate(BaseModel):

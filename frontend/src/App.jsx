@@ -1127,7 +1127,7 @@ function App() {
               </div>
             </label>
             <label className="flex items-center gap-3 rounded-[24px] border border-white/8 bg-black/10 px-4 py-4">
-              <input type="checkbox" checked={formData.hashtag_optimization} onChange={(event) => setFormData({ ...formData, hashtag_optimization: event.target.checked })} />
+              <input type="checkbox" checked={formData.hashtagOptimization || false} onChange={(event) => setFormData({ ...formData, hashtagOptimization: event.target.checked })} />
               <div>
                 <div className="font-medium text-white">Tối ưu Hashtag bằng AI</div>
                 <div className="text-sm text-[var(--text-soft)]">Gợi ý thêm trending hashtag phù hợp với video.</div>

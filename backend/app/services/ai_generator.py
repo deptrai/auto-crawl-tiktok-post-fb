@@ -114,10 +114,9 @@ def _merge_hashtags(ai_caption: str, original_caption: str, max_total: int = 30)
     # Slice to max_total
     merged_tags = merged_tags[:max_total]
     
-    # Strip hashtags from the end of ai_caption to append merged cleanly
-    # Or just return ai_caption + "\n\n" + merged_tags
-    # Actually, we should remove hashtags from ai_caption so we don't duplicate them in the text
-    clean_ai_caption = re.sub(r'#\w+', '', ai_caption).strip()
+    # Strip hashtags from ai_caption, removing attached punctuation and extra spaces
+    clean_ai_caption = re.sub(r'\s*#\w+[^\w\s]*\s*', ' ', ai_caption).strip()
+    clean_ai_caption = re.sub(r'\s{2,}', ' ', clean_ai_caption)
     
     if merged_tags:
         return f"{clean_ai_caption}\n\n{' '.join(merged_tags)}"
@@ -131,11 +130,12 @@ def generate_caption(
     target_language: str | None = "auto",
     optimize_hashtags: bool = False,
 ) -> str:
+    original_str = original_caption or ""
     gemini_api_key = resolve_runtime_value("GEMINI_API_KEY")
     if not gemini_api_key:
-        fallback_caption = f"{original_caption}\n\n#xuhuong #tiktok"
+        fallback_caption = f"{original_str}\n\n#xuhuong #tiktok"
         if optimize_hashtags:
-            return _merge_hashtags(fallback_caption, original_caption)
+            return _merge_hashtags(fallback_caption, original_str)
         return fallback_caption
 
     # Model name configurable qua settings.GEMINI_MODEL_CAPTION (default stable
@@ -147,7 +147,7 @@ def generate_caption(
 
     payload = {
         "systemInstruction": {"parts": [{"text": system_instruction}]}, # Patch: systemInstruction (camelCase)
-        "contents": [{"parts": [{"text": f"Caption gốc: {original_caption}"}]}]
+        "contents": [{"parts": [{"text": f"Caption gốc: {original_str}"}]}]
     }
 
     max_retries = 3
@@ -162,12 +162,14 @@ def generate_caption(
                 # Patch: Kiểm tra cấu trúc response an toàn tránh Index Error
                 candidates = data.get('candidates', [])
                 if candidates and 'content' in candidates[0] and 'parts' in candidates[0]['content'] and candidates[0]['content']['parts']:
-                    ai_text = candidates[0]['content']['parts'][0]['text'].strip()
-                    if optimize_hashtags:
-                        return _merge_hashtags(ai_text, original_caption)
-                    return ai_text
-                else:
-                    logger.warning("AI: cấu trúc phản hồi không như kỳ vọng (status=200)")
+                    first_part = candidates[0]['content']['parts'][0]
+                    if 'text' in first_part:
+                        ai_text = first_part['text'].strip()
+                        if optimize_hashtags:
+                            return _merge_hashtags(ai_text, original_str)
+                        return ai_text
+                
+                logger.warning("AI: cấu trúc phản hồi không như kỳ vọng (status=200)")
 
             elif response.status_code == 429:
                 logger.warning(f"AI bị giới hạn tốc độ (429) - Thử lại lần {attempt + 1}/{max_retries}...")
@@ -182,9 +184,9 @@ def generate_caption(
                 time.sleep(retry_delay * (attempt + 1))
 
     # Nếu tất cả các lần thử đều thất bại, trả về bản gốc và thêm hashtag chung chung của FB
-    fallback_text = f"{original_caption}\n\n#giaitri #trending"
+    fallback_text = f"{original_str}\n\n#giaitri #trending"
     if optimize_hashtags:
-        return _merge_hashtags(fallback_text, original_caption)
+        return _merge_hashtags(fallback_text, original_str)
     return fallback_text
 
 def generate_reply(user_message: str) -> str:

@@ -56,3 +56,10 @@
 - Worker uses fallback "auto" when campaign is missing
 - Missing integration tests for language config
 - Prompt numbered list fragility
+
+## Deferred from: code review of 10-3-toi-uu-hashtag-tu-dong.md (2026-05-03)
+
+- Fallback logic redundancy
+- Hardcoded fallback tags ignore language context
+- Missing Integration Tests
+- Regex fails on emojis

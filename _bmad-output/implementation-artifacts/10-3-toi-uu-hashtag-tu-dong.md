@@ -72,3 +72,16 @@ Gemini 2.0 Flash
 ### Change Log
 - 2026-05-03: Bắt đầu triển khai Story 10.3.
 
+
+### Review Findings (2026-05-03)
+
+- [ ] [Review][Patch] Data Loss when optimize_hashtags is False (AI removes original tags) [backend/app/services/ai_generator.py:76]
+- [ ] [Review][Patch] Regex stripping leaves spaces and punctuation [backend/app/services/ai_generator.py:117]
+- [ ] [Review][Patch] Stringified 'None' bug in fallback when original_caption is null [backend/app/services/ai_generator.py:135]
+- [ ] [Review][Patch] React Uncontrolled Component Risk for hashtag_optimization [frontend/src/App.jsx]
+- [ ] [Review][Patch] API missing 'text' key check causes KeyError [backend/app/services/ai_generator.py:165]
+- [ ] [Review][Patch] camelCase mismatch for hashtagOptimization [frontend/src/App.jsx]
+- [x] [Review][Defer] Fallback logic redundancy [backend/app/services/ai_generator.py] — deferred, pre-existing
+- [x] [Review][Defer] Hardcoded fallback tags ignore language context [backend/app/services/ai_generator.py] — deferred, pre-existing
+- [x] [Review][Defer] Missing Integration Tests [backend/tests/] — deferred, pre-existing
+- [x] [Review][Defer] Regex fails on emojis [backend/app/services/ai_generator.py:95] — deferred, pre-existing
