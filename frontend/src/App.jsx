@@ -9,12 +9,16 @@ import {
   Clock,
   CloudDownload,
   Copy,
+  Eye,
   ExternalLink,
+  Film,
   Filter,
   Globe2,
+  Heart,
   KeyRound,
   LogOut,
   Pause,
+  Percent,
   Play,
   PlusCircle,
   Radio,
@@ -97,6 +101,7 @@ const NAV_ITEMS = [
   { id: 'campaigns', label: 'Chiến dịch', description: 'Nguồn, trang và chiến dịch.', icon: Share2 },
   { id: 'queue', label: 'Lịch đăng', description: 'Video, lịch và caption.', icon: Clock },
   { id: 'engagement', label: 'Tương tác', description: 'Bình luận và phản hồi AI.', icon: Bot },
+  { id: 'analytics', label: 'Phân tích', description: 'Hiệu suất chiến dịch.', icon: LineChart },
   { id: 'operations', label: 'Vận hành', description: 'Worker, queue và log.', icon: Server },
   { id: 'security', label: 'Bảo mật', description: 'Phiên, mật khẩu, người dùng.', icon: ShieldCheck },
 ];
@@ -501,31 +506,54 @@ function App() {
   const setBusy = (key, value) => setActionState((current) => ({ ...current, [key]: value }));
   const showNotice = (type, message) => setNotice({ type, message });
 
-  const fetchAnalyticsData = async (campaignId) => {
-    if (!campaignId) return;
-    try {
-      const [summaryRes, topVideosRes, timeSeriesRes] = await Promise.all([
-        requestJson(`${API_URL}/analytics/${campaignId}/summary`),
-        requestJson(`${API_URL}/analytics/${campaignId}/top-videos`),
-        requestJson(`${API_URL}/analytics/${campaignId}/time-series`)
-      ]);
-      setAnalyticsSummary(summaryRes?.data || null);
-      setAnalyticsTopVideos(topVideosRes?.data || []);
-      setAnalyticsTimeSeries(timeSeriesRes?.data || []);
-    } catch (e) {
-      console.error('Failed to fetch analytics', e);
-    }
-  };
-
+  // Set/reset analyticsCampaignId: pick first campaign when entering analytics tab,
+  // or reset to first available if currently selected campaign was deleted.
   useEffect(() => {
-    if (activeSection === 'analytics' && campaigns.length > 0 && !analyticsCampaignId) {
+    if (activeSection !== 'analytics' || campaigns.length === 0) return;
+    const stillExists = analyticsCampaignId && campaigns.some((c) => c.id === analyticsCampaignId);
+    if (!stillExists) {
       setAnalyticsCampaignId(campaigns[0].id);
     }
   }, [activeSection, campaigns, analyticsCampaignId]);
 
+  // Fetch analytics data with AbortController to prevent stale-response race
+  // when user switches campaign rapidly.
   useEffect(() => {
-    fetchAnalyticsData(analyticsCampaignId);
-  }, [analyticsCampaignId]);
+    if (!analyticsCampaignId) {
+      setAnalyticsSummary(null);
+      setAnalyticsTopVideos([]);
+      setAnalyticsTimeSeries([]);
+      return undefined;
+    }
+    const controller = new AbortController();
+    const { signal } = controller;
+    (async () => {
+      const results = await Promise.allSettled([
+        requestJson(`${API_URL}/analytics/${analyticsCampaignId}/summary`, { signal }),
+        requestJson(`${API_URL}/analytics/${analyticsCampaignId}/top-videos`, { signal }),
+        requestJson(`${API_URL}/analytics/${analyticsCampaignId}/time-series`, { signal }),
+      ]);
+      if (signal.aborted) return;
+      const [summaryRes, topVideosRes, timeSeriesRes] = results;
+      if (summaryRes.status === 'fulfilled') {
+        setAnalyticsSummary(summaryRes.value?.data || null);
+      } else if (summaryRes.reason?.name !== 'AbortError') {
+        console.error('Analytics summary failed', summaryRes.reason);
+      }
+      if (topVideosRes.status === 'fulfilled') {
+        setAnalyticsTopVideos(topVideosRes.value?.data || []);
+      } else if (topVideosRes.reason?.name !== 'AbortError') {
+        console.error('Analytics top videos failed', topVideosRes.reason);
+      }
+      if (timeSeriesRes.status === 'fulfilled') {
+        setAnalyticsTimeSeries(timeSeriesRes.value?.data || []);
+      } else if (timeSeriesRes.reason?.name !== 'AbortError') {
+        console.error('Analytics time series failed', timeSeriesRes.reason);
+      }
+    })();
+    return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [analyticsCampaignId, token]);
 
   const fetchDashboard = async () => {
     if (!token) return;
@@ -1825,10 +1853,10 @@ function App() {
 
         {analyticsSummary ? (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
-            <MetricCard icon={LineChart} label="Tổng Views" value={analyticsSummary.total_views.toLocaleString()} detail="Lượt xem trên FB" tone="sky" />
-            <MetricCard icon={LineChart} label="Tương Tác" value={(analyticsSummary.total_likes + analyticsSummary.total_comments + analyticsSummary.total_shares).toLocaleString()} detail="Likes, Comments, Shares" tone="emerald" />
-            <MetricCard icon={LineChart} label="Engagement Rate" value={`${analyticsSummary.average_engagement_rate}%`} detail="Tính trên Reach hoặc Views" tone="amber" />
-            <MetricCard icon={LineChart} label="Video Đã Đăng" value={analyticsSummary.total_videos.toLocaleString()} detail="Tổng số video" tone="slate" />
+            <MetricCard icon={Eye} label="Tổng Views" value={(analyticsSummary.total_views ?? 0).toLocaleString()} detail="Lượt xem trên FB" tone="sky" />
+            <MetricCard icon={Heart} label="Tương Tác" value={((analyticsSummary.total_likes ?? 0) + (analyticsSummary.total_comments ?? 0) + (analyticsSummary.total_shares ?? 0)).toLocaleString()} detail="Likes, Comments, Shares" tone="emerald" />
+            <MetricCard icon={Percent} label="Engagement Rate" value={`${analyticsSummary.average_engagement_rate ?? 0}%`} detail="Tính trên Reach hoặc Views" tone="amber" />
+            <MetricCard icon={Film} label="Video Đã Đăng" value={(analyticsSummary.total_videos ?? 0).toLocaleString()} detail="Tổng số video" tone="slate" />
           </div>
         ) : (
           <EmptyState title="Không có dữ liệu tổng quan" description="Chưa có số liệu cho chiến dịch này." />
@@ -1836,7 +1864,9 @@ function App() {
 
         <div className="grid gap-6 lg:grid-cols-2">
           <div className="rounded-[28px] border border-white/10 bg-black/20 p-5">
-            <h3 className="mb-4 font-display text-lg font-semibold text-white">Xu Hướng Tương Tác (30 ngày)</h3>
+            <h3 className="mb-4 font-display text-lg font-semibold text-white">
+              Xu Hướng Tương Tác{analyticsTimeSeries.length > 0 ? ` (${analyticsTimeSeries.length} ngày)` : ''}
+            </h3>
             {analyticsTimeSeries.length > 0 ? (
               <div className="h-64 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1850,6 +1880,8 @@ function App() {
                     />
                     <Line type="monotone" dataKey="views" name="Lượt xem" stroke="#38bdf8" strokeWidth={2} dot={false} />
                     <Line type="monotone" dataKey="likes" name="Lượt thích" stroke="#34d399" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="comments" name="Bình luận" stroke="#f472b6" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="shares" name="Chia sẻ" stroke="#fbbf24" strokeWidth={2} dot={false} />
                   </RechartsLineChart>
                 </ResponsiveContainer>
               </div>
@@ -1869,7 +1901,7 @@ function App() {
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm font-medium text-white">{video.original_caption || video.original_id}</div>
-                      <div className="mt-1 text-xs text-[var(--text-soft)]">{video.views.toLocaleString()} views • {video.likes.toLocaleString()} likes</div>
+                      <div className="mt-1 text-xs text-[var(--text-soft)]">{(video.views ?? 0).toLocaleString()} views • {(video.likes ?? 0).toLocaleString()} likes</div>
                     </div>
                   </div>
                 ))}
@@ -2022,32 +2054,6 @@ function App() {
         </div>
       </div>
     </div>
-  );
-}
-
-export default App;
-    </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default App;
-
-  );
-}
-
-export default App;
-      </div>
-      </div>
-    </div>
-  );
-}
-
-export default App;
-
   );
 }
 

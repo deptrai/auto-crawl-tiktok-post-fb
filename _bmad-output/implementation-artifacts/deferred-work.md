@@ -73,3 +73,19 @@
 
 - **Verify FB Graph metric names cho video posts** — Code dùng `post_video_views` (cho views) và `post_impressions_unique` / `post_video_views_unique` (cho reach). Cần test với FB sandbox hoặc real page để xác nhận shape. Có thể tên thật là `total_video_views`, `total_video_impressions`. [backend/app/services/metrics_collector.py:101-104]
 - **Single-video batch FB shape** — Rare edge case khi chunk cuối có 1 video, FB có thể trả flat object thay vì keyed dict. Add test khi gặp. [backend/app/services/metrics_collector.py:80]
+
+## Deferred from: code review of story-11.2 (2026-05-04)
+
+- **Missing campaign ownership check** — `Campaign` model không có `user_id` field, mọi authenticated user đều xem được analytics của campaign bất kỳ. Pre-existing schema. [backend/app/models/models.py, backend/app/api/analytics.py]
+- **`func.date()` cross-DB inconsistency** — SQLite trả string, PostgreSQL trả date với timezone behavior khác. Off-by-one day risk khi prod chuyển PostgreSQL. [backend/app/services/analytics_service.py:128, 166]
+- **VideoMetrics.video_id nullable** — Khi Video bị xóa, history metrics còn lại với `video_id=NULL` không match join → silent loss of historical data trong analytics dashboard. [backend/app/models/models.py:250]
+- **BigInteger sum overflow JSON safe int** — `views/likes/etc.` là BigInteger; sum có thể vượt `2^53 - 1` khi campaign rất lớn → JS Number lose precision. [backend/app/services/analytics_service.py]
+- **Time-series không gap-fill ngày trống** — Chỉ trả ngày có metric record, line chart "nhảy" thay vì hiển thị xu hướng liên tục. [backend/app/services/analytics_service.py:144-173]
+- **Test cross-DB compat & parallel pytest-xdist** — SQLite single-file không safe cho parallel tests; `func.max(fetched_at)` precision khác SQLite vs PostgreSQL. [backend/tests/test_analytics_service.py]
+- **Test coverage thấp cho edge cases** — Thiếu test cho 0 videos / 0 metrics / null fields / malformed UUID / limit boundary / midnight DST flaky. [backend/tests/test_analytics_service.py]
+- **Pydantic response schemas thiếu** — Service trả raw dict, không có contract với FE. Cần Pydantic models cho `/summary`, `/top-videos`, `/time-series`. [backend/app/api/analytics.py]
+- **`total_videos` đếm tất cả vs metrics chỉ tính video có data** — Inconsistency semantic: campaign mới tạo có `total_videos=10` nhưng `total_views=0`, engagement rate=0% → trông như "campaign tệ". Cần product clarification. [backend/app/services/analytics_service.py:32]
+- **Engagement rate fallback (reach OR views)** — Trộn 2 mẫu số khác semantic giữa campaigns; số liệu không so sánh được. Cần product clarification về công thức chuẩn. [backend/app/services/analytics_service.py:55-64]
+- **`original_caption` không truncate, top videos thiếu thumbnail/link** — UX/perf enhancement. [frontend/src/App.jsx:1865-1875]
+- **`get_summary` chạy 2 query (Campaign exists + analytics)** — Perf minor, double DB roundtrip. [backend/app/api/analytics.py:14-21]
+- **Date range filter UI + backend support (AC violation)** — UI chỉ có dropdown campaign, backend `/summary` và `/top-videos` không nhận `date_from`/`date_to`. AC yêu cầu đầy đủ filter campaign + date range. Cần UI date-range picker + 2 endpoint params. [frontend/src/App.jsx:1810-1824, backend/app/api/analytics.py]

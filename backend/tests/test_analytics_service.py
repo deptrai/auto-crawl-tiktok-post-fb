@@ -24,7 +24,7 @@ def test_campaign_with_metrics(db_session: Session):
     
     db_session.commit()
     
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
     
     # Add metrics for video 1 (2 records)
     m1_1 = VideoMetrics(video_id=video1_id, fb_post_id="post1", views=100, likes=10, comments=5, shares=2, reach=150, fetched_at=now - timedelta(days=1))
