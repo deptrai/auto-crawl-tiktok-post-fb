@@ -60,8 +60,12 @@ class Campaign(Base):
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
     name = Column(String, index=True)
-    # Story 12.1: Platform config
+    # Story 12.1: Platform config (deprecated but kept for fallback)
     target_platform = Column(Enum(PlatformType), default=PlatformType.facebook, nullable=False)
+    # Story 12.3: Multi-platform refactor
+    target_platforms = Column(JSON_TYPE, default=list, nullable=False) # e.g. ["facebook", "youtube"]
+    platform_targets = Column(JSON_TYPE, default=dict, nullable=False) # e.g. {"facebook": "page_id_1", "youtube": "channel_id_2"}
+    
     source_url = Column(String)
     status = Column(Enum(CampaignStatus), default=CampaignStatus.active)
     auto_post = Column(Boolean, default=False)
@@ -115,6 +119,26 @@ class Video(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     campaign = relationship("Campaign", back_populates="videos", passive_deletes=True)
+    posts = relationship("VideoPost", back_populates="video", cascade="all, delete-orphan")
+
+
+class VideoPost(Base):
+    """Lưu trạng thái đăng bài cho từng nền tảng của một video."""
+    __tablename__ = "video_posts"
+    __table_args__ = (
+        UniqueConstraint("video_id", "platform", name="uq_video_posts_video_platform"),
+    )
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    video_id = Column(Uuid(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
+    platform = Column(Enum(PlatformType), nullable=False)
+    status = Column(Enum(VideoStatus), default=VideoStatus.pending, nullable=False)
+    external_id = Column(String, nullable=True, index=True) # fb_post_id or yt_video_id
+    last_error = Column(String, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+    video = relationship("Video", back_populates="posts")
 
 
 class FacebookPage(Base):

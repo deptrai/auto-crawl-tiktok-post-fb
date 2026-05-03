@@ -1139,32 +1139,46 @@ function App() {
     <div className="grid gap-6 2xl:grid-cols-12">
       <Panel className="2xl:col-span-7" eyebrow="Nguồn mới" title="Tạo chiến dịch đăng tự động">
         <form onSubmit={handleCampaignSubmit} className="grid gap-4 md:grid-cols-2">
-          <label className="space-y-2 md:col-span-2">
-            <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Nền tảng đích</span>
-            <select required className={FIELD_CLASS} value={formData.target_platform} onChange={(event) => {
-              const newPlatform = event.target.value;
-              let firstId = '';
-              if (newPlatform === 'facebook' || newPlatform === 'instagram') {
-                firstId = fbPages[0]?.page_id || '';
-              } else if (newPlatform === 'youtube') {
-                firstId = youtubeChannels[0]?.channel_id || '';
-              }
-              setFormData({ ...formData, target_platform: newPlatform, target_page_id: firstId });
-            }}>
-              <option value="facebook" className="text-[var(--bg-card)]">Facebook</option>
-              <option value="youtube" className="text-[var(--bg-card)]">YouTube Shorts</option>
-              <option value="instagram" className="text-[var(--bg-card)]">Instagram Reels</option>
-            </select>
-          </label>
-          <label className="space-y-2 md:col-span-2">
-            <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Trang/Kênh đích</span>
-            <select required className={FIELD_CLASS} value={formData.target_page_id} onChange={(event) => setFormData({ ...formData, target_page_id: event.target.value })} disabled={((formData.target_platform === 'facebook' || formData.target_platform === 'instagram') && fbPages.length === 0) || (formData.target_platform === 'youtube' && youtubeChannels.length === 0)}>
-              {(formData.target_platform === 'facebook' || formData.target_platform === 'instagram') && fbPages.length === 0 && <option value="">Chưa có trang Facebook nào (Insta dùng chung Page)</option>}
-              {formData.target_platform === 'youtube' && youtubeChannels.length === 0 && <option value="">Chưa có kênh YouTube nào</option>}
-              {(formData.target_platform === 'facebook' || formData.target_platform === 'instagram') && fbPages.map((pageItem) => <option key={pageItem.page_id} value={pageItem.page_id} className="text-[var(--bg-card)]">{pageItem.page_name}</option>)}
-              {formData.target_platform === 'youtube' && youtubeChannels.map((c) => <option key={c.channel_id} value={c.channel_id} className="text-[var(--bg-card)]">{c.channel_name || c.channel_id}</option>)}
-            </select>
-          </label>
+          <div className="space-y-4 md:col-span-2">
+            <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Nền tảng xuất bản</span>
+            <div className="grid gap-3 sm:grid-cols-3">
+              {['facebook', 'youtube', 'instagram'].map((plt) => (
+                <label key={plt} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-3 hover:bg-white/5 transition-colors">
+                  <input
+                    type="checkbox"
+                    checked={formData.target_platforms.includes(plt)}
+                    onChange={(e) => {
+                      const updated = e.target.checked
+                        ? [...formData.target_platforms, plt]
+                        : formData.target_platforms.filter(p => p !== plt);
+                      setFormData({ ...formData, target_platforms: updated });
+                    }}
+                    className="h-4 w-4 rounded border-white/20 bg-black/40 text-[var(--accent)]"
+                  />
+                  <span className="text-sm font-medium capitalize">{plt === 'facebook' ? 'Facebook' : plt === 'youtube' ? 'YouTube Shorts' : 'Instagram Reels'}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          {formData.target_platforms.map((plt) => (
+            <label key={`target-${plt}`} className="space-y-2 md:col-span-2 animate-in fade-in slide-in-from-left-2">
+              <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">ID đích cho {plt.toUpperCase()}</span>
+              <select
+                required
+                className={FIELD_CLASS}
+                value={formData.platform_targets[plt] || ''}
+                onChange={(e) => setFormData({
+                  ...formData,
+                  platform_targets: { ...formData.platform_targets, [plt]: e.target.value }
+                })}
+              >
+                <option value="">-- Chọn --</option>
+                {plt === 'facebook' || plt === 'instagram' ? fbPages.map(p => <option key={p.page_id} value={p.page_id} className="text-[var(--bg-card)]">{p.page_name}</option>) : null}
+                {plt === 'youtube' ? youtubeChannels.map(c => <option key={c.channel_id} value={c.channel_id} className="text-[var(--bg-card)]">{c.channel_name || c.channel_id}</option>) : null}
+              </select>
+            </label>
+          ))}
           <label className="space-y-2">
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Tên chiến dịch</span>
             <input required type="text" className={FIELD_CLASS} placeholder="Ví dụ: Giải trí mỗi ngày" value={formData.name} onChange={(event) => setFormData({ ...formData, name: event.target.value })} />
@@ -2063,6 +2077,12 @@ function App() {
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+export default App;
+iv>
     </div>
   );
 }

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.config import settings
 from app.core.database import SessionLocal
-from app.models.models import Campaign, CampaignStatus, FacebookPage, Video, VideoStatus, TaskQueue, TaskStatus
+from app.models.models import Campaign, CampaignStatus, FacebookPage, Video, VideoStatus, TaskQueue, TaskStatus, VideoPost, PlatformType
 from app.services.ai_generator import generate_caption
 from app.services.publishers.facebook import FacebookPublisher
 from app.services.publishers.youtube import YouTubePublisher
@@ -47,269 +47,180 @@ def auto_post_job():
         ).all()
 
         for campaign in campaigns:
-            if not campaign.target_page_id:
+            # Story 12.3: Support multiple platforms
+            target_platforms = campaign.target_platforms or []
+            if not target_platforms and campaign.target_platform: # Fallback to legacy
+                target_platforms = [campaign.target_platform]
+            
+            if not target_platforms:
                 continue
 
-            vid = (
+            # Find videos ready to post that haven't finished all platforms
+            # For simplicity, we find videos with status=ready or in_progress (partially posted)
+            videos = (
                 db.query(Video)
                 .filter(
                     Video.campaign_id == campaign.id,
-                    Video.status == VideoStatus.ready,
+                    Video.status.in_([VideoStatus.ready, VideoStatus.posted]), # posted if partially done
                     Video.publish_time <= now,
                 )
                 .order_by(Video.publish_time.asc())
-                .first()
+                .limit(5) # Process small batches
+                .all()
             )
 
-            if not vid:
-                continue
+            for vid in videos:
+                # Check which platforms still need posting
+                for platform in target_platforms:
+                    if hasattr(platform, "value"): platform = platform.value
+                    
+                    # Check if already posted or failed max retries
+                    post_record = db.query(VideoPost).filter_by(video_id=vid.id, platform=platform).first()
+                    if post_record and post_record.status == VideoStatus.posted:
+                        continue
+                    
+                    if not post_record:
+                        post_record = VideoPost(video_id=vid.id, platform=platform, status=VideoStatus.pending)
+                        db.add(post_record)
+                        db.commit()
 
-            update_worker_heartbeat(
-                WORKER_NAME,
-                app_role=settings.APP_ROLE,
-                status="đang đăng video",
-                current_task_type="auto_post",
-                current_task_id=str(vid.id),
-                details={"campaign_id": str(campaign.id), "video_id": str(vid.id)},
-                db=db,
-            )
-
-            platform = campaign.target_platform.value if hasattr(campaign.target_platform, "value") else campaign.target_platform
-            
-            access_token = None
-            refresh_token = None
-            page_id = campaign.target_page_id
-            brand_voice = None
-            brand_voice_preset = "casual"
-            client_id = None
-            client_secret = None
-
-            if platform == "youtube":
-                channel = db.query(YouTubeChannel).filter(YouTubeChannel.channel_id == page_id).first()
-                if not channel:
-                    vid.status = VideoStatus.failed
-                    vid.last_error = "YouTube Channel chưa được cấu hình."
-                    vid.retry_count = (vid.retry_count or 0) + 1
-                    db.commit()
-                    continue
-                access_token = channel.access_token
-                refresh_token = channel.refresh_token
-                client_id = os.environ.get("GOOGLE_CLIENT_ID")
-                client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
-            else:
-                page = db.query(FacebookPage).filter(FacebookPage.page_id == page_id).first()
-                if not page:
-                    vid.status = VideoStatus.failed
-                    vid.last_error = "Trang Facebook chưa được cấu hình."
-                    vid.retry_count = (vid.retry_count or 0) + 1
-                    db.commit()
-                    continue
-                try:
-                    access_token = decrypt_secret(page.long_lived_access_token)
-                except ValueError as exc:
-                    vid.status = VideoStatus.failed
-                    vid.last_error = str(exc)
-                    vid.retry_count = (vid.retry_count or 0) + 1
-                    db.commit()
-                    continue
-                brand_voice = page.brand_voice
-                brand_voice_preset = page.brand_voice_preset
-
-            if not access_token:
-                vid.status = VideoStatus.failed
-                vid.last_error = "Chưa có mã truy cập hợp lệ."
-                vid.retry_count = (vid.retry_count or 0) + 1
-                db.commit()
-                continue
-
-            if not vid.ai_caption:
-                try:
-                    vid.ai_caption = generate_caption(
-                        vid.original_caption,
-                        brand_voice=brand_voice,
-                        brand_voice_preset=brand_voice_preset,
-                        target_language=campaign.caption_language or "auto",
-                        optimize_hashtags=campaign.hashtag_optimization or False
-                    )
-                    db.commit()
-                except Exception as exc:
-                    vid.status = VideoStatus.failed
-                    vid.last_error = f"Không thể tạo chú thích AI: {exc}"
-                    vid.retry_count = (vid.retry_count or 0) + 1
-                    db.commit()
-                    record_event(
-                        "video",
-                        "error",
-                        "Tạo chú thích AI trước khi đăng thất bại.",
+                    update_worker_heartbeat(
+                        WORKER_NAME,
+                        app_role=settings.APP_ROLE,
+                        status=f"đang đăng {platform}",
+                        current_task_type="auto_post",
+                        current_task_id=str(vid.id),
+                        details={"campaign_id": str(campaign.id), "video_id": str(vid.id), "platform": platform},
                         db=db,
-                        details={"video_id": str(vid.id), "error": str(exc)},
                     )
-                    continue
 
-            try:
-                try:
-                    file_exists = bool(vid.file_path) and storage.exists(vid.file_path)
-                except Exception as exc:
-                    record_event(
-                        "video",
-                        "warning",
-                        "Không kiểm tra được trạng thái tệp trên storage, bỏ qua tick này.",
-                        db=db,
-                        details={"video_id": str(vid.id), "file_path": vid.file_path, "error": str(exc)},
-                    )
-                    continue
+                    # Get credentials for this platform
+                    access_token = None
+                    refresh_token = None
+                    target_id = (campaign.platform_targets or {}).get(platform)
+                    if not target_id and platform == "facebook": target_id = campaign.target_page_id # Fallback
+                    
+                    brand_voice = None
+                    brand_voice_preset = "casual"
+                    client_id = None
+                    client_secret = None
 
-                if not file_exists:
-                    vid.status = VideoStatus.failed
-                    vid.last_error = "Tệp video không tồn tại hoặc đã bị xóa."
-                    vid.retry_count = (vid.retry_count or 0) + 1
-                    db.commit()
-                    record_event(
-                        "video",
-                        "warning",
-                        "Bỏ qua video do tệp không tồn tại.",
-                        db=db,
-                        details={"video_id": str(vid.id), "file_path": vid.file_path},
-                    )
-                    continue
-
-                try:
-                    local_path = storage.get_local_copy(vid.file_path)
-                except Exception as exc:
-                    vid.status = VideoStatus.failed
-                    vid.last_error = f"Không tải được bản sao local: {exc}"
-                    vid.retry_count = (vid.retry_count or 0) + 1
-                    db.commit()
-                    record_event(
-                        "video",
-                        "error",
-                        "Không tải được bản sao local từ storage.",
-                        db=db,
-                        details={"video_id": str(vid.id), "file_path": vid.file_path, "error": str(exc)},
-                    )
-                    continue
-
-                is_temp_copy = storage.requires_temp_copy()
-                stored_path_to_cleanup: str | None = None
-
-                try:
-                    publisher = None
                     if platform == "youtube":
-                        publisher = YouTubePublisher()
-                        res = publisher.upload_video(
-                            file_path=local_path,
-                            caption=vid.ai_caption,
-                            account_id=page_id,
-                            access_token=access_token,
-                            refresh_token=refresh_token,
-                            client_id=client_id,
-                            client_secret=client_secret
-                        )
-                    elif platform == "instagram":
-                        publisher = InstagramPublisher()
+                        channel = db.query(YouTubeChannel).filter(YouTubeChannel.channel_id == target_id).first()
+                        if not channel:
+                            post_record.status = VideoStatus.failed
+                            post_record.last_error = "YouTube Channel chưa được cấu hình."
+                            db.commit()
+                            continue
+                        access_token = channel.access_token
+                        refresh_token = channel.refresh_token
+                        client_id = os.environ.get("GOOGLE_CLIENT_ID")
+                        client_secret = os.environ.get("GOOGLE_CLIENT_SECRET")
+                    elif platform in ["facebook", "instagram"]:
+                        page = db.query(FacebookPage).filter(FacebookPage.page_id == target_id).first()
+                        if not page:
+                            post_record.status = VideoStatus.failed
+                            post_record.last_error = f"Trang Facebook {target_id} chưa được cấu hình."
+                            db.commit()
+                            continue
                         try:
-                            public_url = storage.get_public_url(vid.file_path)
+                            access_token = decrypt_secret(page.long_lived_access_token)
+                        except ValueError as exc:
+                            post_record.status = VideoStatus.failed
+                            post_record.last_error = str(exc)
+                            db.commit()
+                            continue
+                        brand_voice = page.brand_voice
+                        brand_voice_preset = page.brand_voice_preset
+                    
+                    if not access_token:
+                        post_record.status = VideoStatus.failed
+                        post_record.last_error = "Chưa có mã truy cập hợp lệ."
+                        db.commit()
+                        continue
+
+                    # Generate caption if missing
+                    if not vid.ai_caption:
+                        try:
+                            vid.ai_caption = generate_caption(
+                                vid.original_caption,
+                                brand_voice=brand_voice,
+                                brand_voice_preset=brand_voice_preset,
+                                target_language=campaign.caption_language or "auto",
+                                optimize_hashtags=campaign.hashtag_optimization or False
+                            )
+                            db.commit()
                         except Exception as exc:
-                            vid.status = VideoStatus.failed
-                            vid.last_error = f"Không lấy được public URL: {exc}"
-                            vid.retry_count = (vid.retry_count or 0) + 1
+                            post_record.status = VideoStatus.failed
+                            post_record.last_error = f"Không thể tạo chú thích AI: {exc}"
                             db.commit()
                             continue
 
-                        res = publisher.upload_video(
-                            file_path=local_path,
-                            video_url=public_url,
-                            caption=vid.ai_caption,
-                            account_id=page_id,
-                            access_token=access_token
-                        )
-                    else:
-                        publisher = FacebookPublisher()
-                        res = publisher.upload_video(
-                            file_path=local_path,
-                            caption=vid.ai_caption,
-                            account_id=page_id,
-                            access_token=access_token
-                        )
-
-                    if "id" in res:
-                        vid.fb_post_id = res["id"]
-                        vid.status = VideoStatus.posted
-                        vid.last_error = None
-                        stored_path_to_cleanup = vid.file_path
-                        db.commit()
-                        record_event(
-                            "video",
-                            "info",
-                            "Đã đăng video thành công.",
-                            db=db,
-                            details={"video_id": str(vid.id), "post_id": vid.fb_post_id, "platform": platform},
-                        )
-                    else:
-                        vid.status = VideoStatus.failed
-                        vid.last_error = str(res.get("error", res))
-                        vid.retry_count = (vid.retry_count or 0) + 1
-                        db.commit()
-                        record_event(
-                            "video",
-                            "error",
-                            "Đăng video thất bại.",
-                            db=db,
-                            details={"video_id": str(vid.id), "response": res, "platform": platform},
-                        )
-                finally:
-                    if is_temp_copy and local_path and os.path.exists(local_path):
-                        try:
-                            os.remove(local_path)
-                        except Exception as exc:
-                            logger.warning("Không thể xóa file tạm %s: %s", local_path, exc)
-
-                if stored_path_to_cleanup:
-                    delete_ok = False
+                    # File copy and upload logic
                     try:
-                        delete_ok = bool(storage.delete(stored_path_to_cleanup))
-                    except Exception as exc:
-                        record_event(
-                            "video",
-                            "warning",
-                            "Lỗi khi xóa tệp gốc trên storage sau khi post.",
-                            db=db,
-                            details={"video_id": str(vid.id), "file_path": stored_path_to_cleanup, "error": str(exc)},
-                        )
-
-                    if delete_ok:
-                        try:
-                            db.refresh(vid)
-                            vid.file_path = None
+                        file_exists = bool(vid.file_path) and storage.exists(vid.file_path)
+                        if not file_exists:
+                            post_record.status = VideoStatus.failed
+                            post_record.last_error = "Tệp video không tồn tại."
                             db.commit()
-                        except Exception as exc:
-                            try:
-                                db.rollback()
-                            except Exception:
-                                pass
-                    else:
-                        record_event(
-                            "video",
-                            "warning",
-                            "Không xóa được tệp gốc trên storage; giữ tham chiếu để job cleanup xử lý sau.",
-                            db=db,
-                            details={"video_id": str(vid.id), "file_path": stored_path_to_cleanup},
-                        )
-            except Exception as per_video_exc:
-                logger.exception("auto_post per-video error: %s", per_video_exc)
-                try:
-                    db.rollback()
-                except Exception:
-                    pass
-                continue
+                            continue
+
+                        local_path = storage.get_local_copy(vid.file_path)
+                        is_temp_copy = storage.requires_temp_copy()
+                        
+                        try:
+                            res = {"error": "Unknown platform"}
+                            if platform == "youtube":
+                                res = YouTubePublisher().upload_video(
+                                    file_path=local_path, caption=vid.ai_caption,
+                                    account_id=target_id, access_token=access_token,
+                                    refresh_token=refresh_token, client_id=client_id, client_secret=client_secret
+                                )
+                            elif platform == "instagram":
+                                public_url = storage.get_public_url(vid.file_path)
+                                res = InstagramPublisher().upload_video(
+                                    file_path=local_path, video_url=public_url,
+                                    caption=vid.ai_caption, account_id=target_id, access_token=access_token
+                                )
+                            elif platform == "facebook":
+                                res = FacebookPublisher().upload_video(
+                                    file_path=local_path, caption=vid.ai_caption,
+                                    account_id=target_id, access_token=access_token
+                                )
+
+                            if "id" in res:
+                                post_record.external_id = res["id"]
+                                post_record.status = VideoStatus.posted
+                                post_record.last_error = None
+                                db.commit()
+                                record_event("video", "info", f"Đăng {platform} thành công.", db=db, details={"video_id": str(vid.id), "post_id": res["id"]})
+                            else:
+                                post_record.status = VideoStatus.failed
+                                post_record.last_error = str(res.get("error", res))
+                                db.commit()
+                        finally:
+                            if is_temp_copy and local_path and os.path.exists(local_path):
+                                os.remove(local_path)
+                    except Exception as upload_exc:
+                        post_record.status = VideoStatus.failed
+                        post_record.last_error = str(upload_exc)
+                        db.commit()
+
+                # Final check: if all target platforms are 'posted', set video status to 'posted' and cleanup
+                target_platform_count = len(target_platforms)
+                posted_count = db.query(VideoPost).filter_by(video_id=vid.id, status=VideoStatus.posted).count()
+                
+                if posted_count >= target_platform_count:
+                    vid.status = VideoStatus.posted
+                    # Cleanup storage
+                    try:
+                        storage.delete(vid.file_path)
+                        vid.file_path = None
+                    except: pass
+                    db.commit()
+
     except Exception as exc:
-        record_event(
-            "worker",
-            "error",
-            "Tác vụ quét lịch đăng gặp lỗi.",
-            db=db,
-            details={"error": str(exc), "traceback": traceback.format_exc()},
-        )
+        record_event("worker", "error", "Tác vụ quét lịch đăng gặp lỗi.", db=db, details={"error": str(exc), "traceback": traceback.format_exc()})
     finally:
         update_worker_heartbeat(WORKER_NAME, app_role=settings.APP_ROLE, status="idle", db=db)
         db.close()
