@@ -1,7 +1,7 @@
 from __future__ import annotations
 import enum
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import JSON, BigInteger, Boolean, CheckConstraint, Column, DateTime, Enum, ForeignKey, Index, Integer, String, UniqueConstraint, Uuid
 from sqlalchemy.dialects.postgresql import JSONB
@@ -239,7 +239,8 @@ class VideoMetrics(Base):
     )
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    video_id = Column(Uuid(as_uuid=True), ForeignKey("videos.id", ondelete="CASCADE"), nullable=False)
+    # SET NULL (not CASCADE) để giữ time-series history khi Video bị xóa.
+    video_id = Column(Uuid(as_uuid=True), ForeignKey("videos.id", ondelete="SET NULL"), nullable=True)
     fb_post_id = Column(String, index=True, nullable=False)
     views = Column(BigInteger, default=0, nullable=False)
     likes = Column(BigInteger, default=0, nullable=False)

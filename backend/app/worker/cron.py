@@ -559,6 +559,9 @@ def start_scheduler():
             next_run_time=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=10)
         )
     if not scheduler.get_job("metrics_job"):
+        # Jitter ±5 phút để tránh thundering herd khi multi-pod start cùng lúc.
+        import random as _random
+        jitter_seconds = _random.randint(-300, 300)
         scheduler.add_job(
             metrics_job,
             "interval",
@@ -567,7 +570,9 @@ def start_scheduler():
             replace_existing=True,
             max_instances=1,
             coalesce=True,
-            next_run_time=datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(minutes=15)
+            jitter=300,  # APScheduler built-in: ±300s ngẫu nhiên cho mỗi lần fire
+            next_run_time=datetime.now(timezone.utc).replace(tzinfo=None)
+            + timedelta(minutes=15, seconds=jitter_seconds),
         )
     if not scheduler.running:
         scheduler.start()

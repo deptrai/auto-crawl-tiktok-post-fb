@@ -68,3 +68,8 @@
 
 - Data Hoarding Without Pruning (inserts new row every 6 hours)
 - Job stalls on dead network
+
+## Deferred from: code review of story-11.1 (2026-05-04)
+
+- **Verify FB Graph metric names cho video posts** — Code dùng `post_video_views` (cho views) và `post_impressions_unique` / `post_video_views_unique` (cho reach). Cần test với FB sandbox hoặc real page để xác nhận shape. Có thể tên thật là `total_video_views`, `total_video_impressions`. [backend/app/services/metrics_collector.py:101-104]
+- **Single-video batch FB shape** — Rare edge case khi chunk cuối có 1 video, FB có thể trả flat object thay vì keyed dict. Add test khi gặp. [backend/app/services/metrics_collector.py:80]
