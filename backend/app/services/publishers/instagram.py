@@ -32,18 +32,17 @@ class InstagramPublisher(BasePublisher):
             raise RuntimeError(f"Lỗi Graph API khi lấy IG Account: {data['error'].get('message')}")
 
         ig_account = data.get("instagram_business_account")
-        if not ig_account or "id" not in ig_account:
+        if not isinstance(ig_account, dict) or "id" not in ig_account:
             raise ValueError("Fanpage không có Instagram Business Account được liên kết.")
             
         return ig_account["id"]
 
-    def upload_video(self, file_path: str, caption: str, account_id: str, access_token: str, **kwargs) -> Dict[str, Any]:
+    def upload_video(self, file_path: str, caption: str, account_id: str, access_token: str, video_url: str | None = None, **kwargs) -> Dict[str, Any]:
         """
         Đăng video lên Instagram Reels qua luồng Container.
         - account_id: ở đây là Facebook Page ID, ta sẽ fetch IG User ID từ đó.
-        - file_path: phải là URL public (video_url).
+        - video_url: phải là URL public.
         """
-        video_url = kwargs.get("video_url")
         if not video_url:
             return {'error': 'Cần video_url để đăng lên Instagram Reels.'}
 
@@ -88,25 +87,31 @@ class InstagramPublisher(BasePublisher):
             
             for i in range(max_polls):
                 logger.info(f"Polling IG Container status lần {i+1}...")
-                res_status = requests.get(status_url, params=status_params, timeout=30)
                 try:
-                    status_data = res_status.json()
-                except (JSONDecodeError, ValueError):
-                    return {'error': f"Polling IG trả lỗi không phải JSON (HTTP {res_status.status_code})."}
-                
-                status_code = status_data.get('status_code')
-                if status_code == 'FINISHED':
-                    logger.info("Container render xong.")
-                    break
-                elif status_code == 'ERROR':
-                    logger.error(f"Lỗi render IG: {status_data}")
-                    return {'error': f"Lỗi xử lý video từ phía Instagram: {status_data.get('status', 'Unknown error')}"}
-                elif status_code == 'EXPIRED':
-                    return {'error': 'IG Container hết hạn xử lý (quá 24h).'}
-                elif status_code == 'IN_PROGRESS':
-                    time.sleep(poll_interval)
-                else:
-                    logger.warning(f"Unknown status: {status_code}. Thử lại...")
+                    res_status = requests.get(status_url, params=status_params, timeout=30)
+                    try:
+                        status_data = res_status.json()
+                    except (JSONDecodeError, ValueError):
+                        logger.warning(f"Polling IG trả lỗi không phải JSON (HTTP {res_status.status_code}). Thử lại...")
+                        time.sleep(poll_interval)
+                        continue
+                    
+                    status_code = status_data.get('status_code')
+                    if status_code == 'FINISHED':
+                        logger.info("Container render xong.")
+                        break
+                    elif status_code == 'ERROR':
+                        logger.error(f"Lỗi render IG: {status_data}")
+                        return {'error': f"Lỗi xử lý video từ phía Instagram: {status_data.get('status', 'Unknown error')}"}
+                    elif status_code == 'EXPIRED':
+                        return {'error': 'IG Container hết hạn xử lý (quá 24h).'}
+                    elif status_code == 'IN_PROGRESS':
+                        time.sleep(poll_interval)
+                    else:
+                        logger.warning(f"Unknown status: {status_code}. Thử lại...")
+                        time.sleep(poll_interval)
+                except requests.RequestException as e:
+                    logger.warning(f"Lỗi mạng khi polling IG: {e}. Thử lại...")
                     time.sleep(poll_interval)
             else:
                 return {'error': 'Timeout khi chờ Instagram render video.'}

@@ -24,5 +24,6 @@ def upgrade() -> None:
             op.execute("ALTER TYPE platformtype ADD VALUE IF NOT EXISTS 'instagram'")
 
 def downgrade() -> None:
-    # PostgreSQL doesn't support DROP VALUE for ENUMs easily.
-    pass
+    # PostgreSQL doesn't support DROP VALUE for ENUMs.
+    # To truly downgrade, one would need to recreate the type.
+    raise NotImplementedError("PostgreSQL does not support dropping ENUM values. Downgrade must be handled manually if required.")

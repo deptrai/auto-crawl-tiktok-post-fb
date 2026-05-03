@@ -207,7 +207,15 @@ def auto_post_job():
                         )
                     elif platform == "instagram":
                         publisher = InstagramPublisher()
-                        public_url = storage.get_public_url(vid.file_path)
+                        try:
+                            public_url = storage.get_public_url(vid.file_path)
+                        except Exception as exc:
+                            vid.status = VideoStatus.failed
+                            vid.last_error = f"Không lấy được public URL: {exc}"
+                            vid.retry_count = (vid.retry_count or 0) + 1
+                            db.commit()
+                            continue
+
                         res = publisher.upload_video(
                             file_path=local_path,
                             video_url=public_url,

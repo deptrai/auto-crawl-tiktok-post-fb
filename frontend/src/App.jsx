@@ -1141,7 +1141,16 @@ function App() {
         <form onSubmit={handleCampaignSubmit} className="grid gap-4 md:grid-cols-2">
           <label className="space-y-2 md:col-span-2">
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Nền tảng đích</span>
-            <select required className={FIELD_CLASS} value={formData.target_platform} onChange={(event) => setFormData({ ...formData, target_platform: event.target.value, target_page_id: '' })}>
+            <select required className={FIELD_CLASS} value={formData.target_platform} onChange={(event) => {
+              const newPlatform = event.target.value;
+              let firstId = '';
+              if (newPlatform === 'facebook' || newPlatform === 'instagram') {
+                firstId = fbPages[0]?.page_id || '';
+              } else if (newPlatform === 'youtube') {
+                firstId = youtubeChannels[0]?.channel_id || '';
+              }
+              setFormData({ ...formData, target_platform: newPlatform, target_page_id: firstId });
+            }}>
               <option value="facebook" className="text-[var(--bg-card)]">Facebook</option>
               <option value="youtube" className="text-[var(--bg-card)]">YouTube Shorts</option>
               <option value="instagram" className="text-[var(--bg-card)]">Instagram Reels</option>

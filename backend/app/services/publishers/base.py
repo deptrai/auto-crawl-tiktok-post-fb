@@ -7,7 +7,7 @@ class BasePublisher(ABC):
     """
     
     @abstractmethod
-    def upload_video(self, file_path: str, caption: str, account_id: str, access_token: str, **kwargs) -> Dict[str, Any]:
+    def upload_video(self, file_path: str, caption: str, account_id: str, access_token: str, video_url: str | None = None, **kwargs) -> Dict[str, Any]:
         """
         Thực hiện tải lên video.
         
@@ -16,6 +16,7 @@ class BasePublisher(ABC):
             caption: Nội dung mô tả video (caption).
             account_id: ID của tài khoản/kênh/trang đích.
             access_token: Token xác thực.
+            video_url: URL công khai của video (bắt buộc cho Instagram).
             **kwargs: Các tham số bổ sung tùy nền tảng.
             
         Returns:

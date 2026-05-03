@@ -207,8 +207,8 @@ class S3Storage:
         return True
 
     def get_public_url(self, stored_path: str, expiration: int = 3600) -> str:
-        key = self._parse_key(stored_path)
         try:
+            key = self._parse_key(stored_path)
             url = self._client.generate_presigned_url(
                 'get_object',
                 Params={'Bucket': self._bucket, 'Key': key},
@@ -216,7 +216,7 @@ class S3Storage:
             )
             return url
         except Exception as exc:
-            logger.error("S3Storage.get_public_url lỗi key=%s: %s", key, exc)
+            logger.error("S3Storage.get_public_url lỗi: %s", exc)
             raise RuntimeError(f"Không thể tạo presigned URL từ S3: {exc}") from exc
 
 
@@ -259,6 +259,18 @@ def get_storage() -> StorageBackend:
     """Factory: trả StorageBackend dựa trên settings.STORAGE_BACKEND. Cached."""
     return _build_storage()
 
+
+def reset_storage_cache() -> None:
+    """Clear cached storage instance — dùng cho tests hoặc khi đổi cấu hình runtime."""
+    _build_storage.cache_clear()
+
+
+def build_s3_key(local_path: str) -> str:
+    """Tạo S3 key duy nhất theo convention: videos/{YYYY}/{MM}/{unique_id}_{filename}."""
+    now = datetime.now(timezone.utc)
+    unique_id = uuid.uuid4().hex[:8]
+    filename = _sanitize_filename(os.path.basename(local_path))
+    return f"videos/{now.year}/{now.month:02d}/{unique_id}_{filename}"
 
 def reset_storage_cache() -> None:
     """Clear cached storage instance — dùng cho tests hoặc khi đổi cấu hình runtime."""

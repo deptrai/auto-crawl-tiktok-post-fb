@@ -13,7 +13,7 @@ from app.services.publishers.base import BasePublisher
 logger = logging.getLogger(__name__)
 
 class YouTubePublisher(BasePublisher):
-    def upload_video(self, file_path: str, caption: str, account_id: str, access_token: str, **kwargs) -> Dict[str, Any]:
+    def upload_video(self, file_path: str, caption: str, account_id: str, access_token: str, video_url: str | None = None, **kwargs) -> Dict[str, Any]:
         """
         Tải video lên YouTube Shorts sử dụng Resumable Upload (YouTube Data API v3).
         """
