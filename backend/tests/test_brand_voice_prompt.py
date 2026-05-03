@@ -87,7 +87,7 @@ def test_brand_voice_with_injection_attempt_wrapped_in_delimiter():
         brand_voice_preset="casual",
     )
     # Mệnh lệnh chính (rule 4 hashtag) phải vẫn xuất hiện.
-    assert "5-6 hashtag" in prompt
+    assert "KHÔNG thêm bất kỳ hashtag" in prompt
     # Nội dung injected nằm trong delimiter block, không phải ngang hàng với rules.
     assert "<custom_voice>" in prompt
     assert "</custom_voice>" in prompt

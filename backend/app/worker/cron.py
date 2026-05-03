@@ -88,7 +88,8 @@ def auto_post_job():
                         vid.original_caption,
                         brand_voice=page.brand_voice,
                         brand_voice_preset=page.brand_voice_preset,
-                        target_language=vid.campaign.caption_language if vid.campaign else "auto"
+                        target_language=vid.campaign.caption_language if vid.campaign else "auto",
+                        optimize_hashtags=vid.campaign.hashtag_optimization if vid.campaign else False
                     )
                     db.commit()
                 except Exception as exc:

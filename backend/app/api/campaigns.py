@@ -38,6 +38,8 @@ class CampaignCreate(BaseModel):
     filter_allowlist_hashtags: list[Annotated[str, Field(max_length=100)]] = Field(default_factory=list, max_length=500)
     # Story 10.2: Multilingual caption config
     caption_language: Literal["vi", "en", "auto"] = "auto"
+    # Story 10.3: Auto hashtag optimization
+    hashtag_optimization: bool = False
 
 
 class CampaignUpdate(BaseModel):
@@ -52,7 +54,9 @@ class CampaignUpdate(BaseModel):
     filter_blocklist_keywords: list[Annotated[str, Field(max_length=200)]] | None = Field(default=None, max_length=500)
     filter_allowlist_hashtags: list[Annotated[str, Field(max_length=100)]] | None = Field(default=None, max_length=500)
     # Story 10.2: Multilingual caption config
-    caption_language: Literal["vi", "en", "auto"] = Field(default=None)
+    caption_language: Literal["vi", "en", "auto"] | None = Field(default=None)
+    # Story 10.3: Auto hashtag optimization
+    hashtag_optimization: bool | None = None
 
 
 class VideoCaptionUpdate(BaseModel):
@@ -120,6 +124,7 @@ def serialize_campaign(campaign: Campaign, summary_map, page_name_map):
         "filter_blocklist_keywords": campaign.filter_blocklist_keywords or [],
         "filter_allowlist_hashtags": campaign.filter_allowlist_hashtags or [],
         "caption_language": campaign.caption_language,
+        "hashtag_optimization": campaign.hashtag_optimization,
         "last_synced_at": serialize_datetime(campaign.last_synced_at),
         "last_sync_status": campaign.last_sync_status or "idle",
         "last_sync_error": campaign.last_sync_error,
@@ -206,6 +211,7 @@ def create_campaign(campaign_in: CampaignCreate, db: Session = Depends(get_db)):
         filter_blocklist_keywords=campaign_in.filter_blocklist_keywords,
         filter_allowlist_hashtags=campaign_in.filter_allowlist_hashtags,
         caption_language=campaign_in.caption_language,
+        hashtag_optimization=campaign_in.hashtag_optimization,
         status=CampaignStatus.active,
         last_sync_status="queued",
     )
@@ -511,9 +517,11 @@ def regenerate_video_caption(video_id: str, db: Session = Depends(get_db)):
     brand_voice = None
     brand_voice_preset = "casual"
     caption_language = "auto"
+    hashtag_optimization = False
 
     if video.campaign:
         caption_language = video.campaign.caption_language or "auto"
+        hashtag_optimization = video.campaign.hashtag_optimization
         target_page_id = video.campaign.target_page_id
         if target_page_id:
             page = db.query(FacebookPage).filter(FacebookPage.page_id == target_page_id).first()
@@ -526,7 +534,8 @@ def regenerate_video_caption(video_id: str, db: Session = Depends(get_db)):
             video.original_caption,
             brand_voice=brand_voice,
             brand_voice_preset=brand_voice_preset,
-            target_language=caption_language
+            target_language=caption_language,
+            optimize_hashtags=hashtag_optimization
         )
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"Không thể tạo chú thích AI lúc này: {exc}") from exc

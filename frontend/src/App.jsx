@@ -399,6 +399,7 @@ function App() {
     filter_blocklist_keywords: [],
     filter_allowlist_hashtags: [],
     caption_language: 'auto',
+    hashtag_optimization: false,
   });
   const [fbPages, setFbPages] = useState([]);
   const [fbForm, setFbForm] = useState({ page_id: '', page_name: '', long_lived_access_token: '', brand_voice: '', brand_voice_preset: 'casual' });
@@ -1117,13 +1118,22 @@ function App() {
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Nguồn TikTok</span>
             <input required type="url" className={FIELD_CLASS} placeholder="https://www.tiktok.com/@..." value={formData.source_url} onChange={(event) => setFormData({ ...formData, source_url: event.target.value })} />
           </label>
-          <label className="md:col-span-2 flex items-center gap-3 rounded-[24px] border border-white/8 bg-black/10 px-4 py-4">
-            <input type="checkbox" checked={formData.auto_post} onChange={(event) => setFormData({ ...formData, auto_post: event.target.checked })} />
-            <div>
-              <div className="font-medium text-white">Cho phép tự đăng ngay khi hàng chờ đến lượt</div>
-              <div className="text-sm text-[var(--text-soft)]">Worker sẽ tự đăng theo lịch.</div>
-            </div>
-          </label>
+          <div className="grid gap-4 md:grid-cols-2 md:col-span-2">
+            <label className="flex items-center gap-3 rounded-[24px] border border-white/8 bg-black/10 px-4 py-4">
+              <input type="checkbox" checked={formData.auto_post} onChange={(event) => setFormData({ ...formData, auto_post: event.target.checked })} />
+              <div>
+                <div className="font-medium text-white">Cho phép tự đăng ngay khi hàng chờ đến lượt</div>
+                <div className="text-sm text-[var(--text-soft)]">Worker sẽ tự đăng theo lịch.</div>
+              </div>
+            </label>
+            <label className="flex items-center gap-3 rounded-[24px] border border-white/8 bg-black/10 px-4 py-4">
+              <input type="checkbox" checked={formData.hashtag_optimization} onChange={(event) => setFormData({ ...formData, hashtag_optimization: event.target.checked })} />
+              <div>
+                <div className="font-medium text-white">Tối ưu Hashtag bằng AI</div>
+                <div className="text-sm text-[var(--text-soft)]">Gợi ý thêm trending hashtag phù hợp với video.</div>
+              </div>
+            </label>
+          </div>
           <div className="md:col-span-2 flex justify-end">
             <button type="submit" disabled={fbPages.length === 0 || actionState['create-campaign']} className={BUTTON_PRIMARY}>
               <PlusCircle className="h-4 w-4" />

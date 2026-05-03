@@ -46,5 +46,29 @@ So that reach của post được tối đa hóa mà không cần research hasht
 - Parsing hashtags an toàn: Hãy sử dụng Regex `re.findall(r'#\w+')` để bóc text. Sử dụng tập hợp `set()` để dedup. Cắt list hashtags bằng array slicing `list(hashtags)[:30]` để đảm bảo Facebook an toàn, rồi `.join(" ")` thay vì để AI tự do overgenerate.
 
 ## 4. Status
-Status: `ready-for-dev`
-Note: Ultimate context engine analysis completed - comprehensive developer guide created.
+Status: `review`
+
+## 5. Tasks / Subtasks
+
+- [x] Task 1: Mở rộng Model và Schema (Backend)
+  - [x] 1.1: Cập nhật model `Campaign` trong `backend/app/models/models.py` (thêm `hashtag_optimization`)
+  - [x] 1.2: Tạo Alembic migration cho thay đổi DB
+  - [x] 1.3: Cập nhật Pydantic schemas cho Campaign
+- [x] Task 2: Nâng cấp AI Generator và xử lý Hashtag
+  - [x] 2.1: Triển khai hàm `_merge_hashtags` trong `backend/app/services/ai_generator.py`
+  - [x] 2.2: Cập nhật hàm `generate_caption` để ghép hashtag từ caption gốc khi `optimize_hashtags` được bật
+  - [x] 2.3: Điều chỉnh prompt để model sinh thêm hashtag, sau đó merge và dedup ở mức mã nguồn
+- [x] Task 3: Cập nhật Frontend UI
+  - [x] 3.1: Thêm tùy chọn (checkbox) `hashtagOptimization` vào form cấu hình Campaign
+- [x] Task 4: Kiểm thử và xác minh
+  - [x] 4.1: Chạy migration và verify lược đồ DB
+  - [x] 4.2: Viết unit test kiểm tra hàm `_merge_hashtags` (rút trích, dedup, giới hạn max 30)
+  - [x] 4.3: Viết/Cập nhật unit test/integration test cho endpoints và worker
+
+## 6. Dev Agent Record
+### Agent Model Used
+Gemini 2.0 Flash
+
+### Change Log
+- 2026-05-03: Bắt đầu triển khai Story 10.3.
+

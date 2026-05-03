@@ -70,6 +70,8 @@ class Campaign(Base):
     filter_allowlist_hashtags = Column(JSON_TYPE, default=list)
     # Story 10.2: Multilingual caption config
     caption_language = Column(String(16), default="auto", nullable=False)
+    # Story 10.3: Auto hashtag optimization
+    hashtag_optimization = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
