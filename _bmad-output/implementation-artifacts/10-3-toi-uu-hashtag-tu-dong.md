@@ -46,7 +46,7 @@ So that reach của post được tối đa hóa mà không cần research hasht
 - Parsing hashtags an toàn: Hãy sử dụng Regex `re.findall(r'#\w+')` để bóc text. Sử dụng tập hợp `set()` để dedup. Cắt list hashtags bằng array slicing `list(hashtags)[:30]` để đảm bảo Facebook an toàn, rồi `.join(" ")` thay vì để AI tự do overgenerate.
 
 ## 4. Status
-Status: `review`
+Status: `done`
 
 ## 5. Tasks / Subtasks
 
@@ -75,12 +75,12 @@ Gemini 2.0 Flash
 
 ### Review Findings (2026-05-03)
 
-- [ ] [Review][Patch] Data Loss when optimize_hashtags is False (AI removes original tags) [backend/app/services/ai_generator.py:76]
-- [ ] [Review][Patch] Regex stripping leaves spaces and punctuation [backend/app/services/ai_generator.py:117]
-- [ ] [Review][Patch] Stringified 'None' bug in fallback when original_caption is null [backend/app/services/ai_generator.py:135]
-- [ ] [Review][Patch] React Uncontrolled Component Risk for hashtag_optimization [frontend/src/App.jsx]
-- [ ] [Review][Patch] API missing 'text' key check causes KeyError [backend/app/services/ai_generator.py:165]
-- [ ] [Review][Patch] camelCase mismatch for hashtagOptimization [frontend/src/App.jsx]
+- [x] [Review][Patch] Data Loss when optimize_hashtags is False (AI removes original tags) — đã fix prompt: khi False, yêu cầu AI GIỮ NGUYÊN hashtag gốc. [backend/app/services/ai_generator.py:73-90]
+- [x] [Review][Dismiss] Regex stripping leaves spaces and punctuation — false positive, regex đã handle `[^\w\s]*` và `\s{2,}`. [backend/app/services/ai_generator.py:118-119]
+- [x] [Review][Dismiss] Stringified 'None' bug in fallback — false positive, line 133 đã guard `original_caption or ""`. [backend/app/services/ai_generator.py:133]
+- [x] [Review][Patch] React Uncontrolled Component Risk + camelCase mismatch for hashtagOptimization — đã fix: checkbox đọc/ghi `hashtag_optimization` (snake_case) match initial state; backend thêm `populate_by_name=True` để chấp nhận cả snake lẫn camel. [frontend/src/App.jsx:1244, backend/app/api/campaigns.py:27,49]
+- [x] [Review][Dismiss] API missing 'text' key check causes KeyError — false positive cho scope 10-3 (generate_reply pre-existing). [backend/app/services/ai_generator.py:210]
+- [x] [Review][Merged] camelCase mismatch for hashtagOptimization — merged vào F4 ở trên.
 - [x] [Review][Defer] Fallback logic redundancy [backend/app/services/ai_generator.py] — deferred, pre-existing
 - [x] [Review][Defer] Hardcoded fallback tags ignore language context [backend/app/services/ai_generator.py] — deferred, pre-existing
 - [x] [Review][Defer] Missing Integration Tests [backend/tests/] — deferred, pre-existing

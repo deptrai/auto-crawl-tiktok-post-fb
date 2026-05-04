@@ -131,7 +131,8 @@ def auto_post_job():
                             db.commit()
                             continue
                         brand_voice = page.brand_voice
-                        brand_voice_preset = page.brand_voice_preset
+                        # Fallback "casual" nếu DB row cũ có NULL preset (nhất quán với campaigns.py:535)
+                        brand_voice_preset = page.brand_voice_preset or "casual"
                     
                     if not access_token:
                         post_record.status = VideoStatus.failed

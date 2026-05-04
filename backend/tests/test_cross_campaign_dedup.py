@@ -9,7 +9,7 @@ Coverage:
 """
 from __future__ import annotations
 
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from app.models.models import Campaign, CampaignStatus, Video, VideoStatus
 from app.services.content_filter import (
@@ -314,9 +314,14 @@ class TestSyncReportDedupCount:
         def capture_record_event(scope, level, message, db=None, details=None):
             recorded_events.append({"scope": scope, "level": level, "message": message, "details": details or {}})
 
+        from app.services.scrapers.tiktok import TiktokScraper
+
+        mock_scraper = MagicMock(spec=TiktokScraper)
+        mock_scraper.extract_metadata.return_value = {"entries": mock_entries}
+        mock_scraper.download_video.return_value = (None, None)
+
         with (
-            patch("app.services.campaign_jobs.extract_metadata", return_value={"entries": mock_entries}),
-            patch("app.services.campaign_jobs.download_video", return_value=(None, None)),
+            patch("app.services.campaign_jobs.get_scraper", return_value=mock_scraper),
             patch("app.services.campaign_jobs.record_event", side_effect=capture_record_event),
         ):
             result = sync_campaign_content(str(campaign_b.id), "https://tiktok.com/@x")

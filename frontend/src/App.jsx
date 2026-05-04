@@ -408,6 +408,7 @@ function App() {
     source_url: '',
     auto_post: false,
     target_platform: 'facebook',
+    target_platforms: ['facebook'],
     target_page_id: '',
     schedule_interval: 30,
     filter_min_views: 0,
@@ -720,7 +721,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      setFormData((current) => ({ ...current, name: '', source_url: '', auto_post: false, filter_min_views: 0, filter_min_likes: 0, filter_blocklist_keywords: [], filter_allowlist_hashtags: [] }));
+      setFormData((current) => ({ ...current, name: '', source_url: '', auto_post: false, filter_min_views: 0, filter_min_likes: 0, filter_blocklist_keywords: [], filter_allowlist_hashtags: [], target_platforms: ['facebook'] }));
       return payload;
     });
   };
@@ -1146,11 +1147,12 @@ function App() {
                 <label key={plt} className="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 p-3 hover:bg-white/5 transition-colors">
                   <input
                     type="checkbox"
-                    checked={formData.target_platforms.includes(plt)}
+                    checked={(formData.target_platforms || []).includes(plt)}
                     onChange={(e) => {
+                      const currentPlatforms = formData.target_platforms || [];
                       const updated = e.target.checked
-                        ? [...formData.target_platforms, plt]
-                        : formData.target_platforms.filter(p => p !== plt);
+                        ? [...currentPlatforms, plt]
+                        : currentPlatforms.filter(p => p !== plt);
                       setFormData({ ...formData, target_platforms: updated });
                     }}
                     className="h-4 w-4 rounded border-white/20 bg-black/40 text-[var(--accent)]"
@@ -1241,7 +1243,7 @@ function App() {
               </div>
             </label>
             <label className="flex items-center gap-3 rounded-[24px] border border-white/8 bg-black/10 px-4 py-4">
-              <input type="checkbox" checked={formData.hashtagOptimization || false} onChange={(event) => setFormData({ ...formData, hashtagOptimization: event.target.checked })} />
+              <input type="checkbox" checked={formData.hashtag_optimization || false} onChange={(event) => setFormData({ ...formData, hashtag_optimization: event.target.checked })} />
               <div>
                 <div className="font-medium text-white">Tối ưu Hashtag bằng AI</div>
                 <div className="text-sm text-[var(--text-soft)]">Gợi ý thêm trending hashtag phù hợp với video.</div>
@@ -2077,12 +2079,6 @@ function App() {
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-
-export default App;
-iv>
     </div>
   );
 }

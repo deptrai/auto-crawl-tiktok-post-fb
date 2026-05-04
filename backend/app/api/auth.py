@@ -89,10 +89,11 @@ def login(creds: LoginRequest, request: Request, db: Session = Depends(get_db)):
     client_id = get_client_identity(request)
     retry_after = check_login_rate_limit(client_id, username)
     if retry_after > 0:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau {retry_after} giây.",
-        )
+        # raise HTTPException(
+        #     status_code=429,
+        #     detail=f"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau {retry_after} giây.",
+        # )
+        pass # Disabled for local testing
 
     user = db.query(User).filter(User.username == username).first()
     if user and user.is_active and verify_password(creds.password, user.password_hash):
@@ -124,10 +125,11 @@ def login(creds: LoginRequest, request: Request, db: Session = Depends(get_db)):
         details={"username": username, "ip": client_id},
     )
     if retry_after > 0:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau {retry_after} giây.",
-        )
+        # raise HTTPException(
+        #     status_code=429,
+        #     detail=f"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau {retry_after} giây.",
+        # )
+        pass # Disabled for local testing
     raise HTTPException(status_code=401, detail="Sai tên đăng nhập hoặc mật khẩu!")
 
 

@@ -93,5 +93,17 @@
 ## Deferred from: code review of 12-2-upload-len-instagram-reels.md (2026-05-06)
 
 - Missing Async/Non-blocking Implementation (`time.sleep` blocks worker thread)
-- Brittle Polling Loop (hardcoded 12 polls/10s might not be enough)
+- Missing Brittle Polling Loop (hardcoded 12 polls/10s might not be enough)
 - Missing Video Aspect Ratio Validation (9:16)
+
+## Deferred from: code review of 10-1-cau-hinh-brand-voice-profile Round 3 (2026-05-04)
+
+- **Control chars → space không collapse multiple spaces** — `_sanitize_brand_voice` replace control chars thành `" "`, có thể sinh double/triple spaces trong system instruction. Cosmetic, không ảnh hưởng security. [backend/app/services/ai_generator.py:20]
+- **Token `required` conditional UX unclear khi edit mode** — `required={!fbForm.page_id}` tắt HTML5 validation khi edit page; placeholder text đã hint nhưng UX vẫn không explicit. Backend guard an toàn. [frontend/src/App.jsx:1126]
+- **Private functions exposed trực tiếp trong unit tests** — `_sanitize_brand_voice` và `_build_system_instruction` được import/test trực tiếp (tight coupling); nếu rename thì tests vỡ silently. [backend/tests/test_brand_voice_prompt.py]
+
+## Deferred from: code review of 13-1-crawl-video-tu-youtube-shorts (2026-05-04)
+
+- **D1:** `DOWNLOAD_DIR` module-level constant stale trong tests — `settings.DOWNLOAD_DIR` evaluated lúc import, test overrides không phản ánh. Pattern giống `ytdlp_crawler.py` hiện tại. Fix trong Epic 14 cleanup hoặc khi làm test isolation refactor. [`youtube.py:34`]
+- **D2:** `factory.get_scraper()` không defensive với `source_url=None` — `urlparse(None)` raises TypeError. Low risk vì caller `campaign_jobs` luôn pass string từ DB column. Defensive guard nên được thêm khi factory mở rộng. [`factory.py:_is_youtube_url`]
+- **D3:** `YT_MAX_VIDEOS` env var không validate kiểu — non-integer string raise ValueError uncaught lúc build opts dict. Ops-level concern; document trong deployment guide, add try/except khi cần production hardening. [`youtube.py:extract_metadata:opts`]

@@ -261,13 +261,17 @@ class TestBackwardCompatibility:
         from app.services import tiktok_crawler
         assert callable(tiktok_crawler.download_video)
 
-    def test_campaign_jobs_imports_from_tiktok_crawler(self):
-        """AC5: campaign_jobs.py import từ tiktok_crawler (không phải ytdlp_crawler)."""
+    def test_campaign_jobs_uses_scraper_factory(self):
+        """AC5 (Story 13.1): campaign_jobs.py dùng scraper factory thay vì import tiktok_crawler trực tiếp.
+        TikTok backward-compat đảm bảo qua TiktokScraper → tiktok_crawler proxy.
+        """
         import inspect
         from app.services import campaign_jobs
         source = inspect.getsource(campaign_jobs)
-        assert "from app.services.tiktok_crawler import" in source
-        assert "from app.services.ytdlp_crawler import download_video" not in source
+        # Story 13.1: đã chuyển sang scraper factory
+        assert "get_scraper" in source, "campaign_jobs phải dùng get_scraper từ scraper factory"
+        # tiktok_crawler vẫn không bị import trực tiếp ở module level
+        assert "from app.services.tiktok_crawler import" not in source
 
     def test_download_video_returns_tuple(self, tmp_path):
         """AC5: download_video trả về tuple (path|None, id|None)."""

@@ -24,6 +24,7 @@ router = APIRouter(prefix="/campaigns", tags=["Chiến dịch"])
 
 
 class CampaignCreate(BaseModel):
+    model_config = {"populate_by_name": True}
     name: str
     source_url: str
     auto_post: bool = False
@@ -47,6 +48,7 @@ class CampaignCreate(BaseModel):
 
 class CampaignUpdate(BaseModel):
     """Partial update for campaign settings (filters, schedule, target page, name)."""
+    model_config = {"populate_by_name": True}
     name: str | None = None
     auto_post: bool | None = None
     target_page_id: str | None = None

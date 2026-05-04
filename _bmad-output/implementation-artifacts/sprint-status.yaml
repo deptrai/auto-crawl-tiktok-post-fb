@@ -118,10 +118,10 @@ development_status:
   8-2-tu-dong-don-dep-local-cache: done
   epic-8-retrospective: optional
 
-  epic-10: in-progress
-  10-1-cau-hinh-brand-voice-profile: review
+  epic-10: done
+  10-1-cau-hinh-brand-voice-profile: done
   10-2-caption-da-ngon-ngu: done
-  10-3-toi-uu-hashtag-tu-dong: review
+  10-3-toi-uu-hashtag-tu-dong: done
   epic-10-retrospective: optional
 
   # ─── PHASE 2 — SPRINT 4 ──────────────────────────────────────────────────
@@ -138,7 +138,7 @@ development_status:
   epic-12-retrospective: optional
 
   epic-13: in-progress
-  13-1-crawl-video-tu-youtube-shorts: ready-for-dev
+  13-1-crawl-video-tu-youtube-shorts: done
   13-2-crawl-video-tu-instagram-reels: ready-for-dev
   epic-13-retrospective: optional
 

@@ -15,7 +15,7 @@ from app.services.fb_graph import reply_to_comment
 from app.services.observability import record_event
 from app.services.security import decrypt_secret
 from app.services.content_filter import CrossCampaignDedup, get_default_filters, run_filters
-from app.services.tiktok_crawler import download_video, extract_metadata
+from app.services.scrapers import get_scraper
 from app.services.storage_backend import S3Storage, build_s3_key, get_storage
 from app.core.config import settings
 
@@ -98,7 +98,8 @@ def retry_video_download(video_id: str) -> dict:
             raise ValueError("Không tìm thấy video cần thử lại.")
 
         storage = get_storage()
-        out_path, _ = download_video(video.source_video_url, "tiktok")
+        scraper = get_scraper(video.source_video_url)
+        out_path, _ = scraper.download_video(video.source_video_url, "retry")
         if out_path:
             # Guard: download_video có thể trả file 0-byte trong edge case → skip.
             try:
@@ -215,7 +216,9 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
             details={"campaign_id": campaign_id, "campaign_name": campaign.name},
         )
 
-        info = extract_metadata(source_url)
+        # Story 13.1: Scraper factory — detect platform from source_url (YouTube vs TikTok)
+        scraper = get_scraper(source_url)
+        info = scraper.extract_metadata(source_url)
         entries = info.get("entries", [info]) if "entries" in info else [info]
         entries = list(reversed(entries))
 
@@ -232,6 +235,7 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
         # Hoist filter chain outside loop — avoid re-instantiating per-iteration.
         # CrossCampaignDedup receives the DB session so it can query cross-campaign videos.
         content_filters = get_default_filters(db=db)
+        # Story 13.1: scraper đã được tạo trước extract_metadata ở trên
         storage = get_storage()
 
         for entry in entries:
@@ -299,7 +303,10 @@ def sync_campaign_content(campaign_id: str, source_url: str, allow_paused: bool 
             db.refresh(db_video)
             added_count += 1
 
-            out_path, _ = download_video(download_url, "tiktok")
+            out_path, _ = scraper.download_video(
+                download_url,
+                "youtube" if entry.get("_yt_download") else "tiktok",
+            )
             if out_path:
                 # Guard 0-byte: bỏ qua, đánh dấu failed, không tốn S3 quota.
                 try:

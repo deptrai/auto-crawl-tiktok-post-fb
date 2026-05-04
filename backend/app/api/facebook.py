@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel, field_validator, Field
-from typing import Literal
+from typing import Literal, Annotated
 from app.core.database import get_db
 from app.models.models import FacebookPage
 from app.services.observability import record_event
@@ -25,9 +25,9 @@ class FacebookPageCreate(BaseModel):
     user_access_token: str | None = None
     auto_refresh_enabled: bool | None = None
     brand_voice: str | None = Field(None, max_length=500)
-    # `Literal[...] = "casual"` không có `| None` — DB column nullable=False.
-    # Client không gửi field → default casual; gửi null → 422.
-    brand_voice_preset: Literal["professional", "casual", "gen-z", "corporate", "viral"] = "casual"
+    # Sentinel None = client không gửi field → không update preset.
+    # Giá trị string = client muốn update preset cụ thể.
+    brand_voice_preset: Literal["professional", "casual", "gen-z", "corporate", "viral"] | None = None
 
     @field_validator("page_id", "page_name", mode="before")
     @classmethod
@@ -93,8 +93,9 @@ def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_d
     if page_in.brand_voice is not None:
         cleaned_voice = page_in.brand_voice.strip()
         page.brand_voice = cleaned_voice or None
-    # brand_voice_preset luôn có value (Literal default "casual"); update unconditional.
-    page.brand_voice_preset = page_in.brand_voice_preset
+    # Chỉ update preset khi client gửi giá trị tường minh (sentinel None = không gửi).
+    if page_in.brand_voice_preset is not None:
+        page.brand_voice_preset = page_in.brand_voice_preset
 
     db.commit()
 
@@ -158,9 +159,12 @@ def get_facebook_config(db: Session = Depends(get_db)):
                 "has_user_token": bool(page.user_access_token),
                 "last_refresh_at": page.last_refresh_at.isoformat() if page.last_refresh_at else None,
                 "token_refresh_error": page.token_refresh_error,
-                # Story 10.1: brand voice fields
+                # Story 10.1: brand voice fields (snake_case giữ cho backward-compat;
+                # camelCase thêm theo architecture convention)
                 "brand_voice": page.brand_voice,
                 "brand_voice_preset": page.brand_voice_preset,
+                "brandVoice": page.brand_voice,
+                "brandVoicePreset": page.brand_voice_preset,
             }
         )
 

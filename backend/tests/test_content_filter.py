@@ -398,8 +398,13 @@ class TestSyncCampaignFilterIntegration:
             captured_events.append({"scope": scope, "level": level, "message": message, "details": details or {}})
 
         from app.services import campaign_jobs
-        with patch.object(campaign_jobs, "extract_metadata", return_value={"entries": entries}), \
-             patch.object(campaign_jobs, "download_video", return_value=("/tmp/x.mp4", "id1")), \
+        from app.services.scrapers.tiktok import TiktokScraper
+
+        mock_scraper = MagicMock(spec=TiktokScraper)
+        mock_scraper.extract_metadata.return_value = {"entries": entries}
+        mock_scraper.download_video.return_value = ("/tmp/x.mp4", "id1")
+
+        with patch("app.services.campaign_jobs.get_scraper", return_value=mock_scraper), \
              patch.object(campaign_jobs, "record_event", side_effect=_fake_record), \
              patch.object(campaign_jobs, "build_source_page_publish_time", return_value=__import__("datetime").datetime.utcnow()):
             campaign_jobs.sync_campaign_content(cid, c.source_url, allow_paused=False)

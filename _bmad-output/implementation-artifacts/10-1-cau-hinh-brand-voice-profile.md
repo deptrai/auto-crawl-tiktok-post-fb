@@ -77,6 +77,20 @@ Status: `review`
 - [x] [Review][Patch] Rủi ro Index Error khi AI trả về kết quả rỗng — Đã thêm kiểm tra cấu trúc response an toàn. [backend/app/services/ai_generator.py:53]
 - [x] [Review][Patch] Thiếu validation cho brand_voice_preset (cần dùng Literal) — Đã thêm Literal validation. [backend/app/api/facebook.py:27]
 
+### Review Findings — Round 3 (2026-05-04)
+
+**Patch**
+
+- [x] [Review][Patch] `brand_voice_preset` luôn bị overwrite ngay cả khi client chỉ muốn update `brand_voice` — đã đổi sang sentinel `None`, chỉ update khi client gửi giá trị tường minh. [backend/app/api/facebook.py:30,96-97]
+- [x] [Review][Patch] `cron.py` không fallback `brand_voice_preset or "casual"` khi lấy từ DB — đã thêm `or "casual"` để nhất quán với `campaigns.py:535`. [backend/app/worker/cron.py:134]
+- [x] [Review][Patch] API response `get_facebook_config` trả `brand_voice` / `brand_voice_preset` dưới dạng snake_case — đã thêm các key camelCase (`brandVoice`, `brandVoicePreset`) song song (backward-compat). [backend/app/api/facebook.py:161-166]
+
+**Defer**
+
+- [x] [Review][Defer] Control chars → space không collapse multiple spaces trong `_sanitize_brand_voice` — cosmetic issue, không ảnh hưởng security. Pre-existing scope. [backend/app/services/ai_generator.py:20]
+- [x] [Review][Defer] Token `required` conditional (`required={!fbForm.page_id}`) UX unclear khi edit mode — backend guard đủ an toàn; UX minor. [frontend/src/App.jsx:1126]
+- [x] [Review][Defer] Private functions `_sanitize_brand_voice` / `_build_system_instruction` exposed trực tiếp trong tests — test coupling pattern, không runtime risk. [backend/tests/test_brand_voice_prompt.py]
+
 ### Review Findings — Round 2 (2026-05-02)
 
 **Decision-needed**
