@@ -1,142 +1,106 @@
-from __future__ import annotations
-from datetime import datetime, timezone
-from uuid import UUID
-
 from fastapi import APIRouter, Depends, HTTPException, Request, Security
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
-from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
+from datetime import datetime, timezone
+import jwt
+from uuid import UUID
 
-from app.core.config import settings
 from app.core.database import get_db
 from app.models.models import User, UserRole
-from app.services.accounts import serialize_user
+from app.core.security import verify_password, get_password_hash, create_access_token, create_refresh_token
+from app.schemas.users import Token, UserResponse
+from pydantic import BaseModel
+from app.core.config import settings
 from app.services.observability import record_event
 from app.services.security import (
     check_login_rate_limit,
     clear_login_rate_limit,
-    create_access_token,
-    decode_access_token,
     get_client_identity,
     register_failed_login,
-    validate_password_strength,
-    verify_password,
-    hash_password,
 )
 
 router = APIRouter(prefix="/auth", tags=["Xác thực"])
 security = HTTPBearer()
 
-
 class LoginRequest(BaseModel):
-    username: str = Field(default=settings.DEFAULT_ADMIN_USERNAME, min_length=1)
+    email: str
     password: str
-
 
 class ChangePasswordRequest(BaseModel):
     current_password: str
     new_password: str
-
 
 def require_authenticated_user(
     credentials: HTTPAuthorizationCredentials = Security(security),
     db: Session = Depends(get_db),
 ) -> User:
     try:
-        payload = decode_access_token(credentials.credentials)
-    except ExpiredSignatureError as exc:
-        raise HTTPException(
-            status_code=401,
-            detail="Phiên đăng nhập đã hết hạn",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-    except InvalidTokenError as exc:
-        raise HTTPException(
-            status_code=401,
-            detail="Mã truy cập không hợp lệ",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
+        payload = jwt.decode(credentials.credentials, settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Phiên đăng nhập đã hết hạn")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Mã truy cập không hợp lệ")
+
+    if payload.get("type") != "access":
+        raise HTTPException(status_code=401, detail="Loại mã truy cập không hợp lệ")
 
     try:
         user_id = UUID(payload.get("sub", ""))
-    except (ValueError, TypeError) as exc:
-        raise HTTPException(
-            status_code=401,
-            detail="Mã truy cập không hợp lệ",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
+    except (ValueError, TypeError):
+        raise HTTPException(status_code=401, detail="Mã truy cập không hợp lệ")
 
     user = db.query(User).filter(User.id == user_id).first()
     if not user or not user.is_active:
-        raise HTTPException(
-            status_code=401,
-            detail="Tài khoản không còn hoạt động",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+        raise HTTPException(status_code=401, detail="Tài khoản không còn hoạt động")
     return user
 
-
-def require_admin(current_user: User = Depends(require_authenticated_user)) -> User:
-    if current_user.role != UserRole.admin:
-        raise HTTPException(status_code=403, detail="Bạn không có quyền quản trị thao tác này.")
+def require_super_admin(current_user: User = Depends(require_authenticated_user)) -> User:
+    if current_user.role != UserRole.super_admin:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền Super Admin.")
     return current_user
 
+def require_admin(current_user: User = Depends(require_authenticated_user)) -> User:
+    # Admin bao gồm cả super_admin và owner/admin cấp thấp hơn nếu có (tùy định nghĩa)
+    # Ở đây chúng ta cho phép super_admin, owner và admin
+    if current_user.role not in [UserRole.super_admin, UserRole.owner, UserRole.editor]:
+        raise HTTPException(status_code=403, detail="Bạn không có quyền thực hiện thao tác này.")
+    return current_user
 
-@router.post("/login")
+@router.post("/login", response_model=Token)
 def login(creds: LoginRequest, request: Request, db: Session = Depends(get_db)):
-    username = creds.username.strip().lower()
+    email = creds.email.strip().lower()
     client_id = get_client_identity(request)
-    retry_after = check_login_rate_limit(client_id, username)
+    
+    retry_after = check_login_rate_limit(client_id, email)
     if retry_after > 0:
-        # raise HTTPException(
-        #     status_code=429,
-        #     detail=f"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau {retry_after} giây.",
-        # )
-        pass # Disabled for local testing
+        raise HTTPException(
+            status_code=429,
+            detail=f"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau {retry_after} giây.",
+        )
 
-    user = db.query(User).filter(User.username == username).first()
-    if user and user.is_active and verify_password(creds.password, user.password_hash):
-        clear_login_rate_limit(client_id, username)
+    user = db.query(User).filter(User.email == email).first()
+    if user and user.is_active and verify_password(creds.password, user.hashed_password):
+        clear_login_rate_limit(client_id, email)
         user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
-        access_token, expires_in = create_access_token(user.id, user.username, user.role.value)
-        record_event(
-            "auth",
-            "info",
-            "Đăng nhập thành công.",
-            db=db,
-            actor_user_id=str(user.id),
-            details={"username": user.username, "ip": client_id},
-        )
+        
+        access_token = create_access_token(user.id)
+        refresh_token = create_refresh_token(user.id)
+        
+        record_event("auth", "info", "Đăng nhập thành công.", db=db, actor_user_id=str(user.id), details={"email": user.email, "ip": client_id})
         return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "expires_in": expires_in,
-            "user": serialize_user(user),
+            "access_token": access_token, 
+            "refresh_token": refresh_token,
+            "token_type": "bearer"
         }
 
-    retry_after = register_failed_login(client_id, username)
-    record_event(
-        "auth",
-        "warning",
-        "Đăng nhập thất bại.",
-        db=db,
-        details={"username": username, "ip": client_id},
-    )
-    if retry_after > 0:
-        # raise HTTPException(
-        #     status_code=429,
-        #     detail=f"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau {retry_after} giây.",
-        # )
-        pass # Disabled for local testing
-    raise HTTPException(status_code=401, detail="Sai tên đăng nhập hoặc mật khẩu!")
+    register_failed_login(client_id, email)
+    record_event("auth", "warning", "Đăng nhập thất bại.", db=db, details={"email": email, "ip": client_id})
+    raise HTTPException(status_code=401, detail="Sai email đăng nhập hoặc mật khẩu!")
 
-
-@router.get("/me")
+@router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(require_authenticated_user)):
-    return serialize_user(current_user)
-
+    return current_user
 
 @router.post("/change-password")
 def change_password(
@@ -144,22 +108,11 @@ def change_password(
     current_user: User = Depends(require_authenticated_user),
     db: Session = Depends(get_db),
 ):
-    if not verify_password(payload.current_password, current_user.password_hash):
+    if not verify_password(payload.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="Mật khẩu hiện tại không chính xác.")
 
-    password_error = validate_password_strength(payload.new_password)
-    if password_error:
-        raise HTTPException(status_code=400, detail=password_error)
-
-    current_user.password_hash = hash_password(payload.new_password)
+    current_user.hashed_password = get_password_hash(payload.new_password)
     current_user.must_change_password = False
     db.commit()
-    record_event(
-        "auth",
-        "info",
-        "Người dùng đã đổi mật khẩu.",
-        db=db,
-        actor_user_id=str(current_user.id),
-        details={"username": current_user.username},
-    )
+    record_event("auth", "info", "Người dùng đã đổi mật khẩu.", db=db, actor_user_id=str(current_user.id), details={"email": current_user.email})
     return {"message": "Đã cập nhật mật khẩu thành công."}

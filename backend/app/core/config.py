@@ -24,11 +24,20 @@ def parse_bool_env(raw_value: str | None, default: bool) -> bool:
 class Settings:
     PROJECT_NAME: str = "Hệ thống tự động mạng xã hội"
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://admin:adminpassword@db/social_auto")
-    DOWNLOAD_DIR: str = os.getenv("DOWNLOAD_DIR", DEFAULT_DOWNLOAD_DIR)
+    
+    @property
+    def DOWNLOAD_DIR(self) -> str:
+        raw_dir = os.getenv("DOWNLOAD_DIR", DEFAULT_DOWNLOAD_DIR)
+        if raw_dir.startswith("/app") and not os.path.isdir("/app"):
+            return os.path.join(os.getcwd(), "downloads")
+        return raw_dir
+
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
     ADMIN_PASSWORD: str = os.getenv("ADMIN_PASSWORD", "admin123")
     DEFAULT_ADMIN_USERNAME: str = os.getenv("DEFAULT_ADMIN_USERNAME", "admin")
     DEFAULT_ADMIN_DISPLAY_NAME: str = os.getenv("DEFAULT_ADMIN_DISPLAY_NAME", "Quản trị viên")
+    ROOT_ADMIN_EMAIL: str = os.getenv("ROOT_ADMIN_EMAIL", "admin@example.com")
+    ROOT_ADMIN_PASSWORD: str = os.getenv("ROOT_ADMIN_PASSWORD", "admin123")
     BASE_URL: str = os.getenv("BASE_URL", "http://localhost:8000")
     FB_VERIFY_TOKEN: str = os.getenv("FB_VERIFY_TOKEN", "social_auto_2026")
     FB_APP_ID: str = os.getenv("FB_APP_ID", "")

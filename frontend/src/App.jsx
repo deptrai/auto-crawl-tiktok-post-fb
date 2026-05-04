@@ -342,63 +342,11 @@ function LoginFeature({ icon, title, description }) {
   );
 }
 
-function LoginScreen({ loginUser, setLoginUser, loginPass, setLoginPass, loginError, handleLogin }) {
-  return (
-    <div className="relative min-h-screen overflow-hidden bg-[var(--shell-bg)] text-white">
-      <div className="pointer-events-none absolute inset-0 opacity-80">
-        <div className="absolute inset-y-0 left-0 w-1/2 bg-[radial-gradient(circle_at_top_left,rgba(56,189,248,0.16),transparent_58%)]" />
-        <div className="absolute inset-y-0 right-0 w-1/2 bg-[radial-gradient(circle_at_bottom_right,rgba(245,158,11,0.12),transparent_54%)]" />
-      </div>
-      <div className="relative mx-auto flex min-h-screen max-w-[1560px] items-center px-4 py-8 lg:px-8">
-        <div className="grid w-full gap-6 lg:grid-cols-[minmax(0,1.15fr)_440px] xl:gap-8">
-          <section className="panel-strong hidden rounded-[34px] p-8 lg:flex lg:flex-col lg:justify-between xl:p-10">
-            <div>
-              <StatusPill tone="sky" icon={Zap}>Trạm điều phối nội dung</StatusPill>
-              <h1 className="mt-6 max-w-3xl font-display text-5xl font-semibold leading-tight text-white">
-                Quản lý chiến dịch, lịch đăng và phản hồi Facebook trong một nơi.
-              </h1>
-              <p className="mt-5 max-w-2xl text-base leading-8 text-[var(--text-soft)]">
-                Theo dõi queue, worker, webhook và cấu hình hệ thống từ cùng một dashboard.
-              </p>
-            </div>
-            <div className="mt-10 grid gap-4 xl:grid-cols-3">
-              <LoginFeature icon={Share2} title="Điều phối theo khu vực" description="Tách khu vực rõ ràng." />
-              <LoginFeature icon={Terminal} title="Theo dõi sát worker" description="Theo dõi queue và worker." />
-              <LoginFeature icon={ShieldCheck} title="Quản trị có kiểm soát" description="Quản lý phiên và quyền." />
-            </div>
-          </section>
-          <section className="panel-surface mx-auto w-full max-w-[440px] rounded-[34px] p-6 sm:p-8">
-            <div className="flex h-14 w-14 items-center justify-center rounded-[22px] border border-cyan-400/20 bg-cyan-400/10 text-cyan-100">
-              <KeyRound className="h-7 w-7" />
-            </div>
-            <div className="mt-6">
-              <div className="text-[11px] uppercase tracking-[0.32em] text-[var(--text-muted)]">Đăng nhập vận hành</div>
-              <h2 className="mt-3 font-display text-3xl font-semibold text-white">Vào trạm điều phối</h2>
-              <p className="mt-3 text-sm leading-7 text-[var(--text-soft)]">Dùng tài khoản quản trị hoặc vận hành để bắt đầu.</p>
-            </div>
-            <form onSubmit={handleLogin} className="mt-8 space-y-4">
-              <label className="block space-y-2">
-                <span className="text-xs uppercase tracking-[0.28em] text-[var(--text-muted)]">Tên đăng nhập</span>
-                <input type="text" required className={FIELD_CLASS} placeholder="Nhập tên đăng nhập" value={loginUser} onChange={(event) => setLoginUser(event.target.value)} />
-              </label>
-              <label className="block space-y-2">
-                <span className="text-xs uppercase tracking-[0.28em] text-[var(--text-muted)]">Mật khẩu</span>
-                <input type="password" required className={FIELD_CLASS} placeholder="••••••••" value={loginPass} onChange={(event) => setLoginPass(event.target.value)} />
-              </label>
-              {loginError ? <div className="rounded-2xl border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm text-rose-100">{loginError}</div> : null}
-              <button type="submit" className={cx(BUTTON_PRIMARY, 'w-full')}>
-                <KeyRound className="h-4 w-4" />
-                Đăng nhập vào hệ thống
-              </button>
-            </form>
-          </section>
-        </div>
-      </div>
-    </div>
-  );
-}
+import { useAuthStore } from './store/authStore';
+import LoginPage from './features/auth/LoginPage';
 
 function App() {
+  const { token, user: currentUser, logout, updateUser: setCurrentUser } = useAuthStore();
   const [campaigns, setCampaigns] = useState([]);
   const [videos, setVideos] = useState([]);
   const [interactions, setInteractions] = useState([]);
@@ -425,17 +373,11 @@ function App() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [filters, setFilters] = useState({ status: 'all', campaignId: 'all' });
-  const [token, setToken] = useState(localStorage.getItem('token'));
-  const [sessionExpiresAt, setSessionExpiresAt] = useState(localStorage.getItem('token_expires_at'));
-  const [loginUser, setLoginUser] = useState('');
-  const [loginPass, setLoginPass] = useState('');
-  const [loginError, setLoginError] = useState('');
   const [notice, setNotice] = useState(null);
   const [actionState, setActionState] = useState({});
   const [captionDrafts, setCaptionDrafts] = useState({});
   const [pageChecks, setPageChecks] = useState({});
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
-  const [currentUser, setCurrentUser] = useState(null);
   const [healthInfo, setHealthInfo] = useState(null);
   const [tasks, setTasks] = useState([]);
   const [taskSummary, setTaskSummary] = useState(DEFAULT_TASK_SUMMARY);
@@ -444,7 +386,7 @@ function App() {
   const [users, setUsers] = useState([]);
   const [runtimeConfig, setRuntimeConfig] = useState(null);
   const [runtimeForm, setRuntimeForm] = useState(DEFAULT_RUNTIME_FORM);
-  const [userForm, setUserForm] = useState({ username: '', display_name: '', password: '', role: 'operator' });
+  const [userForm, setUserForm] = useState({ email: '', full_name: '', password: '', role: 'viewer' });
   const [passwordForm, setPasswordForm] = useState({ current_password: '', new_password: '' });
   const [tokenSummary, setTokenSummary] = useState(null);
   const [activeSection, setActiveSection] = useState(localStorage.getItem('dashboard-active-section') || 'overview');
@@ -457,7 +399,7 @@ function App() {
   const [analyticsTopVideos, setAnalyticsTopVideos] = useState([]);
   const [analyticsTimeSeries, setAnalyticsTimeSeries] = useState([]);
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser?.role === 'super_admin';
   const staleWorkers = workers.filter((worker) => !worker.is_online);
   const onlineWorkers = workers.filter((worker) => worker.is_online).length;
   const currentSection = NAV_ITEMS.find((item) => item.id === activeSection) || NAV_ITEMS[0];
@@ -472,21 +414,11 @@ function App() {
   const pagedEvents = events.slice((eventPage - 1) * SYSTEM_EVENT_PAGE_SIZE, eventPage * SYSTEM_EVENT_PAGE_SIZE);
 
   const authFetch = async (url, options = {}) => {
-    if (sessionExpiresAt && new Date(sessionExpiresAt).getTime() <= Date.now()) {
-      setToken(null);
-      setSessionExpiresAt(null);
-      localStorage.removeItem('token');
-      localStorage.removeItem('token_expires_at');
-      throw new Error('Phiên đăng nhập đã hết hạn.');
-    }
     const headers = { ...options.headers };
     if (token) headers.Authorization = `Bearer ${token}`;
     const response = await fetch(url, { ...options, headers });
     if (response.status === 401) {
-      setToken(null);
-      setSessionExpiresAt(null);
-      localStorage.removeItem('token');
-      localStorage.removeItem('token_expires_at');
+      logout();
       throw new Error('Phiên đăng nhập đã hết hạn.');
     }
     return response;
@@ -576,7 +508,7 @@ function App() {
         requestJson(`${API_URL}/system/tasks?limit=${TASK_FETCH_LIMIT}`),
         requestJson(`${API_URL}/system/events?limit=${SYSTEM_EVENT_FETCH_LIMIT}`),
         requestJson(`${API_URL}/system/workers`),
-        meData?.role === 'admin' ? requestJson(`${API_URL}/users/`) : Promise.resolve({ users: [] }),
+        meData?.role === 'super_admin' ? requestJson(`${API_URL}/users/`) : Promise.resolve([]),
       ]);
       const tokenSummaryData = await requestJson(`${API_URL}/facebook/token-summary`).catch(() => null);
 
@@ -593,7 +525,7 @@ function App() {
       setTaskSummary(taskData.summary || DEFAULT_TASK_SUMMARY);
       setEvents(eventData.events || []);
       setWorkers(workerData.workers || []);
-      setUsers(userData.users || []);
+      setUsers(Array.isArray(userData) ? userData : (userData.users || []));
       setTokenSummary(tokenSummaryData);
       setLastUpdatedAt(new Date().toISOString());
     } catch (error) {
@@ -867,32 +799,6 @@ function App() {
     }
   };
 
-  const handleLogin = async (event) => {
-    event.preventDefault();
-    try {
-      const response = await fetch(`${API_URL}/auth/login`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: loginUser, password: loginPass }),
-      });
-      const payload = await response.json();
-      if (response.ok) {
-        const expiresAt = payload.expires_in ? new Date(Date.now() + payload.expires_in * 1000).toISOString() : null;
-        setToken(payload.access_token);
-        setSessionExpiresAt(expiresAt);
-        setCurrentUser(payload.user || null);
-        localStorage.setItem('token', payload.access_token);
-        if (expiresAt) localStorage.setItem('token_expires_at', expiresAt);
-        else localStorage.removeItem('token_expires_at');
-        setLoginError('');
-      } else {
-        setLoginError(parseMessage(payload, 'Mật khẩu không chính xác!'));
-      }
-    } catch {
-      setLoginError('Lỗi kết nối server.');
-    }
-  };
-
   const handleConnectYouTube = async () => {
     try {
       const res = await requestJson(`${API_URL}/youtube/auth`);
@@ -903,13 +809,7 @@ function App() {
   };
 
   const handleLogout = () => {
-    setToken(null);
-    setSessionExpiresAt(null);
-    setLoginPass('');
-    setCurrentUser(null);
-    setUsers([]);
-    localStorage.removeItem('token');
-    localStorage.removeItem('token_expires_at');
+    logout();
   };
 
   const handleChangePassword = async (event) => {
@@ -932,7 +832,7 @@ function App() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(userForm),
     }));
-    if (payload) setUserForm({ username: '', display_name: '', password: '', role: 'operator' });
+    if (payload) setUserForm({ email: '', full_name: '', password: '', role: 'viewer' });
   };
 
   const handleUserUpdate = async (userId, changes) => {
@@ -1746,10 +1646,9 @@ function App() {
     <div className="grid gap-6 2xl:grid-cols-12">
       <Panel className="2xl:col-span-4" eyebrow="Phiên hiện tại" title="Tài khoản đang dùng">
         <div className="space-y-3">
-          <InfoRow label="Tên đăng nhập" value={currentUser?.username || 'Chưa có'} emphasis />
-          <InfoRow label="Tên hiển thị" value={currentUser?.display_name || 'Chưa đặt'} />
-          <InfoRow label="Vai trò" value={currentUser?.role === 'admin' ? 'Quản trị viên' : 'Vận hành'} />
-          <InfoRow label="Hết hạn phiên" value={formatDateTime(sessionExpiresAt)} />
+          <InfoRow label="Email" value={currentUser?.email || 'Chưa có'} emphasis />
+          <InfoRow label="Tên hiển thị" value={currentUser?.full_name || 'Chưa đặt'} />
+          <InfoRow label="Vai trò" value={currentUser?.role === 'super_admin' ? 'Quản trị viên' : 'Vận hành'} />
         </div>
         <div className="mt-5 flex flex-wrap gap-2">
           <StatusPill tone={currentUser?.must_change_password ? 'amber' : 'emerald'} icon={ShieldCheck}>{currentUser?.must_change_password ? 'Cần đổi mật khẩu' : 'Đã an toàn'}</StatusPill>
@@ -1773,7 +1672,6 @@ function App() {
           </button>
         </form>
       </Panel>
-
       <Panel className="2xl:col-span-4" eyebrow="Quy tắc" title="Nhắc nhở bảo mật">
         <div className="space-y-3">
           <div className="rounded-[24px] border border-white/8 bg-black/10 px-4 py-4 text-sm leading-7 text-[var(--text-soft)]">Đổi mật khẩu mặc định sau lần vào đầu.</div>
@@ -1789,12 +1687,12 @@ function App() {
           <div className="space-y-5">
             <form onSubmit={handleCreateUser} className="grid gap-4 lg:grid-cols-4">
               <label className="space-y-2">
-                <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Tên đăng nhập</span>
-                <input type="text" required className={FIELD_CLASS} value={userForm.username} onChange={(event) => setUserForm((current) => ({ ...current, username: event.target.value }))} />
+                <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Tên đăng nhập (Email)</span>
+                <input type="email" required className={FIELD_CLASS} value={userForm.email} onChange={(event) => setUserForm((current) => ({ ...current, email: event.target.value }))} />
               </label>
               <label className="space-y-2">
                 <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Tên hiển thị</span>
-                <input type="text" className={FIELD_CLASS} value={userForm.display_name} onChange={(event) => setUserForm((current) => ({ ...current, display_name: event.target.value }))} />
+                <input type="text" className={FIELD_CLASS} value={userForm.full_name} onChange={(event) => setUserForm((current) => ({ ...current, full_name: event.target.value }))} />
               </label>
               <label className="space-y-2">
                 <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Mật khẩu ban đầu</span>
@@ -1803,8 +1701,12 @@ function App() {
               <label className="space-y-2">
                 <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Vai trò</span>
                 <select className={FIELD_CLASS} value={userForm.role} onChange={(event) => setUserForm((current) => ({ ...current, role: event.target.value }))}>
-                  <option value="operator" style={{ color: '#06101a' }}>Vận hành</option>
-                  <option value="admin" style={{ color: '#06101a' }}>Quản trị viên</option>
+                  <option value="viewer" style={{ color: '#06101a' }}>Khách xem (Viewer)</option>
+                  <option value="editor" style={{ color: '#06101a' }}>Biên tập viên (Editor)</option>
+                  <option value="owner" style={{ color: '#06101a' }}>Chủ sở hữu (Owner)</option>
+                  {currentUser?.role === 'super_admin' && (
+                    <option value="super_admin" style={{ color: '#06101a' }}>Quản trị tối cao (Super Admin)</option>
+                  )}
                 </select>
               </label>
               <div className="lg:col-span-4 flex justify-end">
@@ -1820,10 +1722,10 @@ function App() {
                   <article key={user.id} className="rounded-[26px] border border-white/8 bg-black/10 p-5">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div>
-                        <div className="font-medium text-white">{user.display_name || user.username}</div>
-                        <div className="mt-1 text-xs text-[var(--text-muted)]">@{user.username}</div>
+                        <div className="font-medium text-white">{user.full_name || user.email}</div>
+                        <div className="mt-1 text-xs text-[var(--text-muted)]">{user.email}</div>
                         <div className="mt-3 flex flex-wrap gap-2">
-                          <StatusPill tone={user.role === 'admin' ? 'emerald' : 'sky'}>{user.role === 'admin' ? 'Quản trị viên' : 'Vận hành'}</StatusPill>
+                          <StatusPill tone={user.role === 'super_admin' ? 'emerald' : 'sky'}>{user.role === 'super_admin' ? 'Quản trị viên' : 'Vận hành'}</StatusPill>
                           <StatusPill tone={user.is_active ? 'emerald' : 'rose'}>{user.is_active ? 'Đang hoạt động' : 'Đã khóa'}</StatusPill>
                           {user.must_change_password ? <StatusPill tone="amber">Buộc đổi mật khẩu</StatusPill> : null}
                         </div>
@@ -1963,7 +1865,7 @@ function App() {
   ];
 
   if (!token) {
-    return <LoginScreen loginUser={loginUser} setLoginUser={setLoginUser} loginPass={loginPass} setLoginPass={setLoginPass} loginError={loginError} handleLogin={handleLogin} />;
+    return <LoginPage />;
   }
 
   return (
@@ -2003,8 +1905,8 @@ function App() {
           </nav>
           <div className="mt-auto rounded-[26px] border border-white/8 bg-black/10 p-4">
             <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--text-muted)]">Phiên hiện tại</div>
-            <div className="mt-3 font-medium text-white">{currentUser?.display_name || currentUser?.username || 'Người dùng'}</div>
-            <div className="mt-1 text-sm text-[var(--text-soft)]">{currentUser?.role === 'admin' ? 'Quản trị viên' : 'Vận hành'}</div>
+            <div className="mt-3 font-medium text-white">{currentUser?.full_name || currentUser?.email || 'Người dùng'}</div>
+            <div className="mt-1 text-sm text-[var(--text-soft)]">{currentUser?.role === 'super_admin' ? 'Quản trị viên' : 'Vận hành'}</div>
             <button type="button" className={cx(BUTTON_GHOST, 'mt-4 w-full')} onClick={handleLogout}><LogOut className="h-4 w-4" />Đăng xuất</button>
           </div>
         </aside>

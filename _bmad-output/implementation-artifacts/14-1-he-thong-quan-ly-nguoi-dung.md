@@ -52,3 +52,38 @@ So that nhiều người có thể truy cập và quản lý hệ thống cùng 
 ## 4. Status
 Status: `ready-for-dev`
 Note: Ultimate context engine analysis completed - comprehensive developer guide created.
+
+## 5. Tasks / Subtasks
+
+- [x] Task 1: Backend - Setup Model & Database Migration
+  - [x] 1.1: Tạo User schema/model (`backend/app/models/users.py`)
+  - [x] 1.2: Tạo script migration Alembic cho bảng users và seed root admin
+- [x] Task 2: Backend - Authentication Flow
+  - [x] 2.1: Cấu hình JWT, bcrypt password hashing (`backend/app/core/security.py`)
+  - [x] 2.2: Tạo FastAPI schema (DTOs) cho User/Login (`backend/app/schemas/users.py`)
+  - [x] 2.3: Viết endpoint Login & Get Current User (`backend/app/api/v1/auth.py`)
+- [x] Task 3: Backend - User Management API
+  - [x] 3.1: CRUD APIs cho User Management (chỉ Super Admin) (`backend/app/api/v1/users.py`)
+- [x] Task 4: Frontend - Setup Auth & Login
+  - [x] 4.1: Xây dựng Zustand Auth store
+  - [x] 4.2: Tạo UI System Login Page
+- [x] Task 5: Frontend - User Management Dashboard
+  - [x] 5.1: Xây dựng component danh sách Users
+  - [x] 5.2: Xây dựng form Create/Update User Modal
+
+## 6. Dev Agent Record
+
+### Debug Log
+- 
+
+### Implementation Plan
+- 
+
+### Completion Notes
+- 
+
+## 7. File List
+- 
+
+## 8. Change Log
+- 

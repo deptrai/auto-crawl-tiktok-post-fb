@@ -1,20 +1,17 @@
 from __future__ import annotations
-
 import secrets
-
 from sqlalchemy.orm import Session
-
 from app.core.config import settings
 from app.models.models import User, UserRole
 from app.services.observability import record_event
-from app.services.security import hash_password, validate_password_strength
-
+from app.core.security import get_password_hash
 
 def serialize_user(user: User) -> dict:
     return {
         "id": str(user.id),
-        "username": user.username,
-        "display_name": user.display_name,
+        "email": user.email,
+        "full_name": user.full_name,
+        "avatar_url": user.avatar_url,
         "role": user.role.value if hasattr(user.role, "value") else user.role,
         "is_active": user.is_active,
         "must_change_password": user.must_change_password,
@@ -23,17 +20,18 @@ def serialize_user(user: User) -> dict:
         "updated_at": user.updated_at.isoformat() if user.updated_at else None,
     }
 
-
 def ensure_default_admin(db: Session) -> User:
-    existing = db.query(User).filter(User.username == settings.DEFAULT_ADMIN_USERNAME).first()
+    # Ưu tiên root admin từ config mới
+    root_email = settings.ROOT_ADMIN_EMAIL
+    existing = db.query(User).filter(User.email == root_email).first()
     if existing:
         return existing
 
     default_admin = User(
-        username=settings.DEFAULT_ADMIN_USERNAME,
-        display_name=settings.DEFAULT_ADMIN_DISPLAY_NAME,
-        password_hash=hash_password(settings.ADMIN_PASSWORD),
-        role=UserRole.admin,
+        email=root_email,
+        full_name=settings.DEFAULT_ADMIN_DISPLAY_NAME,
+        hashed_password=get_password_hash(settings.ROOT_ADMIN_PASSWORD),
+        role=UserRole.super_admin,
         is_active=True,
         must_change_password=True,
     )
@@ -45,50 +43,17 @@ def ensure_default_admin(db: Session) -> User:
         "warning",
         "Đã tạo tài khoản quản trị mặc định.",
         db=db,
-        details={"username": default_admin.username},
+        details={"email": default_admin.email},
     )
     return default_admin
 
-
-def create_user(
-    db: Session,
-    *,
-    username: str,
-    password: str,
-    role: str,
-    display_name: str | None = None,
-    must_change_password: bool = False,
-) -> User:
-    normalized_username = username.strip().lower()
-    if db.query(User).filter(User.username == normalized_username).first():
-        raise ValueError("Tên đăng nhập đã tồn tại.")
-
-    password_error = validate_password_strength(password)
-    if password_error:
-        raise ValueError(password_error)
-
-    user = User(
-        username=normalized_username,
-        display_name=(display_name or "").strip() or None,
-        password_hash=hash_password(password),
-        role=UserRole(role),
-        is_active=True,
-        must_change_password=must_change_password,
-    )
-    db.add(user)
-    db.commit()
-    db.refresh(user)
-    return user
-
-
 def count_admin_users(db: Session, *, active_only: bool = False, exclude_user_id: str | None = None) -> int:
-    query = db.query(User).filter(User.role == UserRole.admin)
+    query = db.query(User).filter(User.role == UserRole.super_admin)
     if active_only:
         query = query.filter(User.is_active.is_(True))
     if exclude_user_id:
         query = query.filter(User.id != exclude_user_id)
     return query.count()
-
 
 def generate_temporary_password(length: int = 12) -> str:
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"

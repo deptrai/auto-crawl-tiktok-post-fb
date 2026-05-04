@@ -39,8 +39,10 @@ class TaskStatus(str, enum.Enum):
 
 
 class UserRole(str, enum.Enum):
-    admin = "admin"
-    operator = "operator"
+    super_admin = "super_admin"
+    owner = "owner"
+    editor = "editor"
+    viewer = "viewer"
 
 
 class TokenType(str, enum.Enum):
@@ -214,11 +216,12 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    username = Column(String, unique=True, index=True)
-    display_name = Column(String, nullable=True)
-    password_hash = Column(String, nullable=False)
-    role = Column(Enum(UserRole), default=UserRole.admin, nullable=False)
+    email = Column(String, unique=True, index=True, nullable=False)
+    full_name = Column(String, nullable=True)
+    hashed_password = Column(String, nullable=False)
+    role = Column(Enum(UserRole), default=UserRole.viewer, nullable=False)
     is_active = Column(Boolean, default=True, nullable=False)
+    avatar_url = Column(String, nullable=True)
     must_change_password = Column(Boolean, default=False, nullable=False)
     last_login_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)

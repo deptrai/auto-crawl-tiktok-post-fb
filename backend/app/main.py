@@ -14,8 +14,8 @@ from app.api.auth import require_authenticated_user
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.models import models  # noqa: F401
-from app.services.accounts import ensure_default_admin
 from app.services.observability import configure_logging, record_event
+from app.services.accounts import ensure_default_admin
 from app.services.runtime_settings import write_runtime_env_file
 from app.worker.cron import start_scheduler
 
