@@ -44,5 +44,45 @@ So that Reels viral trên Instagram cũng được lấy về hệ thống, sinh
 - Meta thay đổi Node/Graph API URL thường xuyên. Đôi khi URL down video trả về rớt dạng 403 Forbidden nếu không request cùng Client IP gốc, tuy nhiên Actor Apify chất lượng cao cung cấp Proxy URL / Redirect Buffer giúp hệ quả này hiếm khi xuất hiện. Nếu down bị 403, kiểm tra lại User-Agent request Python.
 
 ## 4. Status
-Status: `ready-for-dev`
+Status: `review`
 Note: Ultimate context engine analysis completed - comprehensive developer guide created.
+
+## 5. Tasks / Subtasks
+
+- [x] Task 1: Tạo InstagramScraper
+  - [x] 1.1: Tạo `backend/app/services/scrapers/instagram.py` triển khai `BaseScraper` interface.
+  - [x] 1.2: Cấu hình gọi ApifyClient với actor Instagram (VD: `apify/instagram-profile-scraper` hoặc `apify/instagram-scraper`).
+  - [x] 1.3: Map schema metadata trả về từ Apify sang chuẩn schema hệ thống (id, title, description, webpage_url, view_count, duration).
+  - [x] 1.4: Lọc bài viết chỉ giữ lại định dạng REELS hoặc VIDEO (bỏ qua Image-only).
+
+- [x] Task 2: Tích hợp vào ScraperFactory
+  - [x] 2.1: Cập nhật `backend/app/services/scrapers/factory.py` để regex nhận dạng domain `instagram.com` và trả về `InstagramScraper`.
+
+- [x] Task 3: Viết Unit Tests
+  - [x] 3.1: Test factory routing (instagram.com -> InstagramScraper).
+  - [x] 3.2: Test InstagramScraper mock Apify response metadata mapping và filtering (bỏ qua image).
+
+## 6. Dev Agent Record
+
+### Debug Log
+- Tests run successfully. 286 tests passed locally, no regressions found in campaign_jobs or TikTok/YouTube implementations.
+
+### Implementation Plan
+- Khởi tạo InstagramScraper dùng `ApifyClient` gọi actor `apify/instagram-scraper`
+- Lấy thông tin Reels/Video và bỏ qua Image
+- Áp dụng pattern strategy, cập nhật Factory định tuyến dựa trên `instagram.com`
+- Tải video bằng request trực tiếp
+
+### Completion Notes
+- Hoàn thành Tích hợp Instagram Scraper.
+- Định dạng dữ liệu đã tương thích với Data Pipeline (VideoCreate schema).
+- Passed testsuite.
+
+## 7. File List
+- `backend/app/services/scrapers/instagram.py` (new)
+- `backend/app/services/scrapers/factory.py` (modified)
+- `backend/tests/test_instagram_scraper.py` (new)
+
+## 8. Change Log
+- Added instagram scraper and factory routing.
+- Added tests for instagram scraper.
