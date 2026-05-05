@@ -33,11 +33,15 @@ while retry_count < max_retries:
             ensure_default_admin(db)
             write_runtime_env_file(db)
         break
-    except OperationalError:
+    except OperationalError as e:
         retry_count += 1
         if retry_count == max_retries:
-            raise
+            print(f"Failed to connect to database: {e}")
+            break
         time.sleep(5)
+    except Exception as e:
+        print(f"Other error during startup: {e}")
+        break
 
 
 @asynccontextmanager
