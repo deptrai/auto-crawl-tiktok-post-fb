@@ -5,6 +5,8 @@ const BUTTON_PRIMARY = "flex items-center gap-2 rounded-2xl bg-[var(--accent)] p
 const BUTTON_SECONDARY = "flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-white/10 disabled:opacity-50";
 const BUTTON_DANGER = "flex items-center gap-2 rounded-2xl border border-rose-500/20 bg-rose-500/5 px-4 py-2 text-sm font-medium text-rose-100 transition-all hover:bg-rose-500/10 disabled:opacity-50";
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+
 export default function OrganizationManagement({ requestJson, authFetch, showNotice }) {
   const [organizations, setOrganizations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -15,8 +17,8 @@ export default function OrganizationManagement({ requestJson, authFetch, showNot
   const fetchOrgs = async () => {
     setIsLoading(true);
     try {
-      const data = await requestJson('/organizations/');
-      setOrganizations(data);
+      const data = await requestJson(`${API_URL}/organizations/`);
+      setOrganizations(data || []);
     } catch (err) {
       showNotice('error', err.message);
     } finally {
@@ -32,14 +34,14 @@ export default function OrganizationManagement({ requestJson, authFetch, showNot
     e.preventDefault();
     try {
       if (editingOrg) {
-        await requestJson(`/organizations/${editingOrg.id}`, {
+        await requestJson(`${API_URL}/organizations/${editingOrg.id}`, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
         });
         showNotice('success', 'Đã cập nhật tổ chức thành công.');
       } else {
-        await requestJson('/organizations/', {
+        await requestJson(`${API_URL}/organizations/`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(formData),
@@ -58,7 +60,7 @@ export default function OrganizationManagement({ requestJson, authFetch, showNot
   const handleDelete = async (id) => {
     if (!window.confirm('Bạn có chắc chắn muốn xóa tổ chức này? Hành động này không thể hoàn tác.')) return;
     try {
-      await requestJson(`/organizations/${id}`, { method: 'DELETE' });
+      await requestJson(`${API_URL}/organizations/${id}`, { method: 'DELETE' });
       showNotice('success', 'Đã xóa tổ chức thành công.');
       fetchOrgs();
     } catch (err) {
