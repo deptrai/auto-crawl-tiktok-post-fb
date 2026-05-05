@@ -413,8 +413,8 @@ function App() {
   const fetchOrganizations = async () => {
     if (currentUser?.role !== 'super_admin') return;
     try {
-      const data = await requestJson('/organizations/');
-      setOrganizations(data);
+      const data = await requestJson(`${API_URL}/organizations/`);
+      setOrganizations(data || []);
     } catch (err) {
       console.error('Failed to fetch organizations:', err);
     }
