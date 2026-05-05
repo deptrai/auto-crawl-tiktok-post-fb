@@ -57,35 +57,41 @@ def require_authenticated_user(
 
 @router.post("/login", response_model=Token)
 def login(creds: LoginRequest, request: Request, db: Session = Depends(get_db)):
-    email = creds.email.strip().lower()
-    client_id = get_client_identity(request)
-    
-    retry_after = check_login_rate_limit(client_id, email)
-    if retry_after > 0:
-        raise HTTPException(
-            status_code=429,
-            detail=f"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau {retry_after} giây.",
-        )
-
-    user = db.query(User).filter(User.email == email).first()
-    if user and user.is_active and verify_password(creds.password, user.hashed_password):
-        clear_login_rate_limit(client_id, email)
-        user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
-        db.commit()
+    try:
+        email = creds.email.strip().lower()
+        client_id = get_client_identity(request)
         
-        access_token = create_access_token(user.id, role=user.role.value)
-        refresh_token = create_refresh_token(user.id, role=user.role.value)
-        
-        record_event("auth", "info", "Đăng nhập thành công.", db=db, actor_user_id=str(user.id), details={"email": user.email, "ip": client_id})
-        return {
-            "access_token": access_token, 
-            "refresh_token": refresh_token,
-            "token_type": "bearer"
-        }
+        retry_after = check_login_rate_limit(client_id, email)
+        if retry_after > 0:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Đăng nhập sai quá nhiều lần. Vui lòng thử lại sau {retry_after} giây.",
+            )
 
-    register_failed_login(client_id, email)
-    record_event("auth", "warning", "Đăng nhập thất bại.", db=db, details={"email": email, "ip": client_id})
-    raise HTTPException(status_code=401, detail="Sai email đăng nhập hoặc mật khẩu!")
+        user = db.query(User).filter(User.email == email).first()
+        if user and user.is_active and verify_password(creds.password, user.hashed_password):
+            clear_login_rate_limit(client_id, email)
+            user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
+            db.commit()
+            
+            access_token = create_access_token(user.id, role=user.role.value)
+            refresh_token = create_refresh_token(user.id, role=user.role.value)
+            
+            record_event("auth", "info", "Đăng nhập thành công.", db=db, actor_user_id=str(user.id), details={"email": user.email, "ip": client_id})
+            return {
+                "access_token": access_token, 
+                "refresh_token": refresh_token,
+                "token_type": "bearer"
+            }
+
+        register_failed_login(client_id, email)
+        record_event("auth", "warning", "Đăng nhập thất bại.", db=db, details={"email": email, "ip": client_id})
+        raise HTTPException(status_code=401, detail="Sai email đăng nhập hoặc mật khẩu!")
+
+    except Exception as e:
+        import traceback
+        raise HTTPException(status_code=500, detail=traceback.format_exc())
+
 
 @router.get("/me", response_model=UserResponse)
 def get_me(current_user: User = Depends(require_authenticated_user)):
