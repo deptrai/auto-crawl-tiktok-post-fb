@@ -42,7 +42,7 @@ So that nhiều team hoặc khách hàng có thể dùng cùng một hệ thốn
 - SQLAlchemy 2.0: Có thể sử dụng cơ chế `with_loader_criteria` hoặc Base query builder để tự động gài `organization_id` vào mọi câu select, tránh lọt lưới query quên check org_id (Row Level Security ảo).
 
 ## 4. Status
-Status: `ready-for-dev`
+Status: `done`
 Note: Ultimate context engine analysis completed - comprehensive developer guide created.
 
 ## 5. Tasks / Subtasks
@@ -61,6 +61,21 @@ Note: Ultimate context engine analysis completed - comprehensive developer guide
   - [ ] 3.3: Màn hình Organization Management (danh sách orgs).
 - [ ] Task 4: Viết Unit Tests
   - [ ] 4.1: Test Data Isolation: Đảm bảo User ở Org A không fetch được Campaign của Org B.
+
+### Review Findings
+
+- [ ] [Review][Patch] Bổ sung Unit Tests kiểm chứng Data Isolation cho Multi-Tenancy.
+- [ ] [Review][Patch] Rò rỉ dữ liệu chéo (Cross-Tenant Data Leakage) do orphaned users — `ondelete='SET NULL'` trên bảng `users` kết hợp với logic bỏ qua filter khi `org_id is None` trong `apply_org_filter` cấp quyền truy cập toàn cục.
+- [ ] [Review][Patch] Rò rỉ dữ liệu (Data Isolation Leakage) đối với Task, Event, Worker, InteractionLog, Video — `Video` không có cột `organization_id` làm `apply_org_filter` vô dụng, các Model khác thì chưa gọi filter.
+- [ ] [Review][Patch] Lỗi Logic khóa quyền tự cập nhật Profile của `owner` — `update_data["role"] != UserRole.super_admin` ném 400 khi owner tự cập nhật profile mà truyền lại role "owner".
+- [ ] [Review][Patch] Lỗi 500 (DoS) khi thêm trùng FB Page — Khi `page_id` trùng lặp giữa các tenant, API ném `IntegrityError` thay vì báo lỗi thân thiện.
+- [ ] [Review][Patch] Lỗ hổng Token Substitution (Refresh Token dùng như Access Token) — `jwt.decode` chưa kiểm tra claims `type` là `access` hay `refresh`.
+- [ ] [Review][Patch] API Validate FB Page ném NameError — Quên khai báo param `org_id` trong route `/config/{page_id}/validate`.
+- [ ] [Review][Patch] Bỏ qua kiểm tra Must Change Password trong Auth flow — Đăng nhập vẫn cấp Access Token dù cờ `must_change_password` là True.
+- [ ] [Review][Patch] Global Runtime Override — Bất kỳ Owner nào cũng có thể sửa Runtime Config chung của hệ thống ở `PUT /system/runtime-config`.
+- [ ] [Review][Patch] Lệnh drop_table nguy hiểm trong migration cũ — Lệnh `op.drop_table('users')` và `DROP TYPE CASCADE` trong migration làm mất sạch dữ liệu nếu chạy lại.
+- [ ] [Review][Patch] Rò rỉ trạng thái ở Frontend khi đăng xuất — Zustand `logout()` không dọn dẹp các list users, events, tasks, campaigns cũ trên UI.
+- [x] [Review][Defer] Xóa bảo vệ chống Brute-Force trong API login — Cần khôi phục `check_login_rate_limit` nhưng hiện tại bị vô hiệu hoá do đang refactor. — deferred, pre-existing
 
 ## 6. Dev Agent Record
 

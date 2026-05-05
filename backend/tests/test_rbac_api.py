@@ -12,7 +12,8 @@ def create_mock_user(role: str):
         id=uuid.uuid4(),
         email=f"test_{role}@example.com",
         role=UserRole(role) if role else None,
-        is_active=True
+        is_active=True,
+        organization_id=uuid.uuid4()
     )
 
 def override_auth_owner():
@@ -33,11 +34,10 @@ def setup_test_app(client: TestClient):
     yield
     client.app.dependency_overrides.clear()
 
-def test_system_endpoint_owner_allowed(client: TestClient):
+def test_system_endpoint_owner_rejected(client: TestClient):
     client.app.dependency_overrides[require_authenticated_user] = override_auth_owner
     response = client.put("/system/runtime-config", json={})
-    # If it passes RBAC, it might hit DB and get 200 or 500 or 422. Just ensure it's not 403.
-    assert response.status_code != 403
+    assert response.status_code == 403
 
 def test_system_endpoint_viewer_rejected(client: TestClient):
     client.app.dependency_overrides[require_authenticated_user] = override_auth_viewer

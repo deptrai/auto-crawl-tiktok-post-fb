@@ -284,7 +284,7 @@ def storage_cleanup_job():
                 db.query(TaskQueue)
                 .filter(
                     TaskQueue.entity_id == str(video.id),
-                    TaskQueue.task_type.in_(_RETRY_TASK_TYPES),
+                    TaskQueue.category.in_(_RETRY_TASK_TYPES),
                     TaskQueue.status.in_([TaskStatus.queued, TaskStatus.processing]),
                 )
                 .first()

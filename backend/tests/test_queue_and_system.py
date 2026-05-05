@@ -54,7 +54,7 @@ def test_task_queue_deduplicates_and_retries(db_session):
 
 def test_system_endpoints_return_health_tasks_and_events(client, auth_headers, db_session):
     task = TaskQueue(
-        task_type=TASK_TYPE_CAMPAIGN_SYNC,
+        category=TASK_TYPE_CAMPAIGN_SYNC,
         entity_type="campaign",
         entity_id="campaign-2",
         payload={"campaign_id": "campaign-2"},

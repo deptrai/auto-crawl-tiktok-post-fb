@@ -20,7 +20,7 @@ def normalize_task_status(value):
 def serialize_task(task: TaskQueue) -> dict[str, Any]:
     return {
         "id": str(task.id),
-        "task_type": task.task_type,
+        "task_type": task.category,
         "entity_type": task.entity_type,
         "entity_id": task.entity_id,
         "status": normalize_task_status(task.status),
@@ -46,7 +46,7 @@ def get_open_task(
     entity_id: str | None = None,
 ) -> TaskQueue | None:
     query = db.query(TaskQueue).filter(
-        TaskQueue.task_type == task_type,
+        TaskQueue.category == task_type,
         TaskQueue.status.in_([TaskStatus.queued, TaskStatus.processing]),
     )
     if entity_type:
@@ -79,7 +79,7 @@ def enqueue_task(
             return existing
 
     task = TaskQueue(
-        task_type=task_type,
+        category=task_type,
         entity_type=entity_type,
         entity_id=entity_id,
         payload=payload,
@@ -149,8 +149,13 @@ def fail_task(db: Session, task: TaskQueue, error_message: str, *, retry_delay_s
     return task
 
 
-def summarize_tasks(db: Session) -> dict[str, int]:
-    rows = db.query(TaskQueue.status, func.count(TaskQueue.id)).group_by(TaskQueue.status).all()
+from uuid import UUID
+from app.api.deps import apply_org_filter
+
+def summarize_tasks(db: Session, org_id: UUID | None = None) -> dict[str, int]:
+    query = db.query(TaskQueue.status, func.count(TaskQueue.id))
+    query = apply_org_filter(query, TaskQueue, org_id)
+    rows = query.group_by(TaskQueue.status).all()
     summary = {status.value: 0 for status in TaskStatus}
     for status, count in rows:
         summary[normalize_task_status(status)] = count

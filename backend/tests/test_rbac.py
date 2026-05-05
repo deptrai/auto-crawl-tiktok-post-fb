@@ -9,6 +9,7 @@ class MockRole:
 class MockUser:
     def __init__(self, role_value):
         self.role = MockRole(role_value) if role_value else None
+        self.must_change_password = False
 
 def test_role_checker_allows_valid_role():
     checker = RoleChecker(["owner", "editor"])

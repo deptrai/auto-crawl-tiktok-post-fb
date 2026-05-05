@@ -42,7 +42,9 @@ def reset_database():
     Base.metadata.create_all(bind=engine)
     db = SessionLocal()
     try:
-        ensure_default_admin(db)
+        admin = ensure_default_admin(db)
+        admin.must_change_password = False
+        db.commit()
     finally:
         db.close()
     yield

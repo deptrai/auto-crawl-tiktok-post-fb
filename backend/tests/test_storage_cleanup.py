@@ -104,7 +104,7 @@ def test_cleanup_skips_video_in_active_retry_queue(cleanup_env, cleanup_days):
     db.add(TaskQueue(
         id=uuid.uuid4(),
         entity_id=str(vid.id),
-        task_type="retry_video_download",
+        category="retry_video_download",
         status=TaskStatus.queued,
     ))
     db.commit()
@@ -128,7 +128,7 @@ def test_cleanup_skips_processing_status_too(cleanup_env, cleanup_days):
     db.add(TaskQueue(
         id=uuid.uuid4(),
         entity_id=str(vid.id),
-        task_type="retry_video_download",
+        category="retry_video_download",
         status=TaskStatus.processing,
     ))
     db.commit()
@@ -150,7 +150,7 @@ def test_cleanup_ignores_unrelated_task_types(cleanup_env, cleanup_days):
     db.add(TaskQueue(
         id=uuid.uuid4(),
         entity_id=str(vid.id),
-        task_type="some_other_task",
+        category="some_other_task",
         status=TaskStatus.queued,
     ))
     db.commit()

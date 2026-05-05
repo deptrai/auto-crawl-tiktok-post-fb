@@ -1,9 +1,23 @@
 from app.models.models import UserRole
 import os
 
-def test_login_me_and_change_password_flow(client):
-    # Test với email theo schema mới
-    login_response = client.post("/auth/login", json={"email": "admin@example.com", "password": "admin12345"})
+def test_login_me_and_change_password_flow(client, db_session):
+    # Tạo user mới yêu cầu đổi mật khẩu
+    from app.models.models import User, UserRole
+    from app.core.security import get_password_hash
+    import uuid
+    test_user = User(
+        id=uuid.uuid4(),
+        email="test_change_pw@example.com",
+        hashed_password=get_password_hash("test12345"),
+        role=UserRole.owner,
+        is_active=True,
+        must_change_password=True
+    )
+    db_session.add(test_user)
+    db_session.commit()
+
+    login_response = client.post("/auth/login", json={"email": "test_change_pw@example.com", "password": "test12345"})
     assert login_response.status_code == 200
     login_payload = login_response.json()
     assert "access_token" in login_payload
@@ -13,17 +27,17 @@ def test_login_me_and_change_password_flow(client):
     me_response = client.get("/auth/me", headers=headers)
     assert me_response.status_code == 200
     me_data = me_response.json()
-    assert me_data["email"] == "admin@example.com"
+    assert me_data["email"] == "test_change_pw@example.com"
     assert me_data["must_change_password"] is True
 
     change_password_response = client.post(
         "/auth/change-password",
         headers=headers,
-        json={"current_password": "admin12345", "new_password": "Admin56789!"},
+        json={"current_password": "test12345", "new_password": "Test56789!"},
     )
     assert change_password_response.status_code == 200
     
-    relogin_response = client.post("/auth/login", json={"email": "admin@example.com", "password": "Admin56789!"})
+    relogin_response = client.post("/auth/login", json={"email": "test_change_pw@example.com", "password": "Test56789!"})
     assert relogin_response.status_code == 200
 
 
