@@ -1,8 +1,7 @@
 import pytest
 import uuid
 from fastapi.testclient import TestClient
-from app.models.organization import Organization
-from app.models.models import UserRole
+from app.models.models import Organization, UserRole
 
 def test_data_isolation_campaigns(client: TestClient, db_session):
     # Tạo 2 orgs

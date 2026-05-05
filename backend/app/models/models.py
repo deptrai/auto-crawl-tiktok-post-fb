@@ -8,9 +8,17 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
-from app.models.organization import Organization
 
 JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
+
+
+class Organization(Base):
+    __tablename__ = "organizations"
+
+    id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    name = Column(String, index=True, nullable=False)
+    slug = Column(String, unique=True, index=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class CampaignStatus(str, enum.Enum):
@@ -184,6 +192,7 @@ class InteractionLog(Base):
     __tablename__ = "interactions_log"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     page_id = Column(String, ForeignKey("facebook_pages.page_id", ondelete="SET NULL"), nullable=True)
     post_id = Column(String)
     comment_id = Column(String, unique=True)
