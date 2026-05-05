@@ -15,6 +15,7 @@ class UserBase(BaseModel):
 # Properties to receive via API on creation
 class UserCreate(UserBase):
     password: str = Field(min_length=8)
+    organization_id: Optional[UUID] = None
 
 # Properties to receive via API on update
 class UserUpdate(BaseModel):
@@ -23,12 +24,14 @@ class UserUpdate(BaseModel):
     avatar_url: Optional[str] = None
     role: Optional[UserRole] = None
     is_active: Optional[bool] = None
+    organization_id: Optional[UUID] = None
     password: Optional[str] = Field(None, min_length=8)
 
 class UserInDBBase(UserBase):
     id: UUID
     must_change_password: bool
     last_login_at: Optional[datetime] = None
+    organization_id: Optional[UUID] = None
     created_at: datetime
     updated_at: datetime
 

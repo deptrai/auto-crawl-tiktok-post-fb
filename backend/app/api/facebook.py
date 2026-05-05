@@ -6,7 +6,8 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, field_validator, Field
 from typing import Literal, Annotated
 from app.core.database import get_db
-from app.api.deps import RoleChecker
+from app.api.deps import RoleChecker, get_current_organization_id, apply_org_filter
+import uuid
 from app.models.models import FacebookPage
 from app.services.observability import record_event
 from app.services.security import decrypt_secret, encrypt_secret, is_secret_encrypted, mask_secret
@@ -58,7 +59,7 @@ def get_token_kind(token: str | None) -> str:
     return "page_access_token"
 
 @router.post("/config", dependencies=[Depends(RoleChecker(["owner"]))])
-def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_db)):
+def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
     normalized_token = page_in.long_lived_access_token.strip() if page_in.long_lived_access_token else None
 
     if normalized_token and get_token_kind(normalized_token) == "legacy_webhook":
@@ -67,18 +68,22 @@ def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_d
             detail="Hãy nhập mã truy cập trang Facebook thật. Liên kết webhook cũ không còn dùng để đăng bài hoặc trả lời bình luận."
         )
 
-    page = db.query(FacebookPage).filter(FacebookPage.page_id == page_in.page_id).first()
+    page = apply_org_filter(db.query(FacebookPage).filter(FacebookPage.page_id == page_in.page_id), FacebookPage, org_id).first()
     if page:
         page.page_name = page_in.page_name
         if normalized_token:
             page.long_lived_access_token = encrypt_secret(normalized_token)
     else:
+        existing_global = db.query(FacebookPage).filter(FacebookPage.page_id == page_in.page_id).first()
+        if existing_global:
+            raise HTTPException(status_code=400, detail="Trang Facebook này đã được kết nối bởi một tổ chức khác.")
         if not normalized_token:
             raise HTTPException(status_code=400, detail="Cần cung cấp mã truy cập cho trang mới.")
         page = FacebookPage(
             page_id=page_in.page_id,
             page_name=page_in.page_name,
-            long_lived_access_token=encrypt_secret(normalized_token)
+            long_lived_access_token=encrypt_secret(normalized_token),
+            organization_id=org_id
         )
         db.add(page)
 
@@ -122,8 +127,8 @@ def _calc_days_remaining(expires_at: datetime | None) -> int | None:
     return days if days > 0 else 0
 
 @router.get("/config")
-def get_facebook_config(db: Session = Depends(get_db)):
-    pages = db.query(FacebookPage).all()
+def get_facebook_config(db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    pages = apply_org_filter(db.query(FacebookPage), FacebookPage, org_id).all()
     should_commit = False
     normalized_pages = []
 
@@ -179,11 +184,9 @@ _STATUS_PRIORITY = ["invalid", "expired", "expiring_soon", "unknown", "valid"]
 
 
 @router.get("/token-summary")
-def get_token_summary(db: Session = Depends(get_db)):
+def get_token_summary(db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
     """Aggregate token health counts across all configured Facebook pages."""
-    pages = db.query(FacebookPage).filter(
-        FacebookPage.long_lived_access_token.isnot(None)
-    ).all()
+    pages = apply_org_filter(db.query(FacebookPage).filter(FacebookPage.long_lived_access_token.isnot(None)), FacebookPage, org_id).all()
 
     counts: dict[str, int] = {"valid": 0, "expiring_soon": 0, "expired": 0, "invalid": 0, "unknown": 0}
     for page in pages:
@@ -211,9 +214,9 @@ def get_token_summary(db: Session = Depends(get_db)):
 
 
 @router.post("/config/{page_id}/refresh-token")
-def manual_refresh_token(page_id: str, db: Session = Depends(get_db)):
+def manual_refresh_token(page_id: str, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
     """Trigger refresh token thủ công ngay lập tức cho một Facebook Page."""
-    page = db.query(FacebookPage).filter(FacebookPage.page_id == page_id).first()
+    page = apply_org_filter(db.query(FacebookPage).filter(FacebookPage.page_id == page_id), FacebookPage, org_id).first()
     if not page:
         raise HTTPException(status_code=404, detail="Không tìm thấy trang Facebook trong hệ thống.")
 
@@ -246,8 +249,8 @@ def manual_refresh_token(page_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/config/{page_id}/check-health")
-def trigger_token_health_check(page_id: str, db: Session = Depends(get_db)):
-    page = db.query(FacebookPage).filter(FacebookPage.page_id == page_id).first()
+def trigger_token_health_check(page_id: str, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    page = apply_org_filter(db.query(FacebookPage).filter(FacebookPage.page_id == page_id), FacebookPage, org_id).first()
     if not page:
         raise HTTPException(status_code=404, detail="Không tìm thấy trang Facebook trong hệ thống.")
     if not page.long_lived_access_token:
@@ -262,8 +265,8 @@ def trigger_token_health_check(page_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/config/{page_id}/validate")
-def validate_facebook_page(page_id: str, db: Session = Depends(get_db)):
-    page = db.query(FacebookPage).filter(FacebookPage.page_id == page_id).first()
+def validate_facebook_page(page_id: str, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    page = apply_org_filter(db.query(FacebookPage).filter(FacebookPage.page_id == page_id), FacebookPage, org_id).first()
     if not page:
         raise HTTPException(status_code=404, detail="Không tìm thấy trang Facebook trong hệ thống.")
 

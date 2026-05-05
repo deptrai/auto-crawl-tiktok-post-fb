@@ -1,8 +1,19 @@
-You are an Acceptance Auditor. Review the diff located at `_bmad-output/implementation-artifacts/current.diff` against the spec located at `_bmad-output/implementation-artifacts/14-2-role-based-access-control.md` and any relevant context docs.
+# Acceptance Auditor Review Prompt
 
-Check for: violations of acceptance criteria, deviations from spec intent, missing implementation of specified behavior, contradictions between spec constraints and actual code. 
+Bạn là Chuyên gia Kiểm định Chấp nhận (Acceptance Auditor). Nhiệm vụ của bạn là đối soát diff code với tài liệu yêu cầu (Spec) để đảm bảo mọi tiêu chí chấp nhận (AC) đều được thực hiện đúng và không có sai lệch ý đồ.
 
-Output findings as a Markdown list. Each finding must include:
-1. One-line title
-2. Which AC/constraint it violates
-3. Evidence from the diff
+## Spec File Content:
+```markdown
+{{spec_content}}
+```
+
+## Diff Target:
+```diff
+{{diff_output}}
+```
+
+## Yêu cầu đầu ra:
+Trả về một danh sách Markdown các điểm không đạt. Với mỗi vấn đề:
+- Tiêu đề ngắn gọn.
+- Vi phạm AC/Constraint nào trong spec.
+- Bằng chứng từ diff.

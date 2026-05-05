@@ -8,6 +8,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 
 from app.core.database import Base
+from app.models.organization import Organization
 
 JSON_TYPE = JSON().with_variant(JSONB, "postgresql")
 
@@ -61,6 +62,7 @@ class Campaign(Base):
     __tablename__ = "campaigns"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     name = Column(String, index=True)
     # Story 12.1: Platform config (deprecated but kept for fallback)
     target_platform = Column(Enum(PlatformType), default=PlatformType.facebook, nullable=False)
@@ -97,6 +99,7 @@ class Campaign(Base):
     )
 
     videos = relationship("Video", back_populates="campaign")
+    organization = relationship("Organization")
 
 
 class Video(Base):
@@ -147,6 +150,7 @@ class FacebookPage(Base):
     __tablename__ = "facebook_pages"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     page_id = Column(String, unique=True, index=True)
     page_name = Column(String)
     long_lived_access_token = Column(String)
@@ -173,6 +177,7 @@ class FacebookPage(Base):
 
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    organization = relationship("Organization")
 
 
 class InteractionLog(Base):
@@ -194,7 +199,8 @@ class TaskQueue(Base):
     __tablename__ = "task_queue"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    task_type = Column(String, index=True)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
+    category = Column(String, index=True)
     entity_type = Column(String, index=True, nullable=True)
     entity_id = Column(String, index=True, nullable=True)
     payload = Column(JSON_TYPE)
@@ -216,6 +222,7 @@ class User(Base):
     __tablename__ = "users"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     email = Column(String, unique=True, index=True, nullable=False)
     full_name = Column(String, nullable=True)
     hashed_password = Column(String, nullable=False)
@@ -226,6 +233,7 @@ class User(Base):
     last_login_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    organization = relationship("Organization")
 
 
 class WorkerHeartbeat(Base):
@@ -248,6 +256,7 @@ class SystemEvent(Base):
     __tablename__ = "system_events"
 
     id = Column(Uuid(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    organization_id = Column(Uuid(as_uuid=True), ForeignKey("organizations.id", ondelete="CASCADE"), nullable=True)
     scope = Column(String, index=True, nullable=False)
     level = Column(String, index=True, nullable=False)
     message = Column(String, nullable=False)
@@ -298,3 +307,4 @@ class YouTubeChannel(Base):
     token_expires_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+

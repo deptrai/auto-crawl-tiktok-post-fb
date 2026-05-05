@@ -112,4 +112,4 @@
 
 - Concurrent creation 500 error (`backend/app/api/users.py:44`)
 - Weak password (`backend/app/api/auth.py:24`)
-- Migration re-runs crash (`backend/alembic/versions/c14f91eae2aa_update_user_schema.py:51`)
+- Migration re-runs crash (`backend/alembic/versions/c14f91eae2aa_update_user_schema.py:51`)## Deferred from: code review of 14-3-workspace-to-chuc (2026-05-05)\n- Xóa bảo vệ chống Brute-Force trong API login: Cần khôi phục check_login_rate_limit nhưng hiện tại bị vô hiệu hoá do đang refactor.\n

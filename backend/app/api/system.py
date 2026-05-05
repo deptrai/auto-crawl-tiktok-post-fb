@@ -10,6 +10,8 @@ from app.api.auth import require_authenticated_user
 from app.api.deps import RoleChecker
 from app.core.config import DEFAULT_JWT_SECRET, DEFAULT_TOKEN_ENCRYPTION_SECRET, settings
 from app.core.database import get_db
+from app.api.deps import get_current_organization_id, apply_org_filter
+import uuid
 from app.models.models import (
     Campaign,
     CampaignStatus,
@@ -76,7 +78,7 @@ def serialize_event(event: SystemEvent) -> dict:
 
 
 @router.get("/overview")
-def get_system_overview(db: Session = Depends(get_db)):
+def get_system_overview(db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
     base_url = resolve_runtime_value("BASE_URL", db=db).rstrip("/")
     webhook_url = f"{base_url}/webhooks/fb" if base_url else None
     verify_token = resolve_runtime_value("FB_VERIFY_TOKEN", db=db)
@@ -96,10 +98,11 @@ def get_system_overview(db: Session = Depends(get_db)):
     if not tunnel_token:
         warnings.append("Chưa cấu hình TUNNEL_TOKEN nên tunnel chưa thể tự kết nối.")
 
-    active_users = db.query(User).filter(User.is_active.is_(True)).count()
+    active_users = apply_org_filter(db.query(User).filter(User.is_active.is_(True)), User, org_id).count()
     online_workers = db.query(WorkerHeartbeat).filter(WorkerHeartbeat.last_seen_at >= worker_cutoff).count()
+    # Note: TaskQueue and InteractionLog might not have org_id yet, but we filter Campaign/Video/Page
     queue_summary = summarize_tasks(db)
-    must_change_password = db.query(User).filter(User.must_change_password.is_(True)).count()
+    must_change_password = apply_org_filter(db.query(User).filter(User.must_change_password.is_(True)), User, org_id).count()
 
     if must_change_password:
         warnings.append("Có tài khoản đang bị yêu cầu đổi mật khẩu.")
@@ -119,10 +122,10 @@ def get_system_overview(db: Session = Depends(get_db)):
         "background_jobs_mode": settings.BACKGROUND_JOBS_MODE,
         "scheduler_enabled": settings.SCHEDULER_ENABLED,
         "scheduler_interval_minutes": settings.SCHEDULER_INTERVAL_MINUTES,
-        "connected_pages": db.query(FacebookPage).count(),
-        "active_campaigns": db.query(Campaign).filter(Campaign.status == CampaignStatus.active).count(),
-        "paused_campaigns": db.query(Campaign).filter(Campaign.status == CampaignStatus.paused).count(),
-        "queue_ready": db.query(Video).filter(Video.status == VideoStatus.ready).count(),
+        "connected_pages": apply_org_filter(db.query(FacebookPage), FacebookPage, org_id).count(),
+        "active_campaigns": apply_org_filter(db.query(Campaign).filter(Campaign.status == CampaignStatus.active), Campaign, org_id).count(),
+        "paused_campaigns": apply_org_filter(db.query(Campaign).filter(Campaign.status == CampaignStatus.paused), Campaign, org_id).count(),
+        "queue_ready": apply_org_filter(db.query(Video).filter(Video.status == VideoStatus.ready), Video, org_id).count() if org_id else db.query(Video).filter(Video.status == VideoStatus.ready).count(),
         "pending_replies": db.query(InteractionLog).filter(InteractionLog.status == InteractionStatus.pending).count(),
         "active_users": active_users,
         "online_workers": online_workers,
@@ -167,7 +170,7 @@ def get_system_health(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/runtime-config")
+@router.get("/runtime-config", dependencies=[Depends(RoleChecker(["super_admin"]))])
 def get_runtime_config(
     _: User = Depends(require_authenticated_user),
     db: Session = Depends(get_db),
@@ -175,7 +178,7 @@ def get_runtime_config(
     return build_runtime_settings_payload(db)
 
 
-@router.put("/runtime-config")
+@router.put("/runtime-config", dependencies=[Depends(RoleChecker(["super_admin"]))])
 def save_runtime_config(
     payload: RuntimeSettingsUpdateRequest,
     current_user: User = Depends(require_authenticated_user),
@@ -216,14 +219,18 @@ def save_runtime_config(
 
 
 @router.get("/tasks")
-def get_tasks(limit: int = 20, db: Session = Depends(get_db)):
-    tasks = db.query(TaskQueue).order_by(TaskQueue.created_at.desc()).limit(min(max(limit, 1), 100)).all()
-    return {"tasks": [serialize_task(task) for task in tasks], "summary": summarize_tasks(db)}
+def get_tasks(limit: int = 20, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    query = db.query(TaskQueue)
+    query = apply_org_filter(query, TaskQueue, org_id)
+    tasks = query.order_by(TaskQueue.created_at.desc()).limit(min(max(limit, 1), 100)).all()
+    return {"tasks": [serialize_task(task) for task in tasks], "summary": summarize_tasks(db, org_id)}
 
 
 @router.get("/events")
-def get_events(limit: int = 30, db: Session = Depends(get_db)):
-    events = db.query(SystemEvent).order_by(SystemEvent.created_at.desc()).limit(min(max(limit, 1), 200)).all()
+def get_events(limit: int = 30, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    query = db.query(SystemEvent)
+    query = apply_org_filter(query, SystemEvent, org_id)
+    events = query.order_by(SystemEvent.created_at.desc()).limit(min(max(limit, 1), 200)).all()
     return {"events": [serialize_event(event) for event in events]}
 
 

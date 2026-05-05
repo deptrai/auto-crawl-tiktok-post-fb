@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.models import Campaign, CampaignStatus, FacebookPage, Video, VideoStatus
-from app.api.deps import RoleChecker
+from app.api.deps import RoleChecker, get_current_organization_id, apply_org_filter
 from app.services.ai_generator import generate_caption
 from app.services.observability import record_event
 from app.services.task_queue import (
@@ -93,12 +93,15 @@ def parse_uuid_or_400(raw_id: str, label: str):
         raise HTTPException(status_code=400, detail=f"{label} không hợp lệ.") from exc
 
 
-def build_campaign_summary_map(db: Session):
+def build_campaign_summary_map(db: Session, org_id: uuid.UUID | None = None):
     summary_map = defaultdict(
         lambda: {"total": 0, "pending": 0, "downloading": 0, "ready": 0, "posted": 0, "failed": 0}
     )
+    query = db.query(Video.campaign_id, Video.status, func.count(Video.id))
+    if org_id is not None:
+        query = query.join(Campaign).filter(Campaign.organization_id == org_id)
     rows = (
-        db.query(Video.campaign_id, Video.status, func.count(Video.id))
+        query
         .group_by(Video.campaign_id, Video.status)
         .all()
     )
@@ -109,8 +112,10 @@ def build_campaign_summary_map(db: Session):
     return summary_map
 
 
-def build_page_name_map(db: Session):
-    return {page.page_id: page.page_name for page in db.query(FacebookPage).all()}
+def build_page_name_map(db: Session, org_id: uuid.UUID | None = None):
+    query = db.query(FacebookPage)
+    query = apply_org_filter(query, FacebookPage, org_id)
+    return {page.page_id: page.page_name for page in query.all()}
 
 
 def serialize_campaign(campaign: Campaign, summary_map, page_name_map):
@@ -177,17 +182,22 @@ def serialize_video(video: Video, page_name_map=None):
     }
 
 
-def get_campaign_or_404(db: Session, campaign_id: str):
+def get_campaign_or_404(db: Session, campaign_id: str, org_id: uuid.UUID | None = None):
     campaign_uuid = parse_uuid_or_400(campaign_id, "Mã chiến dịch")
-    campaign = db.query(Campaign).filter(Campaign.id == campaign_uuid).first()
+    query = db.query(Campaign).filter(Campaign.id == campaign_uuid)
+    query = apply_org_filter(query, Campaign, org_id)
+    campaign = query.first()
     if not campaign:
         raise HTTPException(status_code=404, detail="Không tìm thấy chiến dịch.")
     return campaign
 
 
-def get_video_or_404(db: Session, video_id: str):
+def get_video_or_404(db: Session, video_id: str, org_id: uuid.UUID | None = None):
     video_uuid = parse_uuid_or_400(video_id, "Mã video")
-    video = db.query(Video).filter(Video.id == video_uuid).first()
+    query = db.query(Video).filter(Video.id == video_uuid)
+    if org_id is not None:
+        query = query.join(Campaign).filter(Campaign.organization_id == org_id)
+    video = query.first()
     if not video:
         raise HTTPException(status_code=404, detail="Không tìm thấy video.")
     return video
@@ -202,13 +212,14 @@ def safe_remove_file(path: str | None):
 
 
 @router.post("/", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
-def create_campaign(campaign_in: CampaignCreate, db: Session = Depends(get_db)):
+def create_campaign(campaign_in: CampaignCreate, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
     if campaign_in.target_page_id:
-        page = db.query(FacebookPage).filter(FacebookPage.page_id == campaign_in.target_page_id).first()
+        page = apply_org_filter(db.query(FacebookPage).filter(FacebookPage.page_id == campaign_in.target_page_id), FacebookPage, org_id).first()
         if not page:
             raise HTTPException(status_code=400, detail="Trang đích chưa được cấu hình trong hệ thống.")
 
     db_campaign = Campaign(
+        organization_id=org_id,
         name=campaign_in.name.strip(),
         source_url=campaign_in.source_url.strip(),
         auto_post=campaign_in.auto_post,
@@ -251,17 +262,17 @@ def create_campaign(campaign_in: CampaignCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/")
-def get_campaigns(db: Session = Depends(get_db)):
-    campaigns = db.query(Campaign).order_by(Campaign.created_at.desc()).all()
-    page_name_map = build_page_name_map(db)
-    summary_map = build_campaign_summary_map(db)
+def get_campaigns(db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    campaigns = apply_org_filter(db.query(Campaign).order_by(Campaign.created_at.desc()), Campaign, org_id).all()
+    page_name_map = build_page_name_map(db, org_id)
+    summary_map = build_campaign_summary_map(db, org_id)
     return [serialize_campaign(campaign, summary_map, page_name_map) for campaign in campaigns]
 
 
 @router.patch("/{campaign_id}", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
-def update_campaign(campaign_id: str, payload: CampaignUpdate, db: Session = Depends(get_db)):
+def update_campaign(campaign_id: str, payload: CampaignUpdate, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
     """Story 9.1: Update campaign settings (filters, schedule, target page, name)."""
-    campaign = get_campaign_or_404(db, campaign_id)
+    campaign = get_campaign_or_404(db, campaign_id, org_id)
 
     update_data = payload.model_dump(exclude_unset=True)
 
@@ -273,7 +284,7 @@ def update_campaign(campaign_id: str, payload: CampaignUpdate, db: Session = Dep
             new_page_id = new_page_id.strip() or None
             update_data["target_page_id"] = new_page_id
         if new_page_id:
-            page = db.query(FacebookPage).filter(FacebookPage.page_id == new_page_id).first()
+            page = apply_org_filter(db.query(FacebookPage).filter(FacebookPage.page_id == new_page_id), FacebookPage, org_id).first()
             if not page:
                 raise HTTPException(status_code=400, detail="Trang đích chưa được cấu hình trong hệ thống.")
 
@@ -309,8 +320,8 @@ def update_campaign(campaign_id: str, payload: CampaignUpdate, db: Session = Dep
         details={"campaign_id": str(campaign.id), "changed": list(changed.keys())},
     )
 
-    page_name_map = build_page_name_map(db)
-    summary_map = build_campaign_summary_map(db)
+    page_name_map = build_page_name_map(db, org_id)
+    summary_map = build_campaign_summary_map(db, org_id)
     return {
         "message": "Đã cập nhật cài đặt chiến dịch.",
         "campaign": serialize_campaign(campaign, summary_map, page_name_map),
@@ -318,8 +329,8 @@ def update_campaign(campaign_id: str, payload: CampaignUpdate, db: Session = Dep
 
 
 @router.post("/{campaign_id}/sync", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
-def sync_campaign(campaign_id: str, db: Session = Depends(get_db)):
-    campaign = get_campaign_or_404(db, campaign_id)
+def sync_campaign(campaign_id: str, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    campaign = get_campaign_or_404(db, campaign_id, org_id)
     if campaign.last_sync_status == "syncing":
         raise HTTPException(status_code=400, detail="Chiến dịch này đang đồng bộ, chưa thể chạy lại.")
 
@@ -337,8 +348,8 @@ def sync_campaign(campaign_id: str, db: Session = Depends(get_db)):
         max_attempts=2,
     )
 
-    page_name_map = build_page_name_map(db)
-    summary_map = build_campaign_summary_map(db)
+    page_name_map = build_page_name_map(db, org_id)
+    summary_map = build_campaign_summary_map(db, org_id)
     return {
         "message": f"Đã xếp lịch đồng bộ lại cho chiến dịch '{campaign.name}'.",
         "campaign": serialize_campaign(campaign, summary_map, page_name_map),
@@ -347,8 +358,8 @@ def sync_campaign(campaign_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{campaign_id}/pause", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
-def pause_campaign(campaign_id: str, db: Session = Depends(get_db)):
-    campaign = get_campaign_or_404(db, campaign_id)
+def pause_campaign(campaign_id: str, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    campaign = get_campaign_or_404(db, campaign_id, org_id)
     campaign.status = CampaignStatus.paused
     db.commit()
     record_event(
@@ -362,8 +373,8 @@ def pause_campaign(campaign_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{campaign_id}/resume", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
-def resume_campaign(campaign_id: str, db: Session = Depends(get_db)):
-    campaign = get_campaign_or_404(db, campaign_id)
+def resume_campaign(campaign_id: str, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    campaign = get_campaign_or_404(db, campaign_id, org_id)
     campaign.status = CampaignStatus.active
     db.commit()
     record_event(
@@ -377,8 +388,8 @@ def resume_campaign(campaign_id: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/{campaign_id}", dependencies=[Depends(RoleChecker(["owner"]))])
-def delete_campaign(campaign_id: str, db: Session = Depends(get_db)):
-    campaign = get_campaign_or_404(db, campaign_id)
+def delete_campaign(campaign_id: str, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    campaign = get_campaign_or_404(db, campaign_id, org_id)
     file_paths = [row[0] for row in db.query(Video.file_path).filter(Video.campaign_id == campaign.id).all() if row[0]]
     deleted_videos = db.query(Video).filter(Video.campaign_id == campaign.id).delete(synchronize_session=False)
     campaign_name = campaign.name
@@ -399,32 +410,46 @@ def delete_campaign(campaign_id: str, db: Session = Depends(get_db)):
 
 
 @router.get("/stats")
-def get_video_stats(db: Session = Depends(get_db)):
-    total = db.query(Video).count()
-    pending = db.query(Video).filter(Video.status == VideoStatus.pending).count()
-    downloading = db.query(Video).filter(Video.status == VideoStatus.downloading).count()
-    ready = db.query(Video).filter(Video.status == VideoStatus.ready).count()
-    posted = db.query(Video).filter(Video.status == VideoStatus.posted).count()
-    failed = db.query(Video).filter(Video.status == VideoStatus.failed).count()
-    next_publish = db.query(func.min(Video.publish_time)).filter(Video.status == VideoStatus.ready).scalar()
-    queue_end = db.query(func.max(Video.publish_time)).filter(Video.status == VideoStatus.ready).scalar()
-    last_posted = db.query(func.max(Video.updated_at)).filter(Video.status == VideoStatus.posted).scalar()
+def get_video_stats(db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+
+    def base_vid_query():
+        q = db.query(Video)
+        if org_id is not None:
+            q = q.join(Campaign).filter(Campaign.organization_id == org_id)
+        return q
+
+    total = base_vid_query().count()
+    pending = base_vid_query().filter(Video.status == VideoStatus.pending).count()
+    downloading = base_vid_query().filter(Video.status == VideoStatus.downloading).count()
+    ready = base_vid_query().filter(Video.status == VideoStatus.ready).count()
+    posted = base_vid_query().filter(Video.status == VideoStatus.posted).count()
+    failed = base_vid_query().filter(Video.status == VideoStatus.failed).count()
+
+    def base_func_query(func_expr):
+        q = db.query(func_expr)
+        if org_id is not None:
+            q = q.join(Campaign, Video.campaign_id == Campaign.id).filter(Campaign.organization_id == org_id)
+        return q
+
+    next_publish = base_func_query(func.min(Video.publish_time)).filter(Video.status == VideoStatus.ready).scalar()
+    queue_end = base_func_query(func.max(Video.publish_time)).filter(Video.status == VideoStatus.ready).scalar()
+    last_posted = base_func_query(func.max(Video.updated_at)).filter(Video.status == VideoStatus.posted).scalar()
 
     return {
         "total": total,
-        "pending": pending + downloading,
-        "processing": pending + downloading,
+        "pending": pending,
         "downloading": downloading,
         "ready": ready,
         "posted": posted,
         "failed": failed,
-        "active_campaigns": db.query(Campaign).filter(Campaign.status == CampaignStatus.active).count(),
-        "paused_campaigns": db.query(Campaign).filter(Campaign.status == CampaignStatus.paused).count(),
-        "connected_pages": db.query(FacebookPage).count(),
+        "active_campaigns": apply_org_filter(db.query(Campaign).filter(Campaign.status == CampaignStatus.active), Campaign, org_id).count(),
+        "paused_campaigns": apply_org_filter(db.query(Campaign).filter(Campaign.status == CampaignStatus.paused), Campaign, org_id).count(),
+        "connected_pages": apply_org_filter(db.query(FacebookPage), FacebookPage, org_id).count(),
         "next_publish": serialize_datetime(next_publish),
         "queue_end": serialize_datetime(queue_end),
         "last_posted": serialize_datetime(last_posted),
     }
+
 
 
 @router.get("/videos")
@@ -434,11 +459,14 @@ def get_videos(
     status: str | None = None,
     campaign_id: str | None = None,
     db: Session = Depends(get_db),
+    org_id: uuid.UUID | None = Depends(get_current_organization_id)
 ):
     if page < 1 or limit < 1:
         raise HTTPException(status_code=400, detail="Phân trang không hợp lệ.")
 
     query = db.query(Video)
+    if org_id is not None:
+        query = query.join(Campaign).filter(Campaign.organization_id == org_id)
 
     if status and status != "all":
         allowed_statuses = {video_status.value for video_status in VideoStatus}
@@ -457,7 +485,7 @@ def get_videos(
         .limit(limit)
         .all()
     )
-    page_name_map = build_page_name_map(db)
+    page_name_map = build_page_name_map(db, org_id)
 
     return {
         "videos": [serialize_video(video, page_name_map) for video in videos],
@@ -468,8 +496,8 @@ def get_videos(
 
 
 @router.post("/videos/{video_id}/priority", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
-def prioritize_video(video_id: str, db: Session = Depends(get_db)):
-    video = get_video_or_404(db, video_id)
+def prioritize_video(video_id: str, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    video = get_video_or_404(db, video_id, org_id)
     if normalize_status(video.status) != VideoStatus.ready.value:
         raise HTTPException(status_code=400, detail="Chỉ có thể ưu tiên video đang ở trạng thái sẵn sàng.")
     if not video.campaign or not video.campaign.target_page_id:
@@ -492,7 +520,7 @@ def prioritize_video(video_id: str, db: Session = Depends(get_db)):
     video.last_error = None
     db.commit()
     db.refresh(video)
-    page_name_map = build_page_name_map(db)
+    page_name_map = build_page_name_map(db, org_id)
     return {
         "message": f"Đã đẩy video {video.original_id} lên đầu hàng chờ.",
         "video": serialize_video(video, page_name_map),
@@ -500,13 +528,13 @@ def prioritize_video(video_id: str, db: Session = Depends(get_db)):
 
 
 @router.patch("/videos/{video_id}/caption", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
-def update_video_caption(video_id: str, payload: VideoCaptionUpdate, db: Session = Depends(get_db)):
-    video = get_video_or_404(db, video_id)
+def update_video_caption(video_id: str, payload: VideoCaptionUpdate, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    video = get_video_or_404(db, video_id, org_id)
     video.ai_caption = payload.ai_caption.strip()
     video.last_error = None
     db.commit()
     db.refresh(video)
-    page_name_map = build_page_name_map(db)
+    page_name_map = build_page_name_map(db, org_id)
     return {
         "message": f"Đã cập nhật chú thích cho video {video.original_id}.",
         "video": serialize_video(video, page_name_map),
@@ -514,9 +542,9 @@ def update_video_caption(video_id: str, payload: VideoCaptionUpdate, db: Session
 
 
 @router.post("/videos/{video_id}/generate-caption", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
-def regenerate_video_caption(video_id: str, db: Session = Depends(get_db)):
+def regenerate_video_caption(video_id: str, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
     from app.models.models import FacebookPage
-    video = get_video_or_404(db, video_id)
+    video = get_video_or_404(db, video_id, org_id)
     if not video.original_caption:
         raise HTTPException(status_code=400, detail="Video này không có chú thích gốc để AI viết lại.")
 
@@ -532,7 +560,7 @@ def regenerate_video_caption(video_id: str, db: Session = Depends(get_db)):
         hashtag_optimization = video.campaign.hashtag_optimization
         target_page_id = video.campaign.target_page_id
         if target_page_id:
-            page = db.query(FacebookPage).filter(FacebookPage.page_id == target_page_id).first()
+            page = apply_org_filter(db.query(FacebookPage).filter(FacebookPage.page_id == target_page_id), FacebookPage, org_id).first()
             if page:
                 brand_voice = page.brand_voice
                 brand_voice_preset = page.brand_voice_preset or "casual"
@@ -550,7 +578,7 @@ def regenerate_video_caption(video_id: str, db: Session = Depends(get_db)):
     video.last_error = None
     db.commit()
     db.refresh(video)
-    page_name_map = build_page_name_map(db)
+    page_name_map = build_page_name_map(db, org_id)
     return {
         "message": f"Đã tạo lại chú thích AI cho video {video.original_id}.",
         "video": serialize_video(video, page_name_map),
@@ -558,8 +586,8 @@ def regenerate_video_caption(video_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/videos/{video_id}/retry", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
-def retry_video(video_id: str, db: Session = Depends(get_db)):
-    video = get_video_or_404(db, video_id)
+def retry_video(video_id: str, db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    video = get_video_or_404(db, video_id, org_id)
 
     if normalize_status(video.status) == VideoStatus.posted.value:
         raise HTTPException(status_code=400, detail="Video đã đăng thành công, không cần thử lại.")
@@ -571,7 +599,7 @@ def retry_video(video_id: str, db: Session = Depends(get_db)):
         video.fb_post_id = None
         db.commit()
         db.refresh(video)
-        page_name_map = build_page_name_map(db)
+        page_name_map = build_page_name_map(db, org_id)
         return {
             "message": f"Đã đưa video {video.original_id} trở lại hàng chờ đăng.",
             "video": serialize_video(video, page_name_map),

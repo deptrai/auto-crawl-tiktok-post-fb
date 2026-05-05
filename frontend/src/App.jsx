@@ -105,6 +105,7 @@ const NAV_ITEMS = [
   { id: 'analytics', label: 'Phân tích', description: 'Hiệu suất chiến dịch.', icon: LineChart },
   { id: 'operations', label: 'Vận hành', description: 'Worker, queue và log.', icon: Server },
   { id: 'security', label: 'Bảo mật', description: 'Phiên, mật khẩu, người dùng.', icon: ShieldCheck, guardRoles: ['owner'] },
+  { id: 'organizations', label: 'Hệ thống', description: 'Quản lý các tổ chức.', icon: Building2, guardRoles: ['super_admin'] },
 ];
 
 const STATUS_LABELS = {
@@ -344,7 +345,9 @@ function LoginFeature({ icon, title, description }) {
 }
 
 import { useAuthStore } from './store/authStore';
+import { useOrgStore } from './store/orgStore';
 import LoginPage from './features/auth/LoginPage';
+import OrganizationManagement from './features/organizations/OrganizationManagement';
 
 function App() {
   const { token, user: currentUser, logout, updateUser: setCurrentUser } = useAuthStore();
@@ -402,6 +405,26 @@ function App() {
     }
   }, [activeSection, currentRole]);
 
+  // Organization State
+  const [organizations, setOrganizations] = useState([]);
+  const setCurrentOrgId = useOrgStore((state) => state.setCurrentOrgId);
+
+  const fetchOrganizations = async () => {
+    if (currentUser?.role !== 'super_admin') return;
+    try {
+      const data = await requestJson('/organizations/');
+      setOrganizations(data);
+    } catch (err) {
+      console.error('Failed to fetch organizations:', err);
+    }
+  };
+
+  useEffect(() => {
+    if (token && currentUser?.role === 'super_admin') {
+      fetchOrganizations();
+    }
+  }, [token, currentUser]);
+
   // Analytics State
   const [analyticsCampaignId, setAnalyticsCampaignId] = useState('');
   const [analyticsSummary, setAnalyticsSummary] = useState(null);
@@ -422,9 +445,14 @@ function App() {
   const totalEventPages = Math.max(1, Math.ceil(events.length / SYSTEM_EVENT_PAGE_SIZE));
   const pagedEvents = events.slice((eventPage - 1) * SYSTEM_EVENT_PAGE_SIZE, eventPage * SYSTEM_EVENT_PAGE_SIZE);
 
+  const currentOrgId = useOrgStore((state) => state.currentOrgId);
+
   const authFetch = async (url, options = {}) => {
     const headers = { ...options.headers };
     if (token) headers.Authorization = `Bearer ${token}`;
+    if (currentOrgId && currentUser?.role === 'super_admin') {
+      headers['X-Organization-Id'] = currentOrgId;
+    }
     const response = await fetch(url, { ...options, headers });
     if (response.status === 401) {
       logout();
@@ -819,6 +847,13 @@ function App() {
 
   const handleLogout = () => {
     logout();
+    setUsers([]);
+    setTasks([]);
+    setEvents([]);
+    setCampaigns([]);
+    setVideos([]);
+    setInteractions([]);
+    setFbPages([]);
   };
 
   const handleChangePassword = async (event) => {
@@ -1869,6 +1904,7 @@ function App() {
       case 'analytics': return renderAnalyticsSection();
       case 'operations': return renderOperationsSection();
       case 'security': return renderSecuritySection();
+      case 'organizations': return <OrganizationManagement requestJson={requestJson} authFetch={authFetch} showNotice={showNotice} />;
       case 'overview':
       default: return renderOverviewSection();
     }
@@ -1921,11 +1957,32 @@ function App() {
               );
             })}
           </nav>
-          <div className="mt-auto rounded-[26px] border border-white/8 bg-black/10 p-4">
-            <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--text-muted)]">Phiên hiện tại</div>
-            <div className="mt-3 font-medium text-white">{currentUser?.full_name || currentUser?.email || 'Người dùng'}</div>
-            <div className="mt-1 text-sm text-[var(--text-soft)]">{currentUser?.role === 'super_admin' ? 'Quản trị viên' : 'Vận hành'}</div>
-            <button type="button" className={cx(BUTTON_GHOST, 'mt-4 w-full')} onClick={handleLogout}><LogOut className="h-4 w-4" />Đăng xuất</button>
+          <div className="mt-auto space-y-4">
+            {currentUser?.role === 'super_admin' && (
+              <div className="rounded-[26px] border border-cyan-400/20 bg-cyan-400/5 p-4">
+                <div className="text-[10px] uppercase tracking-[0.2em] text-cyan-400/70">Workspace Switcher</div>
+                <select 
+                  className="mt-2 w-full appearance-none rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white focus:outline-none"
+                  value={currentOrgId || ''}
+                  onChange={(e) => {
+                    setCurrentOrgId(e.target.value || null);
+                    showNotice('info', `Đã chuyển sang workspace: ${e.target.value ? organizations.find(o => o.id === e.target.value)?.name : 'Tất cả'}`);
+                    fetchDashboard();
+                  }}
+                >
+                  <option value="">Toàn hệ thống (Global)</option>
+                  {organizations.map(org => (
+                    <option key={org.id} value={org.id}>{org.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+            <div className="rounded-[26px] border border-white/8 bg-black/10 p-4">
+              <div className="text-[11px] uppercase tracking-[0.28em] text-[var(--text-muted)]">Phiên hiện tại</div>
+              <div className="mt-3 font-medium text-white">{currentUser?.full_name || currentUser?.email || 'Người dùng'}</div>
+              <div className="mt-1 text-sm text-[var(--text-soft)]">{currentUser?.role === 'super_admin' ? 'Quản trị viên' : 'Vận hành'}</div>
+              <button type="button" className={cx(BUTTON_GHOST, 'mt-4 w-full')} onClick={handleLogout}><LogOut className="h-4 w-4" />Đăng xuất</button>
+            </div>
           </div>
         </aside>
         <div className="min-w-0 flex-1">

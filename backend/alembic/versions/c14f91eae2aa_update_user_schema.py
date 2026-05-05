@@ -62,7 +62,7 @@ def upgrade() -> None:
                 "INSERT INTO users (id, email, full_name, hashed_password, role, is_active, created_at, updated_at) "
                 "SELECT id, username || '@example.com', display_name, password_hash, 'viewer', is_active, now(), now() FROM users_old"
             )
-        op.drop_table('users_old')
+        # op.drop_table('users_old') # Keep backup to prevent data loss
 
     from app.core.config import settings
     from passlib.context import CryptContext
