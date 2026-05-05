@@ -42,6 +42,7 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
+import { RoleGuard, useRole } from './features/auth/RoleGuard';
 
 const API_URL = '/api';
 const AUTO_REFRESH_MS = 5000;
@@ -103,7 +104,7 @@ const NAV_ITEMS = [
   { id: 'engagement', label: 'Tương tác', description: 'Bình luận và phản hồi AI.', icon: Bot },
   { id: 'analytics', label: 'Phân tích', description: 'Hiệu suất chiến dịch.', icon: LineChart },
   { id: 'operations', label: 'Vận hành', description: 'Worker, queue và log.', icon: Server },
-  { id: 'security', label: 'Bảo mật', description: 'Phiên, mật khẩu, người dùng.', icon: ShieldCheck },
+  { id: 'security', label: 'Bảo mật', description: 'Phiên, mật khẩu, người dùng.', icon: ShieldCheck, guardRoles: ['owner'] },
 ];
 
 const STATUS_LABELS = {
@@ -392,6 +393,14 @@ function App() {
   const [activeSection, setActiveSection] = useState(localStorage.getItem('dashboard-active-section') || 'overview');
   const [taskPage, setTaskPage] = useState(1);
   const [eventPage, setEventPage] = useState(1);
+  const currentRole = useRole();
+  const filteredNavItems = NAV_ITEMS.filter(item => !item.guardRoles || item.guardRoles.includes(currentRole));
+
+  useEffect(() => {
+    if (!filteredNavItems.find(item => item.id === activeSection)) {
+      setActiveSection(filteredNavItems[0].id);
+    }
+  }, [activeSection, currentRole]);
 
   // Analytics State
   const [analyticsCampaignId, setAnalyticsCampaignId] = useState('');
@@ -402,7 +411,7 @@ function App() {
   const isAdmin = currentUser?.role === 'super_admin';
   const staleWorkers = workers.filter((worker) => !worker.is_online);
   const onlineWorkers = workers.filter((worker) => worker.is_online).length;
-  const currentSection = NAV_ITEMS.find((item) => item.id === activeSection) || NAV_ITEMS[0];
+  const currentSection = filteredNavItems.find((item) => item.id === activeSection) || filteredNavItems[0];
   const warningCount = systemInfo?.warnings?.length || 0;
   const invalidPages = fbPages.filter((pageItem) => pageItem.token_kind !== 'page_access_token');
   const focusCampaigns = campaigns.filter((campaign) => campaign.last_sync_status === 'failed' || campaign.video_counts?.failed > 0).slice(0, 3);
@@ -536,7 +545,7 @@ function App() {
   };
 
   const loadRuntimeConfig = async () => {
-    if (!token || currentUser?.role !== 'admin') return;
+    if (!token || !['super_admin', 'owner'].includes(currentUser?.role)) return;
     const payload = await requestJson(`${API_URL}/system/runtime-config`);
     setRuntimeConfig(payload);
     setRuntimeForm(extractRuntimeForm(payload));
@@ -589,7 +598,7 @@ function App() {
 
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
-    if (!token || currentUser?.role !== 'admin') {
+    if (!token || !['super_admin', 'owner'].includes(currentUser?.role)) {
       setRuntimeConfig(null);
       setRuntimeForm(DEFAULT_RUNTIME_FORM);
       return;
@@ -1038,8 +1047,9 @@ function App() {
 
   const renderCampaignSection = () => (
     <div className="grid gap-6 2xl:grid-cols-12">
-      <Panel className="2xl:col-span-7" eyebrow="Nguồn mới" title="Tạo chiến dịch đăng tự động">
-        <form onSubmit={handleCampaignSubmit} className="grid gap-4 md:grid-cols-2">
+      <RoleGuard allowedRoles={['owner', 'editor']}>
+        <Panel className="2xl:col-span-7" eyebrow="Nguồn mới" title="Tạo chiến dịch đăng tự động">
+          <form onSubmit={handleCampaignSubmit} className="grid gap-4 md:grid-cols-2">
           <div className="space-y-4 md:col-span-2">
             <span className="text-xs uppercase tracking-[0.24em] text-[var(--text-muted)]">Nền tảng xuất bản</span>
             <div className="grid gap-3 sm:grid-cols-3">
@@ -1158,6 +1168,7 @@ function App() {
           </div>
         </form>
       </Panel>
+      </RoleGuard>
 
       <Panel className="2xl:col-span-5" eyebrow="Quản lý YouTube" title="Danh sách kênh YouTube Shorts">
         <div className="mb-4">
@@ -1261,18 +1272,20 @@ function App() {
                     </div>
                   ) : null}
                   <div className="mt-4 flex flex-wrap justify-end gap-2">
-                    <button type="button" className={BUTTON_SECONDARY} onClick={() => handleEditPage(pageItem)}>
-                      <Settings2 className="h-4 w-4" />
-                      Chỉnh sửa
-                    </button>
-                    <button type="button" className={BUTTON_SECONDARY} onClick={() => handleCheckHealth(pageItem.page_id)} disabled={actionState[`page-health-${pageItem.page_id}`]}>
-                      <ShieldCheck className="h-4 w-4" />
-                      {actionState[`page-health-${pageItem.page_id}`] ? 'Đang kiểm tra...' : 'Kiểm tra Token'}
-                    </button>
-                    <button type="button" className={BUTTON_SECONDARY} onClick={() => handleValidatePage(pageItem.page_id)} disabled={actionState[`page-validate-${pageItem.page_id}`]}>
-                      <ShieldCheck className="h-4 w-4" />
-                      {actionState[`page-validate-${pageItem.page_id}`] ? 'Đang kiểm tra...' : 'Xác minh token'}
-                    </button>
+                    <RoleGuard allowedRoles={['owner']}>
+                      <button type="button" className={BUTTON_SECONDARY} onClick={() => handleEditPage(pageItem)}>
+                        <Settings2 className="h-4 w-4" />
+                        Chỉnh sửa
+                      </button>
+                      <button type="button" className={BUTTON_SECONDARY} onClick={() => handleCheckHealth(pageItem.page_id)} disabled={actionState[`page-health-${pageItem.page_id}`]}>
+                        <ShieldCheck className="h-4 w-4" />
+                        {actionState[`page-health-${pageItem.page_id}`] ? 'Đang kiểm tra...' : 'Kiểm tra Token'}
+                      </button>
+                      <button type="button" className={BUTTON_SECONDARY} onClick={() => handleValidatePage(pageItem.page_id)} disabled={actionState[`page-validate-${pageItem.page_id}`]}>
+                        <ShieldCheck className="h-4 w-4" />
+                        {actionState[`page-validate-${pageItem.page_id}`] ? 'Đang kiểm tra...' : 'Xác minh token'}
+                      </button>
+                    </RoleGuard>
                   </div>
                 </div>
               );
@@ -1329,25 +1342,29 @@ function App() {
                   </div>
                   {campaign.last_sync_error ? <div className="mt-4 rounded-[22px] border border-rose-400/20 bg-rose-400/10 px-4 py-3 text-sm leading-7 text-rose-100">{campaign.last_sync_error}</div> : null}
                   <div className="mt-5 flex flex-wrap gap-2">
-                    <button type="button" className={BUTTON_SECONDARY} onClick={() => handleCampaignAction(campaign, 'sync')} disabled={actionState[`campaign-${campaign.id}-sync`]}>
-                      <RefreshCw className={cx('h-4 w-4', actionState[`campaign-${campaign.id}-sync`] ? 'animate-spin' : '')} />
-                      Đồng bộ lại
-                    </button>
-                    {campaign.status === 'active' ? (
-                      <button type="button" className={BUTTON_GHOST} onClick={() => handleCampaignAction(campaign, 'pause')} disabled={actionState[`campaign-${campaign.id}-pause`]}>
-                        <Pause className="h-4 w-4" />
-                        Tạm dừng
+                    <RoleGuard allowedRoles={['owner', 'editor']}>
+                      <button type="button" className={BUTTON_SECONDARY} onClick={() => handleCampaignAction(campaign, 'sync')} disabled={actionState[`campaign-${campaign.id}-sync`]}>
+                        <RefreshCw className={cx('h-4 w-4', actionState[`campaign-${campaign.id}-sync`] ? 'animate-spin' : '')} />
+                        Đồng bộ lại
                       </button>
-                    ) : (
-                      <button type="button" className={BUTTON_GHOST} onClick={() => handleCampaignAction(campaign, 'resume')} disabled={actionState[`campaign-${campaign.id}-resume`]}>
-                        <Play className="h-4 w-4" />
-                        Kích hoạt lại
+                      {campaign.status === 'active' ? (
+                        <button type="button" className={BUTTON_GHOST} onClick={() => handleCampaignAction(campaign, 'pause')} disabled={actionState[`campaign-${campaign.id}-pause`]}>
+                          <Pause className="h-4 w-4" />
+                          Tạm dừng
+                        </button>
+                      ) : (
+                        <button type="button" className={BUTTON_GHOST} onClick={() => handleCampaignAction(campaign, 'resume')} disabled={actionState[`campaign-${campaign.id}-resume`]}>
+                          <Play className="h-4 w-4" />
+                          Kích hoạt lại
+                        </button>
+                      )}
+                    </RoleGuard>
+                    <RoleGuard allowedRoles={['owner']}>
+                      <button type="button" className={cx(BUTTON_GHOST, 'text-rose-100')} onClick={() => handleCampaignAction(campaign, 'delete')} disabled={actionState[`campaign-${campaign.id}-delete`]}>
+                        <Trash2 className="h-4 w-4" />
+                        Xóa chiến dịch
                       </button>
-                    )}
-                    <button type="button" className={cx(BUTTON_GHOST, 'text-rose-100')} onClick={() => handleCampaignAction(campaign, 'delete')} disabled={actionState[`campaign-${campaign.id}-delete`]}>
-                      <Trash2 className="h-4 w-4" />
-                      Xóa chiến dịch
-                    </button>
+                    </RoleGuard>
                   </div>
                 </article>
               );
@@ -1737,8 +1754,9 @@ function App() {
                     </div>
                     <div className="mt-5 grid gap-3 sm:grid-cols-2">
                       <select className={FIELD_CLASS} value={user.role} onChange={(event) => handleUserUpdate(user.id, { role: event.target.value })} disabled={actionState[`user-update-${user.id}`]}>
-                        <option value="operator" style={{ color: '#06101a' }}>Vận hành</option>
-                        <option value="admin" style={{ color: '#06101a' }}>Quản trị viên</option>
+                        <option value="viewer" style={{ color: '#06101a' }}>Khách xem (Viewer)</option>
+                        <option value="editor" style={{ color: '#06101a' }}>Biên tập viên (Editor)</option>
+                        <option value="owner" style={{ color: '#06101a' }}>Chủ sở hữu (Owner)</option>
                       </select>
                       <button type="button" className={BUTTON_GHOST} onClick={() => handleUserUpdate(user.id, { is_active: !user.is_active })} disabled={actionState[`user-update-${user.id}`]}>
                         {user.is_active ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
@@ -1885,7 +1903,7 @@ function App() {
             </div>
           </div>
           <nav className="mt-6 space-y-2">
-            {NAV_ITEMS.map((item) => {
+            {filteredNavItems.map((item) => {
               const Icon = item.icon;
               const count = { overview: warningCount, campaigns: campaigns.length, queue: stats.ready ?? 0, engagement: systemInfo?.pending_replies ?? 0, operations: taskSummary.failed ?? 0, security: users.length || (currentUser ? 1 : 0) }[item.id];
               return (
@@ -1924,7 +1942,7 @@ function App() {
               {notice ? <div className={cx('mt-5 rounded-[24px] border px-4 py-4 text-sm leading-7', notice.type === 'success' ? 'border-emerald-400/20 bg-emerald-400/10 text-emerald-100' : 'border-rose-400/20 bg-rose-400/10 text-rose-100')}>{notice.message}</div> : null}
               <div className="-mx-1 mt-5 overflow-x-auto lg:hidden">
                 <div className="flex gap-2 px-1 pb-1">
-                  {NAV_ITEMS.map((item) => (
+                  {filteredNavItems.map((item) => (
                     <button key={item.id} type="button" onClick={() => handleSectionChange(item.id)} className={cx('whitespace-nowrap rounded-full border px-4 py-2.5 text-sm transition-all', activeSection === item.id ? 'border-cyan-400/30 bg-cyan-400/12 text-cyan-100' : 'border-white/10 bg-black/10 text-[var(--text-soft)]')}>
                       {item.label}
                     </button>
@@ -1979,6 +1997,13 @@ function App() {
               </aside>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;
         </div>
       </div>
     </div>

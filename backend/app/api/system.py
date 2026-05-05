@@ -6,7 +6,8 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.api.auth import require_admin
+from app.api.auth import require_authenticated_user
+from app.api.deps import RoleChecker
 from app.core.config import DEFAULT_JWT_SECRET, DEFAULT_TOKEN_ENCRYPTION_SECRET, settings
 from app.core.database import get_db
 from app.models.models import (
@@ -168,7 +169,7 @@ def get_system_health(db: Session = Depends(get_db)):
 
 @router.get("/runtime-config")
 def get_runtime_config(
-    _: User = Depends(require_admin),
+    _: User = Depends(require_authenticated_user),
     db: Session = Depends(get_db),
 ):
     return build_runtime_settings_payload(db)
@@ -177,7 +178,7 @@ def get_runtime_config(
 @router.put("/runtime-config")
 def save_runtime_config(
     payload: RuntimeSettingsUpdateRequest,
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(require_authenticated_user),
     db: Session = Depends(get_db),
 ):
     changed_keys = update_runtime_settings(
@@ -234,7 +235,7 @@ def get_workers(db: Session = Depends(get_db)):
 
 @router.post("/workers/cleanup")
 def cleanup_stale_workers(
-    current_user: User = Depends(require_admin),
+    current_user: User = Depends(RoleChecker(["owner"])),
     db: Session = Depends(get_db),
 ):
     stale_cutoff = datetime.now(timezone.utc).replace(tzinfo=None) - timedelta(seconds=settings.WORKER_STALE_SECONDS)

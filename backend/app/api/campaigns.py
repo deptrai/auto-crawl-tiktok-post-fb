@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.models.models import Campaign, CampaignStatus, FacebookPage, Video, VideoStatus
+from app.api.deps import RoleChecker
 from app.services.ai_generator import generate_caption
 from app.services.observability import record_event
 from app.services.task_queue import (
@@ -200,7 +201,7 @@ def safe_remove_file(path: str | None):
             pass
 
 
-@router.post("/")
+@router.post("/", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
 def create_campaign(campaign_in: CampaignCreate, db: Session = Depends(get_db)):
     if campaign_in.target_page_id:
         page = db.query(FacebookPage).filter(FacebookPage.page_id == campaign_in.target_page_id).first()
@@ -257,7 +258,7 @@ def get_campaigns(db: Session = Depends(get_db)):
     return [serialize_campaign(campaign, summary_map, page_name_map) for campaign in campaigns]
 
 
-@router.patch("/{campaign_id}")
+@router.patch("/{campaign_id}", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
 def update_campaign(campaign_id: str, payload: CampaignUpdate, db: Session = Depends(get_db)):
     """Story 9.1: Update campaign settings (filters, schedule, target page, name)."""
     campaign = get_campaign_or_404(db, campaign_id)
@@ -316,7 +317,7 @@ def update_campaign(campaign_id: str, payload: CampaignUpdate, db: Session = Dep
     }
 
 
-@router.post("/{campaign_id}/sync")
+@router.post("/{campaign_id}/sync", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
 def sync_campaign(campaign_id: str, db: Session = Depends(get_db)):
     campaign = get_campaign_or_404(db, campaign_id)
     if campaign.last_sync_status == "syncing":
@@ -345,7 +346,7 @@ def sync_campaign(campaign_id: str, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/{campaign_id}/pause")
+@router.post("/{campaign_id}/pause", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
 def pause_campaign(campaign_id: str, db: Session = Depends(get_db)):
     campaign = get_campaign_or_404(db, campaign_id)
     campaign.status = CampaignStatus.paused
@@ -360,7 +361,7 @@ def pause_campaign(campaign_id: str, db: Session = Depends(get_db)):
     return {"message": f"Đã tạm dừng chiến dịch '{campaign.name}'."}
 
 
-@router.post("/{campaign_id}/resume")
+@router.post("/{campaign_id}/resume", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
 def resume_campaign(campaign_id: str, db: Session = Depends(get_db)):
     campaign = get_campaign_or_404(db, campaign_id)
     campaign.status = CampaignStatus.active
@@ -375,7 +376,7 @@ def resume_campaign(campaign_id: str, db: Session = Depends(get_db)):
     return {"message": f"Đã kích hoạt lại chiến dịch '{campaign.name}'."}
 
 
-@router.delete("/{campaign_id}")
+@router.delete("/{campaign_id}", dependencies=[Depends(RoleChecker(["owner"]))])
 def delete_campaign(campaign_id: str, db: Session = Depends(get_db)):
     campaign = get_campaign_or_404(db, campaign_id)
     file_paths = [row[0] for row in db.query(Video.file_path).filter(Video.campaign_id == campaign.id).all() if row[0]]
@@ -466,7 +467,7 @@ def get_videos(
     }
 
 
-@router.post("/videos/{video_id}/priority")
+@router.post("/videos/{video_id}/priority", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
 def prioritize_video(video_id: str, db: Session = Depends(get_db)):
     video = get_video_or_404(db, video_id)
     if normalize_status(video.status) != VideoStatus.ready.value:
@@ -498,7 +499,7 @@ def prioritize_video(video_id: str, db: Session = Depends(get_db)):
     }
 
 
-@router.patch("/videos/{video_id}/caption")
+@router.patch("/videos/{video_id}/caption", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
 def update_video_caption(video_id: str, payload: VideoCaptionUpdate, db: Session = Depends(get_db)):
     video = get_video_or_404(db, video_id)
     video.ai_caption = payload.ai_caption.strip()
@@ -512,7 +513,7 @@ def update_video_caption(video_id: str, payload: VideoCaptionUpdate, db: Session
     }
 
 
-@router.post("/videos/{video_id}/generate-caption")
+@router.post("/videos/{video_id}/generate-caption", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
 def regenerate_video_caption(video_id: str, db: Session = Depends(get_db)):
     from app.models.models import FacebookPage
     video = get_video_or_404(db, video_id)
@@ -556,7 +557,7 @@ def regenerate_video_caption(video_id: str, db: Session = Depends(get_db)):
     }
 
 
-@router.post("/videos/{video_id}/retry")
+@router.post("/videos/{video_id}/retry", dependencies=[Depends(RoleChecker(["owner", "editor"]))])
 def retry_video(video_id: str, db: Session = Depends(get_db)):
     video = get_video_or_404(db, video_id)
 

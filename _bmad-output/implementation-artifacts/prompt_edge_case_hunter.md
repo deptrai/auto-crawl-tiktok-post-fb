@@ -1,6 +1,3 @@
-Please run the bmad-review-edge-case-hunter workflow against the changes in `_bmad-output/implementation-artifacts/current.diff`.
+Please activate the `bmad-review-edge-case-hunter` skill and review the diff located at `_bmad-output/implementation-artifacts/current.diff`.
 
-Prompt:
-@[/bmad-review-edge-case-hunter]
-Here is the diff:
-(Please read `_bmad-output/implementation-artifacts/current.diff` or paste its contents here).
+You HAVE read access to the project to understand the context of the diff. Trace references and look for edge cases, missing validations, unhandled errors, or boundary condition failures. Return your findings as structured in the skill's instructions.

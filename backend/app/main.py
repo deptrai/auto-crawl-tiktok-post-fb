@@ -54,7 +54,18 @@ async def lifespan(app: FastAPI):
     record_event("system", "warning", "Ứng dụng API đã dừng.", details={"app_role": settings.APP_ROLE})
 
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
+from app.api.deps import RBACException, RoleChecker
+
 app = FastAPI(title=settings.PROJECT_NAME, lifespan=lifespan)
+
+@app.exception_handler(RBACException)
+async def rbac_exception_handler(request: Request, exc: RBACException):
+    return JSONResponse(
+        status_code=403,
+        content={"detail": exc.message, "error": {"code": "HTTP_403", "message": exc.message}}
+    )
 
 app.include_router(auth.router)
 app.include_router(campaigns.router, dependencies=[Depends(require_authenticated_user)])

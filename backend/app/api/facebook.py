@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel, field_validator, Field
 from typing import Literal, Annotated
 from app.core.database import get_db
+from app.api.deps import RoleChecker
 from app.models.models import FacebookPage
 from app.services.observability import record_event
 from app.services.security import decrypt_secret, encrypt_secret, is_secret_encrypted, mask_secret
@@ -56,7 +57,7 @@ def get_token_kind(token: str | None) -> str:
         return "legacy_webhook"
     return "page_access_token"
 
-@router.post("/config")
+@router.post("/config", dependencies=[Depends(RoleChecker(["owner"]))])
 def set_facebook_config(page_in: FacebookPageCreate, db: Session = Depends(get_db)):
     normalized_token = page_in.long_lived_access_token.strip() if page_in.long_lived_access_token else None
 

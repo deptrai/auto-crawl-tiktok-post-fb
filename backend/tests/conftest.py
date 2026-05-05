@@ -18,6 +18,7 @@ atexit.register(_cleanup_test_db)
 os.environ["JWT_SECRET"] = "test-jwt-secret"
 os.environ["TOKEN_ENCRYPTION_SECRET"] = "test-token-secret"
 os.environ["ADMIN_PASSWORD"] = "admin12345"
+os.environ["ROOT_ADMIN_PASSWORD"] = "admin12345"
 os.environ["DEFAULT_ADMIN_USERNAME"] = "admin"
 os.environ["DEFAULT_ADMIN_DISPLAY_NAME"] = "Quản trị viên kiểm thử"
 os.environ["FB_VERIFY_TOKEN"] = "test-verify-token"
@@ -28,6 +29,9 @@ os.environ["APP_ROLE"] = "api"
 
 from app.api import auth, campaigns, facebook, system, users, webhooks, analytics, youtube
 from app.api.auth import require_authenticated_user
+from app.api.deps import RBACException, RoleChecker
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from app.core.database import Base, SessionLocal, engine
 from app.services.accounts import ensure_default_admin
 
@@ -57,10 +61,18 @@ def db_session():
 @pytest.fixture
 def client():
     app = FastAPI()
+    
+    @app.exception_handler(RBACException)
+    async def rbac_exception_handler(request: Request, exc: RBACException):
+        return JSONResponse(
+            status_code=403,
+            content={"detail": exc.message, "error": {"code": "HTTP_403", "message": exc.message}}
+        )
+
     app.include_router(auth.router)
     app.include_router(campaigns.router, dependencies=[Depends(require_authenticated_user)])
-    app.include_router(facebook.router, dependencies=[Depends(require_authenticated_user)])
-    app.include_router(system.router, dependencies=[Depends(require_authenticated_user)])
+    app.include_router(facebook.router, dependencies=[Depends(require_authenticated_user), Depends(RoleChecker(["owner"]))])
+    app.include_router(system.router, dependencies=[Depends(require_authenticated_user), Depends(RoleChecker(["owner"]))])
     app.include_router(users.router, dependencies=[Depends(require_authenticated_user)])
     app.include_router(analytics.router, dependencies=[Depends(require_authenticated_user)])
     app.include_router(youtube.router)
@@ -73,7 +85,7 @@ def client():
 def auth_headers(client: TestClient):
     response = client.post(
         "/auth/login",
-        json={"username": "admin", "password": os.environ["ADMIN_PASSWORD"]},
+        json={"email": "admin@example.com", "password": os.environ["ADMIN_PASSWORD"]},
     )
     assert response.status_code == 200
     token = response.json()["access_token"]

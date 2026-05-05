@@ -107,3 +107,9 @@
 - **D1:** `DOWNLOAD_DIR` module-level constant stale trong tests — `settings.DOWNLOAD_DIR` evaluated lúc import, test overrides không phản ánh. Pattern giống `ytdlp_crawler.py` hiện tại. Fix trong Epic 14 cleanup hoặc khi làm test isolation refactor. [`youtube.py:34`]
 - **D2:** `factory.get_scraper()` không defensive với `source_url=None` — `urlparse(None)` raises TypeError. Low risk vì caller `campaign_jobs` luôn pass string từ DB column. Defensive guard nên được thêm khi factory mở rộng. [`factory.py:_is_youtube_url`]
 - **D3:** `YT_MAX_VIDEOS` env var không validate kiểu — non-integer string raise ValueError uncaught lúc build opts dict. Ops-level concern; document trong deployment guide, add try/except khi cần production hardening. [`youtube.py:extract_metadata:opts`]
+
+## Deferred from: code review of 14-2-role-based-access-control.md (2026-05-05)
+
+- Concurrent creation 500 error (`backend/app/api/users.py:44`)
+- Weak password (`backend/app/api/auth.py:24`)
+- Migration re-runs crash (`backend/alembic/versions/c14f91eae2aa_update_user_schema.py:51`)

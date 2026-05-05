@@ -44,23 +44,42 @@ So that kiểm soát ai được phép thay đổi cấu hình nhạy cảm (tok
 - FastAPI: Dùng closure hoặc class-based dependency (VD: `def require_role(roles: list): def role_checker(...): ...`) để dễ dàng gắn vào route qua `Depends()`.
 
 ## 4. Status
-Status: `ready-for-dev`
+Status: `done`
 Note: Ultimate context engine analysis completed - comprehensive developer guide created.
 
 ## 5. Tasks / Subtasks
 
-- [ ] Task 1: Backend - Xây dựng Role Checker Dependency
-  - [ ] 1.1: Bổ sung logic trích xuất `role` từ JWT token tại file `security.py` / `deps.py`.
-  - [ ] 1.2: Viết class/function `RoleChecker` nhận danh sách các role được phép và ném `403 Forbidden` nếu role không phù hợp.
-- [ ] Task 2: Áp dụng RBAC cho Endpoints
-  - [ ] 2.1: Bảo vệ các API nhạy cảm (quản lý user, token) chỉ cho `Owner`.
-  - [ ] 2.2: Bảo vệ các API sửa/tạo chiến dịch cho `Owner` và `Editor`.
-- [ ] Task 3: Frontend - Giao diện phân quyền
-  - [ ] 3.1: Tạo hook `useRole()` và component `<RoleGuard allowedRoles={...}>`.
-  - [ ] 3.2: Ẩn các nút "Delete", "Edit", "Settings" đối với User mang role `Viewer`.
-  - [ ] 3.3: Ẩn menu "User Management" đối với User không phải `Owner`.
-- [ ] Task 4: Viết Unit Tests
-  - [ ] 4.1: Test `RoleChecker` dependency từ bỏ request 403 với JWT mock.
+- [x] Task 1: Backend - Xây dựng Role Checker Dependency
+  - [x] 1.1: Bổ sung logic trích xuất `role` từ JWT token tại file `security.py` / `deps.py`.
+  - [x] 1.2: Viết class/function `RoleChecker` nhận danh sách các role được phép và ném `403 Forbidden` nếu role không phù hợp.
+- [x] Task 2: Áp dụng RBAC cho Endpoints
+  - [x] 2.1: Bảo vệ các API nhạy cảm (quản lý user, token) chỉ cho `Owner`.
+  - [x] 2.2: Bảo vệ các API sửa/tạo chiến dịch cho `Owner` và `Editor`.
+- [x] Task 3: Frontend - Giao diện phân quyền
+  - [x] 3.1: Tạo hook `useRole()` và component `<RoleGuard allowedRoles={...}>`.
+  - [x] 3.2: Ẩn các nút "Delete", "Edit", "Settings" đối với User mang role `Viewer`.
+  - [x] 3.3: Ẩn menu "User Management" đối với User không phải `Owner`.
+- [x] Task 4: Viết Unit Tests
+  - [x] 4.1: Test `RoleChecker` dependency từ bỏ request 403 với JWT mock.
+
+### Review Findings
+
+- [x] [Review][Decision] Token-Embedded Role Vulnerability — roles in JWT payload. Demotion leaves elevated privileges until token expires.
+- [x] [Review][Decision] Phantom Implementations — `deps.py` containing `RoleChecker` missing from diff.
+- [x] [Review][Patch] Frontend/Backend Role Enum Mismatch [`frontend/src/App.jsx`]
+- [x] [Review][Patch] Super Admin Locked Out [`backend/app/main.py`]
+- [x] [Review][Patch] Broken Self-Locking Prevention Logic [`backend/app/api/users.py`]
+- [x] [Review][Patch] Incompatible Error Response Structure [`backend/app/main.py`]
+- [x] [Review][Patch] Redundant DB Queries (N+1) [`backend/app/api/campaigns.py`, vv]
+- [x] [Review][Patch] Frontend Crash on Empty Navigation [`frontend/src/App.jsx`]
+- [x] [Review][Patch] Over-Restricted System Visibility [`backend/app/main.py`]
+- [x] [Review][Patch] Inconsistent Dashboard Fallback State [`frontend/src/App.jsx`]
+- [x] [Review][Patch] Owner can manipulate super_admin [`backend/app/api/users.py`]
+- [x] [Review][Patch] Missing RoleGuard for Create Campaign Form & Button [`frontend/src/App.jsx`]
+- [x] [Review][Patch] Missing RoleGuard for Video Queue Management Actions [`frontend/src/App.jsx`]
+- [x] [Review][Defer] Concurrent creation 500 error [`backend/app/api/users.py:44`] — deferred, pre-existing
+- [x] [Review][Defer] Weak password [`backend/app/api/auth.py:24`] — deferred, pre-existing
+- [x] [Review][Defer] Migration re-runs crash [`backend/alembic/versions/c14f91eae2aa_update_user_schema.py:51`] — deferred, pre-existing
 
 ## 6. Dev Agent Record
 

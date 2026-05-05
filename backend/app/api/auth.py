@@ -54,17 +54,6 @@ def require_authenticated_user(
         raise HTTPException(status_code=401, detail="Tài khoản không còn hoạt động")
     return user
 
-def require_super_admin(current_user: User = Depends(require_authenticated_user)) -> User:
-    if current_user.role != UserRole.super_admin:
-        raise HTTPException(status_code=403, detail="Bạn không có quyền Super Admin.")
-    return current_user
-
-def require_admin(current_user: User = Depends(require_authenticated_user)) -> User:
-    # Admin bao gồm cả super_admin và owner/admin cấp thấp hơn nếu có (tùy định nghĩa)
-    # Ở đây chúng ta cho phép super_admin, owner và admin
-    if current_user.role not in [UserRole.super_admin, UserRole.owner, UserRole.editor]:
-        raise HTTPException(status_code=403, detail="Bạn không có quyền thực hiện thao tác này.")
-    return current_user
 
 @router.post("/login", response_model=Token)
 def login(creds: LoginRequest, request: Request, db: Session = Depends(get_db)):
@@ -84,8 +73,8 @@ def login(creds: LoginRequest, request: Request, db: Session = Depends(get_db)):
         user.last_login_at = datetime.now(timezone.utc).replace(tzinfo=None)
         db.commit()
         
-        access_token = create_access_token(user.id)
-        refresh_token = create_refresh_token(user.id)
+        access_token = create_access_token(user.id, role=user.role.value)
+        refresh_token = create_refresh_token(user.id, role=user.role.value)
         
         record_event("auth", "info", "Đăng nhập thành công.", db=db, actor_user_id=str(user.id), details={"email": user.email, "ip": client_id})
         return {
