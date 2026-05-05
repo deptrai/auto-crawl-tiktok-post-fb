@@ -24,29 +24,14 @@ def upgrade() -> None:
                existing_type=postgresql.ENUM('short_lived', 'long_lived', 'system_user', name='tokentype'),
                nullable=True,
                existing_server_default=sa.text("'long_lived'::tokentype"))
-    op.drop_constraint(op.f('interactions_log_page_id_fkey'), 'interactions_log', type_='foreignkey')
-    op.drop_constraint(op.f('facebook_pages_page_id_key'), 'facebook_pages', type_='unique')
-    op.drop_index(op.f('ix_facebook_pages_page_id'), table_name='facebook_pages')
-    op.create_index(op.f('ix_facebook_pages_page_id'), 'facebook_pages', ['page_id'], unique=True)
+    op.drop_constraint(op.f('fk_interactions_log_page_id_set_null'), 'interactions_log', type_='foreignkey')
+    # Redundant index drop removed
     op.create_foreign_key(None, 'interactions_log', 'facebook_pages', ['page_id'], ['page_id'], ondelete='SET NULL')
-    op.add_column('system_events', sa.Column('organization_id', sa.Uuid(), nullable=True))
-    op.create_foreign_key(None, 'system_events', 'organizations', ['organization_id'], ['id'], ondelete='CASCADE')
-    op.add_column('task_queue', sa.Column('organization_id', sa.Uuid(), nullable=True))
     op.add_column('task_queue', sa.Column('category', sa.String(), nullable=True))
     op.drop_index(op.f('ix_task_queue_task_type'), table_name='task_queue')
     op.create_index(op.f('ix_task_queue_category'), 'task_queue', ['category'], unique=False)
-    op.create_foreign_key(None, 'task_queue', 'organizations', ['organization_id'], ['id'], ondelete='CASCADE')
     op.drop_column('task_queue', 'task_type')
-    op.drop_constraint(op.f('users_organization_id_fkey'), 'users', type_='foreignkey')
-    op.create_foreign_key(None, 'users', 'organizations', ['organization_id'], ['id'], ondelete='CASCADE')
-    op.drop_constraint(op.f('videos_campaign_id_fkey'), 'videos', type_='foreignkey')
-    op.create_foreign_key(None, 'videos', 'campaigns', ['campaign_id'], ['id'], ondelete='CASCADE')
-    op.alter_column('worker_heartbeats', 'worker_name',
-               existing_type=sa.VARCHAR(),
-               nullable=True)
-    op.drop_constraint(op.f('worker_heartbeats_worker_name_key'), 'worker_heartbeats', type_='unique')
-    op.drop_index(op.f('ix_worker_heartbeats_worker_name'), table_name='worker_heartbeats')
-    op.create_index(op.f('ix_worker_heartbeats_worker_name'), 'worker_heartbeats', ['worker_name'], unique=True)
+    # Redundant worker_heartbeats index drop removed
     # ### end Alembic commands ###
 
 
