@@ -32,6 +32,7 @@ import {
   UserPlus,
   Zap,
   LineChart,
+  Building2,
 } from 'lucide-react';
 import {
   LineChart as RechartsLineChart,
