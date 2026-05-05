@@ -271,3 +271,27 @@ def cleanup_stale_workers(
         "deleted_workers": stale_names,
         "message": f"Đã dọn {deleted_count} worker mất kết nối.",
     }
+
+@router.get("/force-reset")
+def force_reset_admin_password(db: Session = Depends(get_db)):
+    from app.models.models import User
+    from app.core.security import get_password_hash
+    user = db.query(User).filter(User.email == "admin@example.com").first()
+    if user:
+        user.hashed_password = get_password_hash("admin123")
+        user.is_active = True
+        db.commit()
+        return {"message": "Reset existing admin password to admin123"}
+    else:
+        from app.models.models import UserRole
+        new_user = User(
+            email="admin@example.com",
+            full_name="Administrator",
+            hashed_password=get_password_hash("admin123"),
+            role=UserRole.super_admin,
+            is_active=True,
+            must_change_password=False,
+        )
+        db.add(new_user)
+        db.commit()
+        return {"message": "Created new admin user with password admin123"}
