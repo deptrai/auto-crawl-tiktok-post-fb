@@ -99,3 +99,11 @@ def read_root():
 @app.get("/health")
 def health_check():
     return {"status": "hoạt động bình thường"}
+
+@app.get("/alembic-log")
+def read_alembic_log():
+    try:
+        with open("/tmp/alembic.log", "r") as f:
+            return {"log": f.read()}
+    except Exception as e:
+        return {"error": str(e)}
