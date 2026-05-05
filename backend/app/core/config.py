@@ -22,7 +22,7 @@ def parse_bool_env(raw_value: str | None, default: bool) -> bool:
 
 
 class Settings:
-    PROJECT_NAME: str = "Medirus API"
+    PROJECT_NAME: str = "Auto Post FB API"
     DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://admin:adminpassword@db/medirus_db")
     
     @property

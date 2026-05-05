@@ -5,7 +5,7 @@ const BUTTON_PRIMARY = "flex items-center gap-2 rounded-2xl bg-[var(--accent)] p
 const BUTTON_SECONDARY = "flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-white/10 disabled:opacity-50";
 const BUTTON_DANGER = "flex items-center gap-2 rounded-2xl border border-rose-500/20 bg-rose-500/5 px-4 py-2 text-sm font-medium text-rose-100 transition-all hover:bg-rose-500/10 disabled:opacity-50";
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1';
+const API_URL = '/api';
 
 export default function OrganizationManagement({ requestJson, authFetch, showNotice }) {
   const [organizations, setOrganizations] = useState([]);
