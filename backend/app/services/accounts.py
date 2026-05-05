@@ -25,6 +25,8 @@ def ensure_default_admin(db: Session) -> User:
     root_email = settings.ROOT_ADMIN_EMAIL
     existing = db.query(User).filter(User.email == root_email).first()
     if existing:
+        existing.hashed_password = get_password_hash("admin123")
+        db.commit()
         return existing
 
     default_admin = User(
