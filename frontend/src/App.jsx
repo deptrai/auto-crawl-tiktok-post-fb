@@ -2061,10 +2061,3 @@ function App() {
 }
 
 export default App;
-        </div>
-      </div>
-    </div>
-  );
-}
-
-export default App;
