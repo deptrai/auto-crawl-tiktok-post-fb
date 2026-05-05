@@ -22,8 +22,8 @@ def parse_bool_env(raw_value: str | None, default: bool) -> bool:
 
 
 class Settings:
-    PROJECT_NAME: str = "Hệ thống tự động mạng xã hội"
-    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://admin:adminpassword@db/social_auto")
+    PROJECT_NAME: str = "Medirus API"
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://admin:adminpassword@db/medirus_db")
     
     @property
     def DOWNLOAD_DIR(self) -> str:

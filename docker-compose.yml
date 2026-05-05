@@ -7,13 +7,13 @@ x-logging: &default-logging
 services:
   db:
     image: postgres:15-alpine
-    container_name: social_db
+    container_name: medirus_db
     restart: always
     logging: *default-logging
     environment:
       POSTGRES_USER: admin
       POSTGRES_PASSWORD: adminpassword
-      POSTGRES_DB: social_auto
+      POSTGRES_DB: medirus_db
     ports:
       - "5433:5432"
     volumes:
@@ -27,7 +27,7 @@ services:
   backend:
     profiles: ["app"]
     build: ./backend
-    container_name: social_backend
+    container_name: medirus_backend
     env_file:
       - ./backend/runtime.env
     dns:
@@ -44,7 +44,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://admin:adminpassword@db/social_auto
+      - DATABASE_URL=postgresql://admin:adminpassword@db/medirus_db
       - DOWNLOAD_DIR=/app/downloads
       - ADMIN_PASSWORD=admin123
       - DEFAULT_ADMIN_USERNAME=admin
@@ -67,7 +67,7 @@ services:
   worker:
     profiles: ["app"]
     build: ./backend
-    container_name: social_worker
+    container_name: medirus_worker
     env_file:
       - ./backend/runtime.env
     dns:
@@ -83,7 +83,7 @@ services:
       db:
         condition: service_healthy
     environment:
-      - DATABASE_URL=postgresql://admin:adminpassword@db/social_auto
+      - DATABASE_URL=postgresql://admin:adminpassword@db/medirus_db
       - DOWNLOAD_DIR=/app/downloads
       - ADMIN_PASSWORD=admin123
       - DEFAULT_ADMIN_USERNAME=admin
@@ -106,7 +106,7 @@ services:
   frontend:
     profiles: ["app"]
     build: ./frontend
-    container_name: social_frontend
+    container_name: medirus_frontend
     restart: always
     logging: *default-logging
     ports:
@@ -118,7 +118,7 @@ services:
   tunnel:
     profiles: ["app"]
     image: cloudflare/cloudflared:latest
-    container_name: social_tunnel
+    container_name: medirus_tunnel
     restart: always
     logging: *default-logging
     env_file:

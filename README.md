@@ -1,4 +1,6 @@
-# Social Tool
+# Medirus
+
+> Spread your content like a virus
 
 Hệ thống tự động lấy nội dung từ TikTok, sinh caption bằng AI, xếp lịch và đăng lên Facebook Page, kèm dashboard quản trị để theo dõi chiến dịch, hàng chờ, worker, webhook và cấu hình runtime.
 
