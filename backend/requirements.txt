@@ -30,9 +30,9 @@ googleapis-common-protos==1.74.0
 grpcio==1.80.0
 grpcio-status==1.71.2
 h11==0.14.0
-httpcore==0.17.3
+httpcore
 httplib2==0.31.2
-httpx==0.24.1
+httpx
 idna==3.11
 iniconfig==2.1.0
 jmespath==1.1.0
