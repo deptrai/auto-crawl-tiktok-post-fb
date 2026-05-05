@@ -24,10 +24,10 @@ def upgrade() -> None:
                existing_type=postgresql.ENUM('short_lived', 'long_lived', 'system_user', name='tokentype'),
                nullable=True,
                existing_server_default=sa.text("'long_lived'::tokentype"))
+    op.drop_constraint(op.f('interactions_log_page_id_fkey'), 'interactions_log', type_='foreignkey')
     op.drop_constraint(op.f('facebook_pages_page_id_key'), 'facebook_pages', type_='unique')
     op.drop_index(op.f('ix_facebook_pages_page_id'), table_name='facebook_pages')
     op.create_index(op.f('ix_facebook_pages_page_id'), 'facebook_pages', ['page_id'], unique=True)
-    op.drop_constraint(op.f('interactions_log_page_id_fkey'), 'interactions_log', type_='foreignkey')
     op.create_foreign_key(None, 'interactions_log', 'facebook_pages', ['page_id'], ['page_id'], ondelete='SET NULL')
     op.add_column('system_events', sa.Column('organization_id', sa.Uuid(), nullable=True))
     op.create_foreign_key(None, 'system_events', 'organizations', ['organization_id'], ['id'], ondelete='CASCADE')
