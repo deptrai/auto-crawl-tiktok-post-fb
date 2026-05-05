@@ -15,7 +15,7 @@ const LoginPage = () => {
     setLoading(true);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+      const apiUrl = '/api';
       const response = await fetch(`${apiUrl}/auth/login`, {
         method: 'POST',
         headers: {
