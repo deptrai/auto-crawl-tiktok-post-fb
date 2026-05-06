@@ -315,3 +315,25 @@ def get_overview_debug(db: Session = Depends(get_db)):
     except Exception as e:
         import traceback
         return {"error": str(e), "trace": traceback.format_exc()}
+
+@router.get("/run_migration")
+def run_migration_endpoint():
+    import alembic.config
+    import io
+    import sys
+    import traceback
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    old_stdout = sys.stdout
+    old_stderr = sys.stderr
+    sys.stdout = stdout
+    sys.stderr = stderr
+    try:
+        args = ["--raiseerr", "upgrade", "head"]
+        alembic.config.main(argv=args)
+        return {"status": "success", "output": stdout.getvalue(), "error": stderr.getvalue()}
+    except Exception as e:
+        return {"status": "failed", "output": stdout.getvalue(), "error": stderr.getvalue(), "exception": str(e), "traceback": traceback.format_exc()}
+    finally:
+        sys.stdout = old_stdout
+        sys.stderr = old_stderr
