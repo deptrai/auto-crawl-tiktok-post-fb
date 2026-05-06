@@ -22,6 +22,7 @@ from app.worker.cron import start_scheduler
 configure_logging()
 
 max_retries = 10
+startup_error = None
 retry_count = 0
 while retry_count < max_retries:
     try:
@@ -37,11 +38,15 @@ while retry_count < max_retries:
         retry_count += 1
         if retry_count == max_retries:
             print(f"Failed to connect to database: {e}")
+            startup_error = f"Database OperationalError: {e}"
             break
-        time.sleep(5)
     except Exception as e:
-        print(f"Other error during startup: {e}")
+        import traceback
+        error_msg = f"Startup Exception: {e}\n{traceback.format_exc()}"
+        print(error_msg)
+        startup_error = error_msg
         break
+    time.sleep(5)
 
 
 @asynccontextmanager
@@ -102,6 +107,8 @@ def read_root():
 
 @app.get("/health")
 def health_check():
+    if startup_error:
+        return {"status": "startup_failed", "error": startup_error}
     return {"status": "hoạt động bình thường"}
 
 @app.get("/alembic-log")
