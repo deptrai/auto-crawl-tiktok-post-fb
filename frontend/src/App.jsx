@@ -362,6 +362,7 @@ function App() {
     auto_post: false,
     target_platform: 'facebook',
     target_platforms: ['facebook'],
+    platform_targets: {},
     target_page_id: '',
     schedule_interval: 30,
     filter_min_views: 0,
@@ -371,6 +372,7 @@ function App() {
     caption_language: 'auto',
     hashtag_optimization: false,
   });
+  const [youtubeChannels, setYoutubeChannels] = useState([]);
   const [fbPages, setFbPages] = useState([]);
   const [fbForm, setFbForm] = useState({ page_id: '', page_name: '', long_lived_access_token: '', brand_voice: '', brand_voice_preset: 'casual' });
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -547,6 +549,7 @@ function App() {
         requestJson(`${API_URL}/system/events?limit=${SYSTEM_EVENT_FETCH_LIMIT}`),
         requestJson(`${API_URL}/system/workers`),
         meData?.role === 'super_admin' ? requestJson(`${API_URL}/users/`) : Promise.resolve([]),
+        requestJson(`${API_URL}/youtube/channels`),
       ]);
       const tokenSummaryData = await requestJson(`${API_URL}/facebook/token-summary`).catch(() => null);
 
@@ -564,6 +567,7 @@ function App() {
       setEvents(eventData.events || []);
       setWorkers(workerData.workers || []);
       setUsers(Array.isArray(userData) ? userData : (userData.users || []));
+      setYoutubeChannels(ytData || []);
       setTokenSummary(tokenSummaryData);
       setLastUpdatedAt(new Date().toISOString());
     } catch (error) {
@@ -691,7 +695,7 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(formData),
       });
-      setFormData((current) => ({ ...current, name: '', source_url: '', auto_post: false, filter_min_views: 0, filter_min_likes: 0, filter_blocklist_keywords: [], filter_allowlist_hashtags: [], target_platforms: ['facebook'] }));
+      setFormData((current) => ({ ...current, name: '', source_url: '', auto_post: false, filter_min_views: 0, filter_min_likes: 0, filter_blocklist_keywords: [], filter_allowlist_hashtags: [], target_platforms: ['facebook'], platform_targets: {} }));
       return payload;
     });
   };
