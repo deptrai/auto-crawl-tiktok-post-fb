@@ -226,6 +226,10 @@ class TaskQueue(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    @property
+    def task_type(self):
+        return self.category
+
 
 class User(Base):
     __tablename__ = "users"

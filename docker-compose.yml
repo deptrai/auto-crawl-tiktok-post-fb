@@ -111,6 +111,8 @@ services:
     logging: *default-logging
     ports:
       - "5173:5173"
+    environment:
+      - VITE_API_URL=http://backend:8000
     volumes:
       - ./frontend:/app
       - /app/node_modules

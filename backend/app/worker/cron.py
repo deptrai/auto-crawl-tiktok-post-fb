@@ -28,6 +28,7 @@ from app.services.token_lifecycle import (
     HEALTH_INVALID,
     HEALTH_EXPIRING_SOON,
 )
+from app.services.metrics_collector import collect_metrics_job
 
 scheduler = BackgroundScheduler()
 WORKER_NAME = f"{settings.APP_ROLE}@{socket.gethostname()}"

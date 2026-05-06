@@ -61,6 +61,11 @@ def _get_impersonate_target():
 
 
 def _get_base_opts() -> dict:
+    # Force NO_PROXY if no explicit TIKTOK_PROXY is provided
+    if not settings.TIKTOK_PROXY:
+        os.environ['NO_PROXY'] = '*'
+        os.environ['no_proxy'] = '*'
+    
     opts = {
         'quiet': True,
         'no_warnings': True,
@@ -70,8 +75,7 @@ def _get_base_opts() -> dict:
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36'
         }
     }
-    if TIKTOK_PROXY:
-        opts['proxy'] = TIKTOK_PROXY
+    opts['proxy'] = TIKTOK_PROXY or ""
     if TIKTOK_COOKIES and os.path.exists(TIKTOK_COOKIES):
         opts['cookiefile'] = TIKTOK_COOKIES
 
