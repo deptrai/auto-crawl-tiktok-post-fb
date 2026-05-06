@@ -79,6 +79,13 @@ def serialize_event(event: SystemEvent) -> dict:
 
 @router.get("/overview")
 def get_system_overview(db: Session = Depends(get_db), org_id: uuid.UUID | None = Depends(get_current_organization_id)):
+    try:
+        return _get_system_overview(db, org_id)
+    except Exception as e:
+        import traceback
+        return {"error": str(e), "trace": traceback.format_exc()}
+
+def _get_system_overview(db, org_id):
     base_url = resolve_runtime_value("BASE_URL", db=db).rstrip("/")
     webhook_url = f"{base_url}/webhooks/fb" if base_url else None
     verify_token = resolve_runtime_value("FB_VERIFY_TOKEN", db=db)
