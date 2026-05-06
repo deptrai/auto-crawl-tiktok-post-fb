@@ -8,8 +8,7 @@ from datetime import datetime
 
 from app.api.deps import RoleChecker
 from app.core.database import get_db
-from app.models.organization import Organization
-from app.models.models import User
+from app.models.models import Organization, User
 from app.services.observability import record_event
 
 router = APIRouter(prefix="/organizations", tags=["Tổ chức"], dependencies=[Depends(RoleChecker(["super_admin"]))])
