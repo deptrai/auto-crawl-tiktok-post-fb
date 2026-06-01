@@ -1,0 +1,142 @@
+# generated: 2026-06-02
+# last_updated: 2026-06-02 (Story 1.1 → ready-for-dev)
+# project: auto-crawl-tiktok-post-fb (Phase 3 — Facebook Cookie-Based Automation Desktop)
+# project_key: NOKEY
+# tracking_system: file-system
+# story_location: _bmad-output/implementation-artifacts
+# source_epics: _bmad-output/planning-artifacts/epics-phase3.md
+# note: Tách biệt với sprint-status.yaml (Phase 1+2). KHÔNG trộn.
+
+# STATUS DEFINITIONS:
+# ==================
+# Epic Status:
+#   - backlog: Epic not yet started
+#   - in-progress: Epic actively being worked on
+#   - done: All stories in epic completed
+#
+# Epic Status Transitions:
+#   - backlog → in-progress: Automatically when first story is created (via create-story)
+#   - in-progress → done: Manually when all stories reach 'done' status
+#
+# Story Status:
+#   - backlog: Story only exists in epic file
+#   - ready-for-dev: Story file created in stories folder
+#   - in-progress: Developer actively working on implementation
+#   - review: Ready for code review (via Dev's code-review workflow)
+#   - done: Story completed
+#
+# Retrospective Status:
+#   - optional: Can be completed but not required
+#   - done: Retrospective has been completed
+#
+# WORKFLOW NOTES:
+# ===============
+# - Epic transitions to 'in-progress' automatically when first story is created
+# - Stories can be worked in parallel if team capacity allows
+# - Developer typically creates next story after previous one is 'done' to incorporate learnings
+# - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
+#
+# PHASE 3 SUB-PHASE MAP:
+# ======================
+# Phase 3.0 (MVP): Epic 1-8 | Phase 3.1: Epic 9 | Phase 3.2: Epic 10 | Phase 3.3: Epic 11
+# 6-tuần SLO stability gate giữa mỗi sub-phase.
+
+generated: 2026-06-02
+last_updated: 2026-06-02
+project: auto-crawl-tiktok-post-fb-phase3
+project_key: NOKEY
+tracking_system: file-system
+story_location: _bmad-output/implementation-artifacts
+
+development_status:
+  # ===== Phase 3.0 MVP =====
+
+  # Epic 1: Nền tảng App & Cấp phép (Foundation & Licensing)
+  epic-1: in-progress
+  1-1-khoi-tao-scaffold-automation-desktop: ready-for-dev
+  1-2-accept-eula-lan-dau-chay: backlog
+  1-3-activate-license-voi-hwid-binding: backlog
+  1-4-kiem-tra-license-dinh-ky-xu-ly-het-han: backlog
+  1-5-admin-tao-va-thu-hoi-license-key: backlog
+  epic-1-retrospective: optional
+
+  # Epic 2: Quản lý Profile (Profile Management)
+  epic-2: backlog
+  2-1-import-bulk-profile: backlog
+  2-2-xem-danh-sach-profile-real-time: backlog
+  2-3-sua-va-xoa-profile: backlog
+  epic-2-retrospective: optional
+
+  # Epic 3: Quản lý Proxy (Proxy Management)
+  epic-3: backlog
+  3-1-tich-hop-proxy-provider-proxyfb: backlog
+  3-2-health-check-proxy-circuit-breaker: backlog
+  3-3-bind-proxy-rieng-moi-profile-session: backlog
+  epic-3-retrospective: optional
+
+  # Epic 4: Lõi Automation Facebook — Self-Comment (Automation Core MVP)
+  epic-4: backlog
+  4-1-sinh-fingerprint-diversified-per-profile: backlog
+  4-2-state-machine-cho-automation-job: backlog
+  4-3-login-cookie-xu-ly-2fa-checkpoint: backlog
+  4-4-trich-xuat-csrf-token-qua-http: backlog
+  4-5-lay-per-action-server-token: backlog
+  4-6-thuc-thi-self-comment-end-to-end: backlog
+  epic-4-retrospective: optional
+
+  # Epic 5: Khả năng Tự phục hồi (Adaptive Resilience)
+  epic-5: backlog
+  5-1-selector-resolver-4-tier: backlog
+  5-2-pull-hot-config-verify-ed25519: backlog
+  5-3-client-canary-cohort-5-rollback: backlog
+  5-4-canary-profile-drift-detection: backlog
+  epic-5-retrospective: optional
+
+  # Epic 6: Giám sát & Telemetry (Observability)
+  epic-6: backlog
+  6-1-mandatory-anonymous-beacon: backlog
+  6-2-opt-in-detailed-telemetry: backlog
+  6-3-backend-telemetry-sink-grafana-slo-dashboard: backlog
+  epic-6-retrospective: optional
+
+  # Epic 7: Sao lưu & Khôi phục (Backup & Recovery)
+  epic-7: backlog
+  7-1-export-backup-ma-hoa: backlog
+  7-2-import-restore-tu-backup: backlog
+  7-3-nhac-backup-dinh-ky: backlog
+  7-4-self-service-license-portal: backlog
+  epic-7-retrospective: optional
+
+  # Epic 8: Phân phối & Tự cập nhật (Distribution & Auto-Update)
+  epic-8: backlog
+  8-1-dong-goi-code-sign-notarize: backlog
+  8-2-auto-update-double-sign-cert-pinning: backlog
+  8-3-forced-update-gate-3-channel: backlog
+  8-4-release-pipeline-admin-version-console: backlog
+  epic-8-retrospective: optional
+
+  # ===== Phase 3.1 Growth =====
+
+  # Epic 9: Mass Post & Warmup
+  epic-9: backlog
+  9-1-warmup-behavior-runner: backlog
+  9-2-mass-post-executor: backlog
+  9-3-tich-hop-proxy-provider-tmproxy: backlog
+  epic-9-retrospective: optional
+
+  # ===== Phase 3.2 Growth =====
+
+  # Epic 10: Mass Comment & React
+  epic-10: backlog
+  10-1-mass-comment-3rd-party-post: backlog
+  10-2-mass-react: backlog
+  10-3-tich-hop-proxy-provider-shoplike: backlog
+  epic-10-retrospective: optional
+
+  # ===== Phase 3.3 Growth =====
+
+  # Epic 11: Share & Friend Request
+  epic-11: backlog
+  11-1-share-action-executor: backlog
+  11-2-friend-request-automation: backlog
+  epic-11-retrospective: optional
