@@ -42,3 +42,26 @@ jobs:
         run: npm run lint
       - name: Build frontend
         run: npm run build
+
+  desktop:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: automation-desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: automation-desktop/package-lock.json
+      - name: Cài dependencies desktop
+        run: npm ci
+      - name: Kiểm tra lint desktop
+        run: npm run lint
+      - name: Kiểm tra type desktop
+        run: npm run typecheck
+      - name: Build desktop
+        run: npm run build
+      - name: Chạy smoke desktop
+        run: xvfb-run -a npm run test:smoke

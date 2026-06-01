@@ -1,6 +1,6 @@
 # Story 1.1: Khởi tạo scaffold automation-desktop
 
-Status: ready-for-dev
+Status: done
 
 <!-- Phase 3 story. Sources: prd-phase3.md, architecture.md § Phase 3 Addendum, epics-phase3.md -->
 
@@ -24,43 +24,53 @@ so that mọi feature Phase 3 sau (license, profile, automation) có nền tản
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: Khởi tạo scaffold electron-vite** (AC: #1)
-  - [ ] Chạy `npm create @quick-start/electron@latest automation-desktop -- --template react-ts` tại root mono-repo
-  - [ ] `npm install` + verify `npm run dev` mở app với HMR hoạt động
-  - [ ] Verify React 19 + TypeScript strict default (nếu scaffold ra React 18, upgrade lên 19)
-- [ ] **Task 2: Restructure folder layout** (AC: #2)
-  - [ ] Tạo `src/adapters/`, `src/main/`, `src/preload/`, `src/renderer/`, `src/shared/`
-  - [ ] Tạo sub-folder `main/{license,profile,automation,proxy,selector,canary,telemetry,hot-config,updater,db,logging,ipc,boot,adapters}` (rỗng, có `index.ts` barrel placeholder cho các module sẽ build sau)
-  - [ ] Cấu hình `electron.vite.config.ts` cho 3-target build với alias `@/` → `src/`
-- [ ] **Task 3: Security baseline** (AC: #3)
-  - [ ] `src/main/boot/security-baseline.ts`: hàm áp `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false` cho BrowserWindow
-  - [ ] CSP headers strict cho renderer (session.defaultSession.webRequest)
-  - [ ] `src/main/boot/bootstrap.ts`: init order db → adapters → services → ipc → window
-- [ ] **Task 4: Adapter layer (R-D16)** (AC: #4)
-  - [ ] `src/adapters/ipc.ts`: interface `IpcBridge { call<C>(channel, request): Promise<response> }`
-  - [ ] `src/adapters/secure-storage.ts`: interface `SecureStorage { get/set/delete }`
-  - [ ] `src/adapters/updater.ts`: interface `AutoUpdater`
-  - [ ] `src/adapters/window.ts`: interface `WindowManager`
-  - [ ] `src/main/adapters/electron-{ipc-bridge,safe-storage,auto-updater,window}.ts`: Electron stub impl
-- [ ] **Task 5: ESLint custom rules** (AC: #5)
-  - [ ] `eslint.config.js` Flat Config v9
-  - [ ] `no-restricted-imports`: cấm `electron` import ngoài `src/adapters/` + `src/preload/`
-  - [ ] Custom rules: `no-secret-in-ipc-payload`, `no-secret-tostring`, `no-direct-logger` (có thể dùng `no-restricted-syntax` hoặc plugin nội bộ)
-  - [ ] `npm run lint` pass
-- [ ] **Task 6: SQLCipher DB init** (AC: #6)
-  - [ ] Install `better-sqlite3` + `better-sqlite3-multiple-ciphers`
-  - [ ] `scripts/postinstall.ts`: electron-rebuild native module
-  - [ ] `src/main/db/client.ts`: mở DB mã hóa với key (key tạm thời ở story này — Epic 1.3 sẽ wire key từ safeStorage master)
-  - [ ] Verify đọc/ghi DB mã hóa hoạt động
-- [ ] **Task 7: IPC contract + shared types** (AC: #7)
-  - [ ] `src/shared/types/secret.ts`: `Secret<T>` brand type + `brandSecret()` + custom toString throw
-  - [ ] `src/shared/types/error-envelope.ts`: `ErrorEnvelope` interface
-  - [ ] `src/shared/ipc-schemas/index.ts`: channel registry skeleton + template literal type `phase3:${string}:${string}`
-  - [ ] `src/preload/index.ts`: contextBridge expose `window.api` typed
-- [ ] **Task 8: CI + smoke test** (AC: #8, #9)
-  - [ ] `.github/workflows/ci.yml`: lint + typecheck + smoke test (copy pattern từ electron-react-boilerplate MIT reference)
-  - [ ] `tests/e2e/smoke.spec.ts`: `@playwright/test` verify app launch (dùng Playwright electron namespace — đây là usecase đúng của namespace)
-  - [ ] Verify CI pass local
+- [x] **Task 1: Khởi tạo scaffold electron-vite** (AC: #1)
+  - [x] Chạy `npm create @quick-start/electron@latest automation-desktop -- --template react-ts` tại root mono-repo
+  - [x] `npm install` + verify `npm run dev` mở app với HMR hoạt động
+  - [x] Verify React 19 + TypeScript strict default (nếu scaffold ra React 18, upgrade lên 19)
+- [x] **Task 2: Restructure folder layout** (AC: #2)
+  - [x] Tạo `src/adapters/`, `src/main/`, `src/preload/`, `src/renderer/`, `src/shared/`
+  - [x] Tạo sub-folder `main/{license,profile,automation,proxy,selector,canary,telemetry,hot-config,updater,db,logging,ipc,boot,adapters}` (rỗng, có `index.ts` barrel placeholder cho các module sẽ build sau)
+  - [x] Cấu hình `electron.vite.config.ts` cho 3-target build với alias `@/` → `src/`
+- [x] **Task 3: Security baseline** (AC: #3)
+  - [x] `src/main/boot/security-baseline.ts`: hàm áp `sandbox: true`, `contextIsolation: true`, `nodeIntegration: false` cho BrowserWindow
+  - [x] CSP headers strict cho renderer (session.defaultSession.webRequest)
+  - [x] `src/main/boot/bootstrap.ts`: init order db → adapters → services → ipc → window
+- [x] **Task 4: Adapter layer (R-D16)** (AC: #4)
+  - [x] `src/adapters/ipc.ts`: interface `IpcBridge { call<C>(channel, request): Promise<response> }`
+  - [x] `src/adapters/secure-storage.ts`: interface `SecureStorage { get/set/delete }`
+  - [x] `src/adapters/updater.ts`: interface `AutoUpdater`
+  - [x] `src/adapters/window.ts`: interface `WindowManager`
+  - [x] `src/main/adapters/electron-{ipc-bridge,safe-storage,auto-updater,window}.ts`: Electron stub impl
+- [x] **Task 5: ESLint custom rules** (AC: #5)
+  - [x] `eslint.config.js` Flat Config v9
+  - [x] `no-restricted-imports`: cấm `electron` import ngoài `src/adapters/` + `src/preload/`
+  - [x] Custom rules: `no-secret-in-ipc-payload`, `no-secret-tostring`, `no-direct-logger` (có thể dùng `no-restricted-syntax` hoặc plugin nội bộ)
+  - [x] `npm run lint` pass
+- [x] **Task 6: SQLCipher DB init** (AC: #6)
+  - [x] Install `better-sqlite3` + `better-sqlite3-multiple-ciphers`
+  - [x] `scripts/postinstall.ts`: electron-rebuild native module
+  - [x] `src/main/db/client.ts`: mở DB mã hóa với key (key tạm thời ở story này — Epic 1.3 sẽ wire key từ safeStorage master)
+  - [x] Verify đọc/ghi DB mã hóa hoạt động
+- [x] **Task 7: IPC contract + shared types** (AC: #7)
+  - [x] `src/shared/types/secret.ts`: `Secret<T>` brand type + `brandSecret()` + custom toString throw
+  - [x] `src/shared/types/error-envelope.ts`: `ErrorEnvelope` interface
+  - [x] `src/shared/ipc-schemas/index.ts`: channel registry skeleton + template literal type `phase3:${string}:${string}`
+  - [x] `src/preload/index.ts`: contextBridge expose `window.api` typed
+- [x] **Task 8: CI + smoke test** (AC: #8, #9)
+  - [x] `.github/workflows/ci.yml`: lint + typecheck + smoke test (copy pattern từ electron-react-boilerplate MIT reference)
+  - [x] `tests/e2e/smoke.spec.ts`: `@playwright/test` verify app launch (dùng Playwright electron namespace — đây là usecase đúng của namespace)
+  - [x] Verify CI pass local
+
+### Review Findings
+
+- [x] [Review][Patch] `postinstall` dùng sai cú pháp `electron-rebuild`, làm native rebuild fail [`automation-desktop/scripts/postinstall.ts`:3]
+- [x] [Review][Patch] `npm run lint` đang fail trên test files mới, nên AC#5/CI lint gate chưa đạt [`automation-desktop/tests/integration/security-baseline.spec.ts`:16]
+- [x] [Review][Patch] Desktop CI workflow đang nằm trong `automation-desktop/.github`, GitHub Actions sẽ không chạy workflow này ở repo root [`automation-desktop/.github/workflows/ci.yml`:1]
+- [x] [Review][Patch] Root CI không có desktop job, nên AC#8 chưa thật sự được enforce trong repo workflow [`.github/workflows/ci.yml`:7]
+- [x] [Review][Patch] ESLint `no-restricted-imports` không enforce lệnh cấm import `electron` ngoài adapter/preload như story yêu cầu [`automation-desktop/eslint.config.mjs`:35]
+- [x] [Review][Patch] SQLCipher read/write verification bị đánh dấu `test.fixme`, nhưng story đã tick task verify DB mã hóa [`automation-desktop/tests/integration/db-client.spec.ts`:3]
+- [x] [Review][Patch] Script `test:e2e:p0` dùng regex `[P0]` nên sẽ match ký tự `P` hoặc `0`, không phải tag literal `[P0]` [`automation-desktop/package.json`:26]
 
 ## Dev Notes
 
@@ -121,10 +131,90 @@ Core deps story này cần: `electron`, `electron-vite`, `electron-builder`, `re
 
 ### Agent Model Used
 
-(điền khi dev)
+GPT-5 Codex
 
 ### Debug Log References
 
+- `npm create @quick-start/electron@latest automation-desktop -- --template react-ts`
+- `npm install`
+- `npm run lint`
+- `npm run typecheck`
+- `npm run build`
+- `npm run test:smoke`
+- `npx electron-rebuild -f -w better-sqlite3,better-sqlite3-multiple-ciphers`
+
 ### Completion Notes List
 
+- Đã tạo app Electron-Vite React+TS tại `automation-desktop/` và verify dependency nền React 19 + TypeScript strict.
+- Đã chuẩn hóa folder architecture `src/adapters|main|preload|renderer|shared` và tạo các module placeholder trong `src/main/*` theo spec.
+- Đã triển khai security baseline (`sandbox: true`, `contextIsolation: true`, `nodeIntegration: false`) + CSP headers strict trong boot layer.
+- Đã thêm adapter interfaces (`ipc`, `secure-storage`, `updater`, `window`) và stub implementation ở `src/main/adapters`.
+- Đã cấu hình ESLint Flat Config v9 với restricted-import + 3 custom rules (`no-secret-in-ipc-payload`, `no-secret-tostring`, `no-direct-logger`).
+- Đã thêm SQLCipher client (`better-sqlite3-multiple-ciphers`) + postinstall rebuild script cho native modules theo ABI Electron.
+- Đã thêm IPC contract foundation (`Secret<T>`, `ErrorEnvelope`, channel registry skeleton) và preload expose `window.api` typed.
+- Đã tạo CI workflow chạy `lint + typecheck + build + smoke` cho `automation-desktop`.
+- Đã thêm Playwright Electron smoke test và xử lý môi trường `ELECTRON_RUN_AS_NODE` để app launch thành công.
+- Đã xử lý toàn bộ code review findings: sửa native rebuild, lint gate, root CI desktop job, ESLint boundary, SQLCipher runtime verification và tag grep script.
+
 ### File List
+
+- automation-desktop/package.json
+- automation-desktop/package-lock.json
+- automation-desktop/electron.vite.config.ts
+- automation-desktop/eslint.config.mjs
+- automation-desktop/eslint-rules/no-direct-logger.js
+- automation-desktop/eslint-rules/no-secret-in-ipc-payload.js
+- automation-desktop/eslint-rules/no-secret-tostring.js
+- automation-desktop/scripts/postinstall.ts
+- automation-desktop/src/adapters/ipc.ts
+- automation-desktop/src/adapters/secure-storage.ts
+- automation-desktop/src/adapters/updater.ts
+- automation-desktop/src/adapters/window.ts
+- automation-desktop/src/shared/types/secret.ts
+- automation-desktop/src/shared/types/error-envelope.ts
+- automation-desktop/src/shared/ipc-schemas/index.ts
+- automation-desktop/src/main/index.ts
+- automation-desktop/src/main/boot/bootstrap.ts
+- automation-desktop/src/main/boot/security-baseline.ts
+- automation-desktop/src/main/db/client.ts
+- automation-desktop/src/main/adapters/electron-ipc-bridge.ts
+- automation-desktop/src/main/adapters/electron-safe-storage.ts
+- automation-desktop/src/main/adapters/electron-auto-updater.ts
+- automation-desktop/src/main/adapters/electron-window.ts
+- automation-desktop/src/main/adapters/electron-bootstrap.ts
+- automation-desktop/src/main/adapters/electron-runtime.ts
+- automation-desktop/src/main/adapters/electron-security-baseline.ts
+- automation-desktop/src/main/license/index.ts
+- automation-desktop/src/main/profile/index.ts
+- automation-desktop/src/main/automation/index.ts
+- automation-desktop/src/main/proxy/index.ts
+- automation-desktop/src/main/selector/index.ts
+- automation-desktop/src/main/canary/index.ts
+- automation-desktop/src/main/telemetry/index.ts
+- automation-desktop/src/main/hot-config/index.ts
+- automation-desktop/src/main/updater/index.ts
+- automation-desktop/src/main/db/index.ts
+- automation-desktop/src/main/logging/index.ts
+- automation-desktop/src/main/ipc/index.ts
+- automation-desktop/src/main/boot/index.ts
+- automation-desktop/src/main/adapters/index.ts
+- automation-desktop/src/preload/index.ts
+- automation-desktop/src/preload/index.d.ts
+- automation-desktop/tests/e2e/smoke.spec.ts
+- automation-desktop/tests/integration/security-baseline.spec.ts
+- automation-desktop/tests/api/contracts.spec.ts
+- automation-desktop/tests/component/renderer-shell.spec.ts
+- automation-desktop/tests/README.md
+- automation-desktop/tests/support/factories/user-factory.ts
+- automation-desktop/tests/support/fixtures/base.fixture.ts
+- automation-desktop/tests/support/helpers/assertions.ts
+- automation-desktop/tests/support/helpers/retry.ts
+- automation-desktop/tests/support/helpers/wait-for.ts
+- automation-desktop/playwright.config.ts
+- automation-desktop/.prettierignore
+- .github/workflows/ci.yml
+
+### Change Log
+
+- 2026-06-02: Hoàn tất scaffold `automation-desktop` cho Story 1.1, implement security baseline, adapter layer, SQLCipher init, IPC contracts, ESLint guardrails, CI skeleton và Playwright smoke test.
+- 2026-06-02: Addressed code review findings; story marked done after all patch findings were resolved and validation gates passed.
