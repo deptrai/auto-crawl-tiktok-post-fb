@@ -78,6 +78,46 @@ test('[P1] parser handles line with only uid and cookie (minimal)', () => {
   expect(parsed[0].twofa).toBe('')
 })
 
+test('[P1] parser accepts Facebook JSON cookie export and derives uid from c_user', () => {
+  const jsonCookieExport = JSON.stringify(
+    [
+      { domain: '.facebook.com', name: 'datr', value: 'datr-value' },
+      { domain: '.facebook.com', name: 'c_user', value: '61554949615037' },
+      { domain: '.facebook.com', name: 'xs', value: 'xs-value' }
+    ],
+    null,
+    2
+  )
+
+  const { parsed, errors, dataLineCount } = parseBulkProfiles(jsonCookieExport)
+
+  expect(errors).toHaveLength(0)
+  expect(parsed).toHaveLength(1)
+  expect(dataLineCount).toBe(1)
+  expect(parsed[0].uid).toBe('61554949615037')
+  expect(parsed[0].cookie).toBe('datr=datr-value; c_user=61554949615037; xs=xs-value')
+  expect(parsed[0].pass).toBe('')
+  expect(parsed[0].twofa).toBe('')
+})
+
+test('[P1] parser reports invalid JSON cookie export clearly', () => {
+  const { parsed, errors } = parseBulkProfiles('[{"name":"c_user","value":"123"}')
+
+  expect(parsed).toHaveLength(0)
+  expect(errors).toEqual([{ line: 1, reason: 'JSON cookie export không hợp lệ.' }])
+})
+
+test('[P1] parser reports JSON cookie export missing c_user', () => {
+  const { parsed, errors } = parseBulkProfiles(
+    JSON.stringify([{ domain: '.facebook.com', name: 'xs', value: 'xs-value' }])
+  )
+
+  expect(parsed).toHaveLength(0)
+  expect(errors).toEqual([
+    { line: 1, reason: 'JSON cookie export thiếu cookie c_user để lấy uid.' }
+  ])
+})
+
 test('[P1] parser returns errors per line, does not abort batch', () => {
   const text = ['|pass|2fa|cookie', 'uid2|p|2fa|cookie2', 'uid3|p|2fa|'].join('\n')
   const { parsed, errors } = parseBulkProfiles(text)

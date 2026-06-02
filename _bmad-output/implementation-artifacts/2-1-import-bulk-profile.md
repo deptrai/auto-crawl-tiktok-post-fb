@@ -1,20 +1,20 @@
 # Story 2.1: Import bulk profile
 
-Status: review
+Status: done
 
 <!-- Phase 3 story (Epic 2 — Profile Management, story đầu). Sources: prd-phase3.md FR1+FR4 + Journey 1, architecture.md § Phase 3 (R-D3, ADR-P3-D3, DB schema, Secret marker), epics-phase3.md Epic 2. ⚠️ QUAY LẠI automation-desktop/ (Electron client) — 25 rules CLAUDE.md ÁP DỤNG LẠI. Previous app stories: 1.1-1.4 done (1.5 backend/web, review). -->
 
 ## Story
 
 As a user (affiliate marketer như Minh),
-I want import hàng loạt profile Facebook bằng cách paste danh sách theo định dạng `uid|pass|2fa|cookie|hotmail|passmail`,
+I want import hàng loạt profile Facebook bằng cách paste danh sách theo định dạng `uid|pass|2fa|cookie|hotmail|passmail` hoặc JSON cookie export từ browser,
 so that tôi nạp nhanh nhiều tài khoản đã nuôi sẵn vào tool mà cookie + 2FA được lưu an toàn.
 
 > ⚠️ **PHẠM VI**: Story này ở **`automation-desktop/`** (Electron client). `automation-desktop/CLAUDE.md` (25 rules) + Secret<T> (R-D3) ÁP DỤNG. Story 2.1 = **import + lưu trữ an toàn** (FR1 + FR4). Xem danh sách real-time (FR3) = Story 2.2; sửa/xóa (FR2) = Story 2.3 — KHÔNG làm ở đây.
 
 ## Acceptance Criteria
 
-1. **Bulk parser (service, pure function)**: Parse text nhiều dòng, mỗi dòng `uid|pass|2fa|cookie|hotmail|passmail` (split `|`). Tolerant: bỏ dòng trống + dòng bắt đầu `#` (comment); `trim` mỗi field. **Bắt buộc**: `uid` (field 0) + `cookie` (field 3) không rỗng — thiếu → dòng đó `failed` với lý do rõ ràng (tiếng Việt), KHÔNG abort cả batch. Hỗ trợ cả biến thể 7-field (architecture FR-P3-01 `uid|pass|2fa|cookie|token|hotmail|passmail`): nếu ≥7 field → field[4]=token, field[5]=hotmail, field[6]=passmail; nếu =6 field → field[4]=hotmail, field[5]=passmail. Trả per-line result.
+1. **Bulk parser (service, pure function)**: Parse text nhiều dòng, mỗi dòng `uid|pass|2fa|cookie|hotmail|passmail` (split `|`). Tolerant: bỏ dòng trống + dòng bắt đầu `#` (comment); `trim` mỗi field. **Bắt buộc**: `uid` (field 0) + `cookie` (field 3) không rỗng — thiếu → dòng đó `failed` với lý do rõ ràng (tiếng Việt), KHÔNG abort cả batch. Hỗ trợ cả biến thể 7-field (architecture FR-P3-01 `uid|pass|2fa|cookie|token|hotmail|passmail`): nếu ≥7 field → field[4]=token, field[5]=hotmail, field[6]=passmail; nếu =6 field → field[4]=hotmail, field[5]=passmail. Ngoài format pipe, textarea cũng nhận **JSON cookie export Facebook** (array/object có `name` + `value`): parser tự lấy `uid` từ cookie `c_user` và convert thành cookie string `name=value; name2=value2`. Trả per-line/result rõ ràng; JSON invalid hoặc thiếu `c_user` → failed/error tiếng Việt.
 2. **Dedupe theo `uid`**: `profiles.uid` UNIQUE. Import uid đã tồn tại (trong DB hoặc trùng trong cùng batch) → `skipped` + lý do "uid đã tồn tại", KHÔNG tạo trùng, KHÔNG ghi đè secret cũ.
 3. **Persist metadata → SQLCipher**: Mỗi profile hợp lệ → row `profiles(id, uid, display_name, status='idle', created_at)` (id = `crypto.randomUUID()`, display_name mặc định = uid). Email (`hotmail`) nếu có → `profile_metadata(profile_id, key='email', value)`. `token` (nếu biến thể 7-field) → `profile_metadata key='token'`.
 4. **Persist secret → safeStorage (R-D3)**: `cookie`, `2fa` seed, `pass` (FB password), `passmail` (email password) lưu vào safeStorage key `profile.<id>.cookie` / `.twofa` / `.fb_password` / `.mail_password`. **TUYỆT ĐỐI KHÔNG** lưu các field này vào SQLite, KHÔNG đưa vào IPC response, KHÔNG log (rule #10, #11). Field rỗng (vd không có 2fa) → bỏ qua key đó.
@@ -31,7 +31,7 @@ so that tôi nạp nhanh nhiều tài khoản đã nuôi sẵn vào tool mà coo
 - [x] **Task 2: profile-repo** (AC: #2, #3)
   - [x] `src/main/db/repositories/profile-repo.ts`: `uidExists`, `insertProfileAtomic(params, metadata)` (transaction), `deleteProfile`, `listProfiles`, `countProfiles`. Prepared statements.
 - [x] **Task 3: profile-service + bulk parser** (AC: #1, #2, #4, #5)
-  - [x] `src/main/profile/parser.ts`: pure `parseBulkProfiles` — skip trống/comment, trim, validate uid+cookie, 6-field vs 7-field, cap 5000 dòng.
+  - [x] `src/main/profile/parser.ts`: pure `parseBulkProfiles` — skip trống/comment, trim, validate uid+cookie, 6-field vs 7-field, nhận JSON cookie export Facebook (derive uid từ `c_user`, convert cookie string), cap 5000 dòng.
   - [x] `src/main/profile/profile-service.ts`: `importBulk` — parse, dedupe (batch Set + uidExists), write secrets to safeStorage, insertProfileAtomic, atomicity per-profile (cleanup trên fail).
   - [x] `src/main/profile/index.ts` barrel export.
 - [x] **Task 4: IPC channel + handler** (AC: #6)
@@ -44,8 +44,8 @@ so that tôi nạp nhanh nhiều tài khoản đã nuôi sẵn vào tool mà coo
   - [x] `ProfilesView.tsx`: textarea + Import button (disabled khi importing, rule #17) + summary + danh sách. Clear textarea sau success. Loading testid riêng (rule #16).
   - [x] `App.tsx`: import `ProfilesView`, render trong `MainShell` khi `gateState === 'ready'`.
 - [x] **Task 7: Tests** (AC: tất cả)
-  - [x] Unit `tests/unit/profile-parser.spec.ts` (9 tests): happy 6/7-field, skip empty/comment, missing uid/cookie, trim, batch error, line cap.
-  - [x] Unit `tests/unit/profile-service.spec.ts` (7 tests): secret → storage, response no-secret, dedupe batch/db, atomicity cleanup, empty fields, line counting.
+  - [x] Unit `tests/unit/profile-parser.spec.ts` (12 tests): happy 6/7-field, skip empty/comment, missing uid/cookie, trim, JSON cookie export valid/invalid/missing `c_user`, batch error, line cap.
+  - [x] Unit `tests/unit/profile-service.spec.ts` (11 tests): secret → storage, JSON cookie export → converted cookie string, response no-secret, dedupe batch/db, atomicity cleanup, empty fields, line counting, sanitized storage/DB errors.
   - [x] Integration `tests/integration/profile-ipc-handlers.spec.ts` (3 tests): Zod 2-way, no-secret, ErrorEnvelope.
   - [x] E2E `tests/e2e/profiles.spec.ts` (2 tests): profiles-view visible, 2 imports → summary + textarea cleared.
   - [x] `typecheck` PASS, `lint` 0 errors (15 prettier warnings, không có security errors).
@@ -76,6 +76,25 @@ so that tôi nạp nhanh nhiều tài khoản đã nuôi sẵn vào tool mà coo
 - [x] [Review][Defer] Orphan safeStorage key nếu `storage.delete` trong cleanup TỰ throw (double-fault) — code đã attempt cleanup (đạt ý AC5); key mồ côi là encrypted + không-referenced (không phải leak). Cần reconciliation/observability sau [profile-service.ts:118-120] — deferred, edge ngoài AC5
 
 **Dismissed (false-positive / handled, không hành động):** token→SQLite (đúng AC3 + Dev Notes, SQLCipher encrypt at rest); Zod `details` flatten "lộ secret" (flatten trả message string, KHÔNG chứa giá trị `text`); `.parse()` error-path "throw" (output khớp schema `details: z.unknown().optional()`); double-click race (đã theo Rule #17 + guard `if(importing)`); token empty-string (guard `if(p.token)`); `foreign_keys=ON` ordering (pragma per-connection, enforce tại DML); `batchUids.add` reason cosmetic (vẫn skip đúng); `assertOk` message (đã VN-controlled — phần raw reason đã tách thành Patch); `response.result` union (main validate schema trước return); id không hiển thị UI (UUID nội bộ, uid+status đã đủ).
+
+### Re-review round 2 (2026-06-02 — sau khi dev apply patch)
+
+> Diff: working-tree vs HEAD (uncommitted). **Lint ✅ 0 errors · Typecheck ✅ · 48 unit + 6 integration PASS.** E2E (4 test) cấu trúc đúng, chưa exec trong môi trường review (cần `electron-vite build`).
+
+**Patch verification — TẤT CẢ 8/8 ✅:**
+- P1 ✅ `normalizeError` unknown → `retryable:false` [profile-handlers.ts:28] + test "non-retryable"
+- P2 ✅ `failed[].reason` sanitize VN, UNIQUE→"uid đã tồn tại" [profile-service.ts:166-169] + 2 test
+- P3 ✅ line-cap → ErrorEnvelope `LINE_CAP_EXCEEDED` (parser flag + service throw + handler) + 3 test (unit/service/IPC)
+- P4 ✅ `FailedEntrySchema.uid` `.min(1).optional()` [profile.ts:27]
+- P5 ✅ E2E `closeServer()` + server đóng trong `finally` cả 4 test
+- P6 ✅ profile-repo real-SQLCipher qua `runProfileRepoSmoke` (electron-launch, verify FK/UNIQUE/CASCADE/transaction)
+- P7 ✅ E2E loading/disable (#16/#17 qua `PHASE3_PROFILE_IMPORT_DELAY_MS`) + error-path giữ textarea + IPC >1MB rejection
+- P8 ✅ `brandSecret` wrap + `revealSecret` unwrap tại `storage.set` [profile-service.ts:121-141, secret.ts:17-19] + test
+
+**Findings MỚI (do dev tạo trong lúc patch — round 2):**
+
+- [x] [Re-review][Decision✓→Accept] **SCOPE CREEP** JSON cookie-export — ✅ Luis chọn ACCEPT vào 2.1. AC1 đã cập nhật phản ánh feature (parser tự lấy uid từ `c_user`, convert cookie string). PM sign-off = Luis (owner). ⚠️ Follow-up đã ghi `deferred-work.md`: verify format cookie `name=value; …` khớp login/automation Epic 4. Gốc: dev tự thêm `parser.ts:parseCookieExport` + UI + 4 test, ngoài 8 patch.
+- [x] [Re-review][Patch✓] **Secrets + rác staged** — ✅ ĐÃ XỬ LÝ: `git rm --cached -r automation-desktop/.phase3-manual` + gỡ `.review-2.1*.diff` khỏi index (file giữ trên disk, đã gitignore). Verify: 0 secret staged, 16 file staged đều hợp lệ. (KHÔNG commit — để Luis commit.)
 
 ## Dev Notes
 
@@ -108,6 +127,7 @@ Reviewer: đây là exception CÓ CHỦ Ý, không phải vi phạm — verify 4
 - **FR1 (epic, canonical)**: `uid|pass|2fa|cookie|hotmail|passmail` (6 field).
 - **Architecture FR-P3-01**: `uid|pass|2fa|cookie|token|hotmail|passmail` (7 field, thêm `token`).
 - → Parser xử lý cả 2 theo số field (xem AC1). uid (0) + cookie (3) luôn cố định + bắt buộc.
+- **Manual/browser cookie export**: textarea cũng nhận JSON cookie export Facebook dạng array/object `{name,value,...}`. Parser tự lấy `uid` từ cookie `c_user`, convert toàn bộ entries hợp lệ thành cookie string `name=value; name2=value2`, rồi đi tiếp qua cùng flow safeStorage. Nếu JSON hỏng, không có cookie hợp lệ, hoặc thiếu `c_user` → trả lỗi tiếng Việt rõ ràng.
 
 ### DB hiện trạng (đã khảo sát)
 - `src/main/db/client.ts`: KHÔNG có migration system — schema tạo bằng `CREATE TABLE IF NOT EXISTS` inline khi `openEncryptedDatabase`. Thêm 2 bảng mới Ở ĐÂY. [Source: src/main/db/client.ts]
@@ -146,6 +166,7 @@ Reviewer: đây là exception CÓ CHỦ Ý, không phải vi phạm — verify 4
 - safeStorage unavailable / set fail giữa chừng → profile đó failed + cleanup, không orphan secret/profile.
 - Text cực lớn → giới hạn max length ở Zod.
 - Ký tự `|` trong cookie value? Cookie thường không chứa `|` raw, nhưng nếu có → split sai. Note: split theo số field cố định từ trái; cookie là field[3] — nếu cookie chứa `|` parser sẽ lệch. Chấp nhận giả định cookie không chứa `|` (format nguồn C# cũng vậy); KHÔNG cần xử lý escape ở 2.1 nhưng ghi nhận giới hạn.
+- JSON cookie export Facebook: invalid JSON → `JSON cookie export không hợp lệ.`; không có `{name,value}` hợp lệ → `JSON cookie export không có cookie hợp lệ.`; thiếu `c_user` → `JSON cookie export thiếu cookie c_user để lấy uid.`
 - Response/throw KHÔNG được lộ secret kể cả trong `details` của ErrorEnvelope.
 
 ### References
@@ -171,6 +192,7 @@ claude-sonnet-4-6
 - Review patch P6: `better-sqlite3-multiple-ciphers` native module trong Playwright Node worker lệch ABI với Electron; test repo SQLCipher thật chạy qua Electron dev-only smoke (`PHASE3_PROFILE_REPO_SMOKE=1`) để dùng đúng runtime production.
 - Review patch P7: loading E2E dùng dev-only guarded delay (`PHASE3_PROFILE_IMPORT_DELAY_MS`) thay vì import 5000 dòng thật để tránh flaky/chậm CI; vẫn assert button disabled + `import-loading` visible qua UI.
 - Verify 2026-06-02: `npm run lint` PASS (chỉ warning MODULE_TYPELESS_PACKAGE_JSON có sẵn), `npm run typecheck` PASS, `npx playwright test tests/unit tests/integration` PASS 68/68, `npx electron-vite build && npx playwright test tests/e2e` PASS 12/12.
+- Manual patch 2026-06-02: sau khi test live với JSON cookie export thật, parser được mở rộng nhận JSON cookie export Facebook; targeted verify `profile-parser.spec.ts` + `profile-service.spec.ts` PASS 23/23, `npm run typecheck` PASS, `npm run lint` PASS (chỉ warning MODULE_TYPELESS_PACKAGE_JSON có sẵn), `npx electron-vite build` PASS.
 
 ### Completion Notes List
 
@@ -182,6 +204,7 @@ claude-sonnet-4-6
 - **Task 6**: `ProfilesView.tsx` self-managed state + `importBulkProfiles`, clear textarea sau success, `data-testid` riêng cho loading/view/result. App.tsx render ProfilesView trong MainShell khi ready + giữ license status text.
 - **Task 7**: 70 tests PASS (9 parser unit + 7 service unit + 3 IPC integration + 2 profiles E2E + all regression). Typecheck PASS. Lint 0 errors.
 - **Review P1-P8**: Đã apply đủ 8 patches: unknown profile IPC error `retryable:false`; failed reason sanitize tiếng Việt; line-cap >5000 thành `LINE_CAP_EXCEEDED` ErrorEnvelope; `FailedEntrySchema.uid.min(1)`; E2E close HTTP server; SQLCipher profile-repo integration smoke trong Electron runtime; coverage >1MB/loading/error-path; Secret<T> wrap + `revealSecret()` unwrap primitive tại biên storage.
+- **Manual JSON cookie export patch**: `parseBulkProfiles()` nhận JSON cookie export Facebook trực tiếp, derive `uid` từ `c_user`, convert thành cookie string, và reuse flow safeStorage hiện có. UI `ProfilesView` cập nhật hướng dẫn/placeholder để user biết có thể paste JSON export trực tiếp.
 
 ### File List
 
@@ -197,6 +220,7 @@ claude-sonnet-4-6
 - `src/main/adapters/electron-bootstrap.ts` (UPDATE)
 - `src/renderer/src/api/profile-api.ts` (NEW)
 - `src/renderer/src/views/ProfilesView.tsx` (NEW)
+- `automation-desktop/.gitignore` (UPDATE — ignore `.phase3-manual/` local manual test data)
 - `src/shared/types/secret.ts` (UPDATE — `revealSecret`)
 - `src/renderer/src/App.tsx` (UPDATE)
 - `tests/unit/profile-parser.spec.ts` (NEW)
@@ -210,3 +234,4 @@ claude-sonnet-4-6
 
 - 2026-06-02: Implement story 2.1 — bulk profile import với parser 6/7-field, profile-repo (SQLCipher), profile-service (atomicity, dedupe, secret sink), IPC `phase3:profile:import-bulk`, ProfilesView renderer. 70 tests PASS.
 - 2026-06-02: Apply 8 review patches (P1–P8): retryable fix, sanitize failed reason, line-cap→ErrorEnvelope, schema min(1), e2e server close, integration profile-repo real DB, coverage #16/#17/>1MB/error-path, Secret<T> enforce wrap.
+- 2026-06-02: Add manual JSON cookie export import support — textarea accepts Facebook JSON cookie export, derives uid from `c_user`, converts to cookie string, updates UI guidance, adds parser/service tests; `.phase3-manual/` ignored to avoid committing local encrypted cookies/secrets.

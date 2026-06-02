@@ -118,3 +118,5 @@
 ## Deferred from: code review of 2-1-import-bulk-profile.md (2026-06-02)
 
 - Orphan safeStorage key khi `storage.delete` trong cleanup tự throw (double-fault). Code đã attempt cleanup (đạt ý AC5); key mồ côi là encrypted + không-referenced trong DB nên KHÔNG phải leak, chỉ là rác không reachable. Cần cơ chế reconciliation/observability (sweep quét key `profile.<id>.*` không có row tương ứng) ở story sau. [automation-desktop/src/main/profile/profile-service.ts:118-120]
+
+- (Re-review 2.1, R1 accept) Verify format cookie từ JSON cookie-export khớp login/automation Epic 4. parseCookieExport build cookie dạng `name=value; name2=value2` từ JSON browser export. Khi Epic 4 (login/cookie test) implement, PHẢI confirm format này nạp được vào Facebook session (so với cookie field của pipe-format). Nếu lệch → cần normalize. [automation-desktop/src/main/profile/parser.ts:parseCookieExport]

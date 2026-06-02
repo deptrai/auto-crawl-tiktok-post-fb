@@ -31,7 +31,8 @@ export function ProfilesView(): React.JSX.Element {
       <h1>Import Profile</h1>
       <p className="lead">
         Dán danh sách tài khoản theo định dạng <code>uid|pass|2fa|cookie|hotmail|passmail</code>{' '}
-        (mỗi dòng một tài khoản).
+        (mỗi dòng một tài khoản). Hoặc paste JSON cookie export Facebook trực tiếp; app sẽ tự lấy
+        uid từ <code>c_user</code> và convert thành cookie string.
       </p>
 
       <div className="import-form">
@@ -41,7 +42,7 @@ export function ProfilesView(): React.JSX.Element {
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder={
-            'uid1|pass1|seed1|cookie1|email@mail.com|mailpass\n# dòng bắt đầu # là comment, bị bỏ qua'
+            'uid1|pass1|seed1|cookie1|email@mail.com|mailpass\n# hoặc paste JSON cookie export Facebook trực tiếp'
           }
           rows={8}
           disabled={importing}

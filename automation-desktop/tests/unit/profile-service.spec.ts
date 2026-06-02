@@ -102,6 +102,28 @@ test('[P0] importBulk response NEVER contains cookie/2fa/password', async () => 
   expect(json).not.toContain('mailpass1')
 })
 
+test('[P1] importBulk accepts JSON cookie export and stores converted cookie string', async () => {
+  const storage = createMemoryStorage()
+  const repo = createMemoryRepo()
+  const service = createProfileService({ storage, repo })
+  const jsonCookieExport = JSON.stringify([
+    { domain: '.facebook.com', name: 'datr', value: 'datr-value' },
+    { domain: '.facebook.com', name: 'c_user', value: '61554949615037' },
+    { domain: '.facebook.com', name: 'xs', value: 'xs-value' }
+  ])
+
+  const result = await service.importBulk(jsonCookieExport)
+
+  expect(result.imported).toBe(1)
+  expect(result.failed).toHaveLength(0)
+  expect(result.profiles[0].uid).toBe('61554949615037')
+  const id = result.profiles[0].id
+  expect(await storage.get(`profile.${id}.cookie`)).toBe(
+    'datr=datr-value; c_user=61554949615037; xs=xs-value'
+  )
+  expect(JSON.stringify(result)).not.toContain('xs-value')
+})
+
 test('[P1] importBulk skips duplicate uid in same batch', async () => {
   const storage = createMemoryStorage()
   const repo = createMemoryRepo()

@@ -1,5 +1,5 @@
 # generated: 2026-06-02
-# last_updated: 2026-06-02 (1.1-1.4 done; 1.5 review — prompt-fix G1-G6 pending; 2.1 ready-for-dev, epic-2 in-progress)
+# last_updated: 2026-06-03 (Epic 1 done; 2.1 done; 2.2 ready-for-dev — profile list + real-time polling, automation:status defer Epic 4; epic-2 in-progress)
 # project: auto-crawl-tiktok-post-fb (Phase 3 — Facebook Cookie-Based Automation Desktop)
 # project_key: NOKEY
 # tracking_system: file-system
@@ -62,8 +62,8 @@ development_status:
 
   # Epic 2: Quản lý Profile (Profile Management)
   epic-2: in-progress
-  2-1-import-bulk-profile: ready-for-dev
-  2-2-xem-danh-sach-profile-real-time: backlog
+  2-1-import-bulk-profile: done
+  2-2-xem-danh-sach-profile-real-time: ready-for-dev
   2-3-sua-va-xoa-profile: backlog
   epic-2-retrospective: optional
 

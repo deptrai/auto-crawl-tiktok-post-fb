@@ -5,3 +5,6 @@ out
 .eslintcache
 test-results
 *.log*
+
+# Local manual desktop test data (may contain encrypted cookies/secrets)
+.phase3-manual/
