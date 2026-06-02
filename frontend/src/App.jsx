@@ -107,6 +107,7 @@ const NAV_ITEMS = [
   { id: 'operations', label: 'Vận hành', description: 'Worker, queue và log.', icon: Server },
   { id: 'security', label: 'Bảo mật', description: 'Phiên, mật khẩu, người dùng.', icon: ShieldCheck, guardRoles: ['owner'] },
   { id: 'organizations', label: 'Hệ thống', description: 'Quản lý các tổ chức.', icon: Building2, guardRoles: ['super_admin'] },
+  { id: 'licenses', label: 'License Keys', description: 'Tạo và thu hồi license.', icon: KeyRound, guardRoles: ['super_admin'] },
 ];
 
 const STATUS_LABELS = {
@@ -349,6 +350,7 @@ import { useAuthStore } from './store/authStore';
 import { useOrgStore } from './store/orgStore';
 import LoginPage from './features/auth/LoginPage';
 import OrganizationManagement from './features/organizations/OrganizationManagement';
+import LicenseManagement from './features/licenses/LicenseManagement';
 
 function App() {
   const { token, user: currentUser, logout, updateUser: setCurrentUser } = useAuthStore();
@@ -1910,6 +1912,7 @@ function App() {
       case 'operations': return renderOperationsSection();
       case 'security': return renderSecuritySection();
       case 'organizations': return <OrganizationManagement requestJson={requestJson} authFetch={authFetch} showNotice={showNotice} />;
+      case 'licenses': return <LicenseManagement requestJson={requestJson} showNotice={showNotice} />;
       case 'overview':
       default: return renderOverviewSection();
     }

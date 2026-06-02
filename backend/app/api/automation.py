@@ -2,20 +2,34 @@ from __future__ import annotations
 
 import time
 from collections import defaultdict, deque
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
+from app.api.auth import require_authenticated_user
+from app.api.deps import RoleChecker
 from app.core.database import get_db
+from app.models.models import User
 from app.schemas.automation.license import (
+    AdminLicenseResponse,
     LicenseActivateRequest,
     LicenseActivateResponse,
     LicenseCheckRequest,
     LicenseCheckResponse,
+    LicenseCreateRequest,
+    LicenseRevokeResponse,
 )
-from app.services.automation.license import LicenseActivationError, activate_license, check_license
+from app.services.automation.license import (
+    LicenseActivationError,
+    activate_license,
+    check_license,
+    create_license_for_admin,
+    list_licenses,
+    revoke_license,
+)
 
 router = APIRouter(prefix="/api/v1/automation", tags=["Automation Phase 3"])
 
@@ -25,6 +39,7 @@ _STATUS_BY_CODE = {
     "LICENSE_HWID_MISMATCH": 409,
     "LICENSE_INVALID": 422,
     "LICENSE_DB_ERROR": 500,
+    "LICENSE_KEY_COLLISION": 500,
     "RATE_LIMITED": 429,
 }
 
@@ -124,5 +139,79 @@ def check_license_endpoint(
         return _error_response(
             "LICENSE_DB_ERROR",
             "Không thể kiểm tra license do lỗi cơ sở dữ liệu.",
+            retryable=True,
+        )
+
+
+# ---------------------------------------------------------------------------
+# Admin endpoints (Story 1.5) — guarded PER-ENDPOINT with super_admin role.
+# activate/check above remain public intentionally.
+# ---------------------------------------------------------------------------
+
+@router.post(
+    "/admin/license",
+    response_model=AdminLicenseResponse,
+    status_code=201,
+    dependencies=[Depends(RoleChecker(["super_admin"]))],
+)
+def create_license_endpoint(
+    request_body: LicenseCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(require_authenticated_user),
+) -> AdminLicenseResponse | JSONResponse:
+    try:
+        license_record = create_license_for_admin(db, days_total=request_body.days_total, admin_id=current_user.id)
+        db.commit()
+        from app.services.automation.license import _latest_activation, _admin_license_response  # noqa: PLC0415
+        activation = _latest_activation(db, license_record.id)
+        return _admin_license_response(license_record, activation)
+    except LicenseActivationError as exc:
+        return _error_response(exc.code, exc.message, exc.retryable)
+    except SQLAlchemyError:
+        return _error_response(
+            "LICENSE_DB_ERROR",
+            "Không thể tạo license do lỗi cơ sở dữ liệu.",
+            retryable=True,
+        )
+
+
+@router.get(
+    "/admin/license",
+    response_model=list[AdminLicenseResponse],
+    dependencies=[Depends(RoleChecker(["super_admin"]))],
+)
+def list_licenses_endpoint(
+    db: Session = Depends(get_db),
+) -> list[AdminLicenseResponse] | JSONResponse:
+    try:
+        return list_licenses(db)
+    except LicenseActivationError as exc:
+        return _error_response(exc.code, exc.message, exc.retryable)
+    except SQLAlchemyError:
+        return _error_response(
+            "LICENSE_DB_ERROR",
+            "Không thể tải danh sách license do lỗi cơ sở dữ liệu.",
+            retryable=True,
+        )
+
+
+@router.post(
+    "/admin/license/{license_id}/revoke",
+    response_model=LicenseRevokeResponse,
+    dependencies=[Depends(RoleChecker(["super_admin"]))],
+)
+def revoke_license_endpoint(
+    license_id: UUID,
+    db: Session = Depends(get_db),
+) -> LicenseRevokeResponse | JSONResponse:
+    try:
+        license_record = revoke_license(db, license_id=license_id)
+        return LicenseRevokeResponse(id=license_record.id, revoked=license_record.revoked)
+    except LicenseActivationError as exc:
+        return _error_response(exc.code, exc.message, exc.retryable)
+    except SQLAlchemyError:
+        return _error_response(
+            "LICENSE_DB_ERROR",
+            "Không thể thu hồi license do lỗi cơ sở dữ liệu.",
             retryable=True,
         )

@@ -39,3 +39,33 @@ class LicenseCheckResponse(BaseModel):
     expires_at: datetime
     revoked: bool
     rebind_count: int
+
+
+# --- Admin schemas (Story 1.5) ---
+
+class LicenseCreateRequest(BaseModel):
+    days_total: int
+
+    @field_validator("days_total")
+    @classmethod
+    def validate_days_total(cls, value: int) -> int:
+        if value <= 0:
+            raise ValueError("Số ngày sử dụng phải lớn hơn 0")
+        return value
+
+
+class AdminLicenseResponse(BaseModel):
+    id: UUID
+    key: str
+    days_total: int
+    revoked: bool
+    created_at: datetime
+    created_by_admin: UUID | None
+    activated: bool
+    expires_at: datetime | None = None
+    rebind_count: int | None = None
+
+
+class LicenseRevokeResponse(BaseModel):
+    id: UUID
+    revoked: bool

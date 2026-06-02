@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import secrets
+import string
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.automation.license import License, LicenseActivation
-from app.schemas.automation.license import LicenseActivateResponse, LicenseCheckResponse
+from app.schemas.automation.license import AdminLicenseResponse, LicenseActivateResponse, LicenseCheckResponse, LicenseRevokeResponse
 from app.services.automation.hwid import validate_hwid
+
+_KEY_ALPHABET = string.digits + "ABCDEF"
+_KEY_SEGMENT_LEN = 8
+_KEY_COLLISION_RETRIES = 5
 
 
 class LicenseActivationError(Exception):
@@ -153,5 +160,98 @@ def check_license(db: Session, activation_id) -> LicenseCheckResponse:
         raise _status_error(
             "LICENSE_DB_ERROR",
             "Không thể kiểm tra license do lỗi cơ sở dữ liệu.",
+            retryable=True,
+        ) from exc
+
+
+# ---------------------------------------------------------------------------
+# Admin functions (Story 1.5)
+# ---------------------------------------------------------------------------
+
+def _generate_license_key() -> str:
+    """Generate a cryptographically random license key in LIC-XXXXXXXX-XXXXXXXX format."""
+    seg1 = "".join(secrets.choice(_KEY_ALPHABET) for _ in range(_KEY_SEGMENT_LEN))
+    seg2 = "".join(secrets.choice(_KEY_ALPHABET) for _ in range(_KEY_SEGMENT_LEN))
+    return f"LIC-{seg1}-{seg2}"
+
+
+def _admin_license_response(license_record: License, activation: LicenseActivation | None) -> AdminLicenseResponse:
+    return AdminLicenseResponse(
+        id=license_record.id,
+        key=license_record.key,
+        days_total=license_record.days_total,
+        revoked=license_record.revoked,
+        created_at=_as_utc(license_record.created_at),
+        created_by_admin=license_record.created_by_admin,
+        activated=activation is not None,
+        expires_at=_as_utc(activation.expires_at) if activation else None,
+        rebind_count=activation.rebind_count if activation else None,
+    )
+
+
+def create_license_for_admin(db: Session, days_total: int, admin_id: UUID | None) -> License:
+    """Create a new license key for an admin. Returns the License ORM object."""
+    _validate_days_total(days_total)
+    for attempt in range(_KEY_COLLISION_RETRIES):
+        key = _generate_license_key()
+        new_license = License(
+            key=key,
+            days_total=days_total,
+            created_by_admin=admin_id,
+            revoked=False,
+        )
+        db.add(new_license)
+        try:
+            db.flush()
+            return new_license
+        except IntegrityError:
+            db.rollback()
+            if attempt == _KEY_COLLISION_RETRIES - 1:
+                raise _status_error(
+                    "LICENSE_KEY_COLLISION",
+                    "Không thể sinh license key duy nhất. Vui lòng thử lại.",
+                    retryable=True,
+                )
+    raise _status_error("LICENSE_KEY_COLLISION", "Không thể sinh license key duy nhất.", retryable=True)
+
+
+def revoke_license(db: Session, license_id: UUID) -> License:
+    """Set revoked=True on a license. Idempotent — revoking an already-revoked key is allowed."""
+    try:
+        query = db.query(License).filter(License.id == license_id)
+        if db.bind and db.bind.dialect.name == "postgresql":
+            query = query.with_for_update()
+        license_record = query.one_or_none()
+        if license_record is None:
+            raise _status_error("LICENSE_NOT_FOUND", "Không tìm thấy license key.")
+        license_record.revoked = True
+        db.commit()
+        db.refresh(license_record)
+        return license_record
+    except LicenseActivationError:
+        db.rollback()
+        raise
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise _status_error(
+            "LICENSE_DB_ERROR",
+            "Không thể thu hồi license do lỗi cơ sở dữ liệu.",
+            retryable=True,
+        ) from exc
+
+
+def list_licenses(db: Session) -> list[AdminLicenseResponse]:
+    """Return all licenses ordered by created_at descending, with activation info."""
+    try:
+        licenses = db.query(License).order_by(License.created_at.desc()).all()
+        result = []
+        for lic in licenses:
+            activation = _latest_activation(db, lic.id)
+            result.append(_admin_license_response(lic, activation))
+        return result
+    except SQLAlchemyError as exc:
+        raise _status_error(
+            "LICENSE_DB_ERROR",
+            "Không thể tải danh sách license do lỗi cơ sở dữ liệu.",
             retryable=True,
         ) from exc
