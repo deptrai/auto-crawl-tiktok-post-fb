@@ -42,6 +42,7 @@ _This file contains critical rules and patterns that AI agents must follow when 
 - **Backend (Pytest):** Mọi file test vào `tests/` hoặc dùng prefix `test_*.py`. Database test phải tự động rollback (giao dịch an toàn).
 - **Frontend Testing:** Chưa có setup báo sẵn. Chỉ tạo test nếu đã cấu hình Vitest.
 - **Verification Scripts:** Luôn bảo trì/cập nhật `verification_*.py` khi đổi cấu trúc Webhook hoặc AI.
+- **⚠️ Phase 3 backend test PHẢI dùng PostgreSQL thật + Alembic migration thật.** Phase 3 dùng Postgres-specific feature (schema namespace `phase3`, `search_path`, UUID, FK cross-schema, `server_default`). SQLite KHÔNG mô phỏng được — test SQLite cho Phase 3 = false confidence. Dùng testcontainers hoặc PG test DB; chạy `alembic upgrade head` thay vì `Base.metadata.create_all`. TUYỆT ĐỐI KHÔNG nhồi SQLite ATTACH/schema-translate logic vào production `app/core/database.py` để lách test — đó là production pollution. Test fidelity đạt qua test infra, không qua production hook.
 
 ### Code Quality & Style Rules
 

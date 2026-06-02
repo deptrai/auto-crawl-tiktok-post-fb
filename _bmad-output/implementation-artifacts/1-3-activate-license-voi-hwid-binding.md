@@ -1,6 +1,6 @@
 # Story 1.3: Activate license với HWID binding
 
-Status: review
+Status: in-progress
 
 <!-- Phase 3 story. Sources: prd-phase3.md, architecture.md § Phase 3 Addendum, epics-phase3.md. Previous: 1.1, 1.2 (done) -->
 
@@ -22,6 +22,57 @@ so that tôi có quyền sử dụng tool trong số ngày đã mua.
 6. **safeStorage thật**: Implement `ElectronSafeStorage` adapter thật (hiện stub return null) dùng Electron `safeStorage` API để lưu `activation_id` (license private).
 7. **Error handling**: HWID mismatch, key invalid, key revoked, network error → hiển thị message tiếng Việt rõ ràng, có hướng dẫn.
 8. **IPC channels**: `phase3:license:activate`, `phase3:license:status` wired end-to-end với Zod 2-way + ErrorEnvelope (có `retryable`).
+9. **Backend test trung thực với production (PostgreSQL)**: Backend test Phase 3 PHẢI chạy trên PostgreSQL thật (testcontainers HOẶC PG test DB từ docker-compose), chạy **Alembic migration thật** (`alembic upgrade head`) thay vì `Base.metadata.create_all`. KHÔNG dùng SQLite cho Phase 3 backend test. KHÔNG nhồi SQLite ATTACH logic vào production `app/core/database.py`.
+
+## Review Findings (post-dev — DB test fidelity)
+
+> Live API smoke 2026-06-02 trên PostgreSQL thật + Alembic migration thật: 5/5 path PASS (activate/idempotent/mismatch/revoked/not-found, error có retryable + tiếng Việt). Logic dev ĐÚNG. Nhưng backend test setup KHÔNG trung thực:
+
+- [x] [Review][Patch][Critical] Production `app/core/database.py` bị nhồi test-only SQLite ATTACH logic (`_attach_phase3_schema`, `_phase3_sqlite_path`) chỉ để test pass. Xóa khỏi production; test fidelity phải đạt qua test infra, không qua production hook [`backend/app/core/database.py`:19-33]
+- [x] [Review][Patch][Critical] Backend Phase 3 test dùng SQLite + `Base.metadata.create_all` → migration `20260602_01_phase3_license_init` (CREATE SCHEMA, server_default, FK) KHÔNG bao giờ được test. Đổi sang PostgreSQL thật + `alembic upgrade head` [`backend/tests/conftest.py`:10]
+- [x] [Review][Patch][Major] SQLite ATTACH = 2 file DB riêng, FK cross-schema (`phase3.licenses` ← `users.id`) KHÔNG enforce → test FK constraint không catch lỗi thật [`backend/tests/test_automation_license.py`]
+- [x] [Review][Patch][Major] Test có nhánh `if bind.dialect.name == "sqlite"` → code smell, adapt theo engine thay vì test production behavior. Xóa nhánh sqlite [`backend/tests/test_automation_license.py`:27]
+
+## Review Findings (full code review 2026-06-02)
+
+> 3-layer adversarial (Blind + Edge + Auditor) sau khi dev fix test fidelity. Prior 4 findings (DB fidelity) CONFIRMED resolved (database.py sạch, testcontainers PG + alembic upgrade, no sqlite branch) — TRỪ 2 điểm dưới (S, R). Live smoke 5/5 happy-path vẫn pass; findings tập trung edge cases + 1 rule-violation tái phát.
+
+### Decision resolved → patch
+
+- [ ] [Review][Patch] Endpoint `/api/v1/automation/license/activate` public (đúng ADR-D2 desktop self-activate) NHƯNG thiếu rate-limit → brute-force license key. **Quyết (Luisphan): thêm rate-limit ngay story này** — per-IP + per-key throttle (vd slowapi hoặc middleware đếm theo Redis/in-memory) [`backend/app/api/automation.py`, `backend/app/main.py`]
+
+### Major (patch)
+
+- [ ] [Review][Patch] `fetch()` trong license-service KHÔNG timeout → backend treo thì IPC hang vĩnh viễn, UI kẹt `activating=true`. Thêm `AbortSignal.timeout()` [`automation-desktop/src/main/license/license-service.ts`]
+- [ ] [Review][Patch] `safeStorage` adapter: `readStore()` JSON.parse + `decryptString()` + `writeStore()` KHÔNG try/catch + write không atomic → file corrupt/keychain re-lock → crash `getStatus()`, lock user khỏi app. Wrap try/catch + atomic write (temp+rename) + fallback {} [`automation-desktop/src/main/adapters/electron-safe-storage.ts`]
+- [ ] [Review][Patch] License persist non-atomic: settings(expires/rebind) commit trước, `storage.set(activation_id)` fail sau → user kẹt vĩnh viễn (`active:false`, retry overwrite). Persist activation_id trước hoặc rollback [`automation-desktop/src/main/license/license-service.ts`]
+- [ ] [Review][Patch] `days_total <= 0` không validate → `expires_at == activated_at` → `active:false` im lặng, user kẹt không message. Validate `days_total > 0` (schema + migration CHECK) [`backend/app/services/automation/license.py`, migration]
+- [ ] [Review][Patch] Race concurrent activate cùng key khác HWID: không `SELECT FOR UPDATE`/unique constraint trên `license_activations(license_id)` → 2 INSERT thành công. Thêm unique constraint + handle [`backend/app/services/automation/license.py`, migration]
+- [ ] [Review][Patch] `license-handlers.ts` parse error qua `error.message.split('|')` (format `code|message|retryable`) — fragile, message tiếng Việt chứa `|` vỡ. Dùng typed `LicenseServiceError` thay string split [`automation-desktop/src/main/ipc/license-handlers.ts`]
+- [ ] [Review][Patch] HWID instability: `firstMacAddress()` lấy MAC non-internal đầu tiên theo thứ tự không deterministic → docker0/VPN (utun) xuất hiện đổi HWID → false `LICENSE_HWID_MISMATCH` cùng máy → user lock out. Lọc virtual interface / sort deterministic / ưu tiên physical [`automation-desktop/src/main/license/hwid-generator.ts`]
+- [ ] [Review][Patch] `machineId()` không try/catch → Linux sandbox (snap/flatpak)/container không có `/etc/machine-id` → `generateHwid()` throw trước khi gọi backend. Fallback graceful [`automation-desktop/src/main/license/hwid-generator.ts`]
+- [ ] [Review][Patch] Backend HTTP response chỉ `as BackendActivationResponse` cast, không Zod-validate → thiếu field → `storage.set(activation_id, undefined)` lưu `"undefined"`. Validate response schema trước khi lưu [`automation-desktop/src/main/license/license-service.ts`]
+- [ ] [Review][Patch] `LicenseActivationError(@dataclass(frozen=True), Exception)` → dataclass `__init__` không gọi `Exception.__init__` → `str(exc)` rỗng, `exc.args` rỗng → Sentry/uvicorn log message rỗng. Gọi `super().__init__(message)` [`backend/app/services/automation/license.py`:15]
+- [ ] [Review][Patch] Idempotent re-activate sau khi expire trả `expires_at` CŨ (đã qua), không renew. AC2 nói compute now+days. Nếu existing đã expired → tạo activation mới / renew [`backend/app/services/automation/license.py`:55-64]
+- [ ] [Review][Patch] **Rule violation tái phát**: `test_storage_cleanup.py:24-26` thêm `ATTACH DATABASE ':memory:' AS phase3` — đúng pattern rule cấm. test_storage_cleanup không import phase3 models → ATTACH thừa. Xóa [`backend/tests/test_storage_cleanup.py`:24]
+- [ ] [Review][Patch] Cross-schema FK (`phase3.licenses.created_by_admin → public.users.id`) KHÔNG có test — prior Finding #3 chỉ test intra-phase3 FK. Thêm test verify cross-schema FK enforce [`backend/tests/automation/test_automation_license.py`]
+- [ ] [Review][Patch] `_reset_postgres_database` DROP `public` schema, guard chỉ check tên DB chứa 'test'/'phase3' → `prod-host:5432/medirus_test` qua được + wipe Phase 1+2. Guard mạnh hơn (chỉ drop phase3, hoặc check host) [`backend/tests/automation/conftest.py`:36-40]
+- [ ] [Review][Patch] `App.tsx handleActivate` không catch → lỗi propagate; App-level error state không set khi status inactive (im lặng). Catch + set error rõ ràng [`automation-desktop/src/renderer/src/App.tsx`]
+
+### Minor (patch)
+
+- [ ] [Review][Patch] `z.string().datetime()` (license.ts:6) strict Z-suffix. Backend hiện trả `Z` (live-verified OK) nhưng fragile nếu đổi sang `+00:00`. Dùng `.datetime({ offset: true })` [`automation-desktop/src/shared/ipc-schemas/license.ts`:6]
+- [ ] [Review][Patch] FK `created_by_admin → users.id` không schema-qualify → dựa search_path. Dùng `public.users.id` explicit [`backend/alembic/versions/20260602_01_phase3_license_init.py`, model]
+- [ ] [Review][Patch] Migration `SET search_path` không `RESET` cuối upgrade → leak sang pooled connection / migration sau [`backend/alembic/versions/20260602_01_phase3_license_init.py`:20]
+- [ ] [Review][Patch] Downgrade `DROP SCHEMA phase3` không guard → dùng RESTRICT để fail-early nếu có object Phase 3.x khác [`backend/alembic/versions/20260602_01_phase3_license_init.py`]
+- [ ] [Review][Patch] `shared/api-client/http-client.ts` không tạo (task tick nhưng inline fetch). Extract để Epic 8 cert-pinning reuse được [`automation-desktop/src/main/license/license-service.ts`]
+
+### Dismissed (noise)
+
+- `activation_id` trả về client — by design là bearer token, không phải leak
+- `TRUNCATE RESTART IDENTITY` trên UUID PK — PG xử lý OK
+- `clean_phase3_tables` fixture ordering — work qua dependency chain
+- CI smoke license gate — smoke chỉ check title, không vào gate
 
 ## Tasks / Subtasks
 
@@ -135,8 +186,8 @@ GPT-5 Codex
 
 ### Debug Log References
 
-- 2026-06-02: Backend targeted regression `cd backend && .venv/bin/pytest tests/test_storage_cleanup.py tests/test_automation_license.py -q` -> `19 passed`.
-- 2026-06-02: Backend full regression `cd backend && .venv/bin/pytest -q` -> `303 passed`.
+- 2026-06-02: Backend targeted regression before review patch `cd backend && .venv/bin/pytest tests/test_storage_cleanup.py tests/test_automation_license.py -q` -> `19 passed`.
+- 2026-06-02: Backend full regression before review patch `cd backend && .venv/bin/pytest -q` -> `303 passed`.
 - 2026-06-02: Desktop `cd automation-desktop && npm run typecheck` -> pass.
 - 2026-06-02: Desktop `cd automation-desktop && npm run lint` -> pass (Node module-type warning only).
 - 2026-06-02: Desktop targeted Playwright `npx playwright test tests/unit/hwid-generator.spec.ts tests/integration/safe-storage.spec.ts tests/integration/license-ipc-handlers.spec.ts tests/e2e/license.spec.ts` -> `8 passed`.
@@ -144,6 +195,9 @@ GPT-5 Codex
 - 2026-06-02: Desktop `cd automation-desktop && npm run build` -> pass.
 - 2026-06-02: Desktop `cd automation-desktop && npm run test:automation` -> `26 passed`.
 - 2026-06-02: Desktop `cd automation-desktop && npm run test:e2e:p0` -> first exposed E2E safeStorage/userData state leak, fixed by isolating `PHASE3_USER_DATA_PATH`, rerun -> `5 passed`.
+- 2026-06-02: Review patch automation PG smoke with Docker Postgres: `python -m alembic upgrade head` then `python -m pytest -q tests/automation` -> `7 passed` on PostgreSQL + Alembic migrations.
+- 2026-06-02: Review patch root command smoke with Docker Postgres: `PYTHONPATH=backend python -m pytest -q backend/tests/automation` -> `7 passed`.
+- 2026-06-02: Review patch legacy backend regression `cd backend && .venv/bin/python -m pytest -q` -> `297 passed, 7 skipped` (automation PG tests intentionally skipped in default SQLite suite).
 
 ### Completion Notes List
 
@@ -153,12 +207,13 @@ GPT-5 Codex
 - Replaced safeStorage stub with real Electron `safeStorage` encryption/decryption persisted to a per-user encrypted blob file; `activation_id` stays private and is never returned raw to renderer.
 - Added typed Zod IPC channels `phase3:license:activate` and `phase3:license:status`, plus renderer API wrapper and LicenseView activation UI.
 - Integrated gate flow: EULA accepted -> license status check -> `LicenseView` if inactive -> `MainShell` with remaining days if active.
-- Added backend, unit, integration, and E2E coverage for activation success, HWID mismatch, revoked/missing keys, HWID determinism, safeStorage round-trip, IPC envelopes, and P0 license/EULA flows.
-- Fixed backend SQLite test infrastructure to attach the `phase3` schema for independent in-memory engines and clean up the phase3 sidecar test database.
+- Added backend, unit, integration, and E2E coverage for activation success, HWID mismatch, revoked/missing keys, HWID determinism, safeStorage round-trip, IPC envelopes, P0 license/EULA flows, and PostgreSQL FK enforcement.
+- Removed Phase 3 SQLite ATTACH test pollution from production database setup and moved automation license tests to PostgreSQL + Alembic migration infrastructure.
 - Moved HWID smoke override into Electron bootstrap with `app.isPackaged` guard and isolated E2E `userData` paths to prevent safeStorage state leakage between tests.
 
 ### File List
 
+- `.github/workflows/ci.yml`
 - `_bmad-output/implementation-artifacts/1-3-activate-license-voi-hwid-binding.md`
 - `_bmad-output/implementation-artifacts/sprint-status-phase3.yaml`
 - `automation-desktop/package-lock.json`
@@ -194,10 +249,15 @@ GPT-5 Codex
 - `backend/app/services/automation/hwid.py`
 - `backend/app/services/automation/license.py`
 - `backend/tests/conftest.py`
-- `backend/tests/test_automation_license.py`
+- `backend/pytest.ini`
+- `backend/requirements-dev.txt`
+- `backend/tests/automation/conftest.py`
+- `backend/tests/automation/test_automation_license.py`
+- `backend/tests/conftest.py`
 - `backend/tests/test_storage_cleanup.py`
 
 ### Change Log
 
 - 2026-06-02: Implemented Story 1.3 license activation with HWID binding across backend and Electron client; added migration, models, service/router, safeStorage, IPC, LicenseView, gate flow, and tests.
 - 2026-06-02: Fixed validation blockers: backend SQLite `phase3` schema attach for independent tests, safeStorage encrypted blob storage lint issue, guarded HWID smoke override, and E2E userData isolation.
+- 2026-06-02: Review patch moved Phase 3 backend automation tests to PostgreSQL + Alembic migration setup, removed production SQLite ATTACH pollution, added FK enforcement coverage, and added CI Postgres service job.

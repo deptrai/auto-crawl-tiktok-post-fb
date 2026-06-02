@@ -1,18 +1,28 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import text
-
-from app.models.automation.license import License, LicenseActivation
-from app.services.automation.license import LicenseActivationError, activate_license
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
 
 VALID_HWID = "a" * 64
 OTHER_HWID = "b" * 64
 
+pytestmark = pytest.mark.postgres
 
-def create_license(db_session, key: str = "LIC-TEST-001", days_total: int = 30, revoked: bool = False) -> License:
+
+def create_license(
+    db_session: Session,
+    key: str = "LIC-TEST-001",
+    days_total: int = 30,
+    revoked: bool = False,
+):
+    from app.models.automation.license import License
+
     license_record = License(key=key, days_total=days_total, revoked=revoked)
     db_session.add(license_record)
     db_session.commit()
@@ -20,26 +30,46 @@ def create_license(db_session, key: str = "LIC-TEST-001", days_total: int = 30, 
     return license_record
 
 
-def test_phase3_license_tables_exist(db_session):
-    # Given: test database metadata has been initialized.
-    # When: checking phase3 license tables.
-    bind = db_session.get_bind()
-    if bind.dialect.name == "sqlite":
-        license_count = db_session.execute(text("SELECT COUNT(*) FROM phase3.licenses")).scalar_one()
-        activation_count = db_session.execute(text("SELECT COUNT(*) FROM phase3.license_activations")).scalar_one()
-        assert license_count == 0
-        assert activation_count == 0
-    else:
-        rows = db_session.execute(
+def test_phase3_license_tables_exist(db_session: Session):
+    # Given: Alembic migrations have been applied to a real PostgreSQL database.
+    # When: checking phase3 license tables via information_schema.
+    rows = db_session.execute(
+        text(
+            "SELECT table_name FROM information_schema.tables "
+            "WHERE table_schema = 'phase3' AND table_name IN ('licenses', 'license_activations')"
+        )
+    ).scalars().all()
+
+    # Then: both Phase 3 tables exist in the production schema namespace.
+    assert set(rows) == {"licenses", "license_activations"}
+
+
+def test_phase3_cross_schema_fk_is_enforced(db_session: Session):
+    # Given: PostgreSQL has the phase3 schema and FK constraints from Alembic.
+    missing_license_id = uuid.uuid4()
+
+    # When/Then: inserting an activation for a non-existent license fails the FK.
+    with pytest.raises(IntegrityError):
+        db_session.execute(
             text(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema = 'phase3' AND table_name IN ('licenses', 'license_activations')"
-            )
-        ).scalars().all()
-        assert set(rows) == {"licenses", "license_activations"}
+                "INSERT INTO phase3.license_activations "
+                "(id, license_id, hwid_hash, expires_at) "
+                "VALUES (:id, :license_id, :hwid_hash, now() + interval '1 day')"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "license_id": missing_license_id,
+                "hwid_hash": VALID_HWID,
+            },
+        )
+        db_session.commit()
+    db_session.rollback()
 
 
-def test_activate_license_success_binds_hwid_and_computes_expiry(db_session):
+def test_activate_license_success_binds_hwid_and_computes_expiry(db_session: Session):
+    from app.models.automation.license import LicenseActivation
+    from app.services.automation.license import activate_license
+
     # Given: an active license exists.
     license_record = create_license(db_session, days_total=30)
 
@@ -54,7 +84,10 @@ def test_activate_license_success_binds_hwid_and_computes_expiry(db_session):
     assert activation.hwid_hash == VALID_HWID
 
 
-def test_activate_license_same_hwid_is_idempotent(db_session):
+def test_activate_license_same_hwid_is_idempotent(db_session: Session):
+    from app.models.automation.license import LicenseActivation
+    from app.services.automation.license import activate_license
+
     # Given: a license has already been activated on one HWID.
     license_record = create_license(db_session)
     first = activate_license(db_session, key=license_record.key, hwid=VALID_HWID)
@@ -67,7 +100,9 @@ def test_activate_license_same_hwid_is_idempotent(db_session):
     assert db_session.query(LicenseActivation).count() == 1
 
 
-def test_activate_license_hwid_mismatch_returns_domain_error(db_session):
+def test_activate_license_hwid_mismatch_returns_domain_error(db_session: Session):
+    from app.services.automation.license import LicenseActivationError, activate_license
+
     # Given: a license has already been bound to another HWID.
     license_record = create_license(db_session)
     activate_license(db_session, key=license_record.key, hwid=VALID_HWID)
@@ -80,7 +115,9 @@ def test_activate_license_hwid_mismatch_returns_domain_error(db_session):
     assert "rebind" in exc_info.value.message.lower()
 
 
-def test_activate_license_rejects_revoked_and_missing_keys(db_session):
+def test_activate_license_rejects_revoked_and_missing_keys(db_session: Session):
+    from app.services.automation.license import LicenseActivationError, activate_license
+
     # Given: one revoked license and one missing key.
     revoked = create_license(db_session, key="LIC-REVOKED", revoked=True)
 
@@ -95,7 +132,7 @@ def test_activate_license_rejects_revoked_and_missing_keys(db_session):
     assert missing_error.value.code == "LICENSE_NOT_FOUND"
 
 
-def test_activate_endpoint_returns_success_and_domain_errors(client, db_session):
+def test_activate_endpoint_returns_success_and_domain_errors(client: TestClient, db_session: Session):
     # Given: active and revoked license records exist.
     active = create_license(db_session, key="LIC-API-OK", days_total=7)
     revoked = create_license(db_session, key="LIC-API-REVOKED", revoked=True)

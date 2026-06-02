@@ -24,6 +24,57 @@ jobs:
       - name: Chạy test backend
         run: python -m pytest -q
 
+  backend-phase3-automation:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: admin
+          POSTGRES_PASSWORD: adminpassword
+          POSTGRES_DB: medirus_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U admin -d medirus_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    defaults:
+      run:
+        working-directory: backend
+    env:
+      PHASE3_RUN_AUTOMATION_PG: "1"
+      PHASE3_TEST_DATABASE_URL: postgresql://admin:adminpassword@localhost:5432/medirus_test
+      DATABASE_URL: postgresql://admin:adminpassword@localhost:5432/medirus_test
+      AUTO_CREATE_SCHEMA: "false"
+      SCHEDULER_ENABLED: "false"
+      BACKGROUND_JOBS_MODE: dedicated-worker
+      APP_ROLE: api
+      JWT_SECRET: test-jwt-secret
+      TOKEN_ENCRYPTION_SECRET: test-token-secret
+      ADMIN_PASSWORD: admin12345
+      ROOT_ADMIN_PASSWORD: admin12345
+      DEFAULT_ADMIN_USERNAME: admin
+      DEFAULT_ADMIN_DISPLAY_NAME: Quản trị viên kiểm thử
+      FB_VERIFY_TOKEN: test-verify-token
+      PASSWORD_MIN_LENGTH: "8"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+          cache-dependency-path: |
+            backend/requirements.txt
+            backend/requirements-dev.txt
+      - name: Cài dependencies backend + test
+        run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Kiểm tra Alembic Phase 3 trên PostgreSQL
+        run: python -m alembic upgrade head
+      - name: Chạy test backend Phase 3 automation trên PostgreSQL
+        run: python -m pytest -q tests/automation
+
   frontend:
     runs-on: ubuntu-latest
     defaults:

@@ -1,0 +1,1 @@
+testcontainers[postgres]==4.9.2
