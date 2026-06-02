@@ -24,7 +24,7 @@ export const SkippedEntrySchema = z.object({
 
 export const FailedEntrySchema = z.object({
   line: z.number().int().positive(),
-  uid: z.string().optional(),
+  uid: z.string().min(1).optional(),
   reason: z.string().min(1)
 })
 

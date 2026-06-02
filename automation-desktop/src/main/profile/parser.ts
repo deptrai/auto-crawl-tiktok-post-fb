@@ -1,5 +1,5 @@
 /** Maximum number of non-empty data lines accepted per import batch. */
-const MAX_LINES = 5000
+export const MAX_LINES = 5000
 
 export interface ParsedProfile {
   lineNumber: number
@@ -20,6 +20,82 @@ export interface ParseError {
 export interface ParseResult {
   parsed: ParsedProfile[]
   errors: ParseError[]
+  lineCapExceeded: boolean
+  dataLineCount: number
+}
+
+interface CookieExportEntry {
+  name: string
+  value: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null
+}
+
+function parseCookieExport(text: string): ParseResult | null {
+  const trimmed = text.trim()
+  if (!trimmed.startsWith('[') && !trimmed.startsWith('{')) return null
+
+  let json: unknown
+  try {
+    json = JSON.parse(trimmed)
+  } catch {
+    return {
+      parsed: [],
+      errors: [{ line: 1, reason: 'JSON cookie export không hợp lệ.' }],
+      lineCapExceeded: false,
+      dataLineCount: 1
+    }
+  }
+
+  const rawEntries = Array.isArray(json) ? json : [json]
+  const entries: CookieExportEntry[] = rawEntries.flatMap((entry) => {
+    if (!isRecord(entry)) return []
+    const name = entry['name']
+    const value = entry['value']
+    if (typeof name !== 'string' || !name.trim()) return []
+    if (typeof value !== 'string') return []
+    return [{ name: name.trim(), value }]
+  })
+
+  if (entries.length === 0) {
+    return {
+      parsed: [],
+      errors: [{ line: 1, reason: 'JSON cookie export không có cookie hợp lệ.' }],
+      lineCapExceeded: false,
+      dataLineCount: 1
+    }
+  }
+
+  const cUser = entries.find((entry) => entry.name === 'c_user')?.value.trim()
+  if (!cUser) {
+    return {
+      parsed: [],
+      errors: [{ line: 1, reason: 'JSON cookie export thiếu cookie c_user để lấy uid.' }],
+      lineCapExceeded: false,
+      dataLineCount: 1
+    }
+  }
+
+  const cookie = entries.map((entry) => `${entry.name}=${entry.value}`).join('; ')
+
+  return {
+    parsed: [
+      {
+        lineNumber: 1,
+        uid: cUser,
+        pass: '',
+        twofa: '',
+        cookie,
+        hotmail: '',
+        passmail: ''
+      }
+    ],
+    errors: [],
+    lineCapExceeded: false,
+    dataLineCount: 1
+  }
 }
 
 /**
@@ -33,6 +109,9 @@ export interface ParseResult {
  * Returns per-line errors for invalid lines; does NOT abort the batch.
  */
 export function parseBulkProfiles(text: string): ParseResult {
+  const cookieExport = parseCookieExport(text)
+  if (cookieExport) return cookieExport
+
   const rawLines = text.split('\n')
   // Filter out empty / comment lines — these don't count toward MAX_LINES
   const dataLines = rawLines
@@ -45,12 +124,9 @@ export function parseBulkProfiles(text: string): ParseResult {
   if (dataLines.length > MAX_LINES) {
     return {
       parsed: [],
-      errors: [
-        {
-          line: 1,
-          reason: `Quá nhiều dòng: tối đa ${MAX_LINES} dòng được phép mỗi lần import (nhận ${dataLines.length} dòng).`
-        }
-      ]
+      errors: [],
+      lineCapExceeded: true,
+      dataLineCount: dataLines.length
     }
   }
 
@@ -101,5 +177,5 @@ export function parseBulkProfiles(text: string): ParseResult {
     })
   }
 
-  return { parsed, errors }
+  return { parsed, errors, lineCapExceeded: false, dataLineCount: dataLines.length }
 }

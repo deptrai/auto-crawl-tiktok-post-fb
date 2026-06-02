@@ -1,22 +1,33 @@
+import { createServer, type Server } from 'node:http'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { _electron as electron, test, expect } from '@playwright/test'
-import type { ElectronApplication } from 'playwright-core'
+import type { ElectronApplication, Locator } from 'playwright-core'
 
 /**
  * Minimal license server: always returns a valid active license.
  * Profiles E2E tests need the license gate to be 'active' so ProfilesView renders.
  */
 async function launchWithActiveLicense(
-  dbPath: string
-): Promise<{ app: ElectronApplication; window: Awaited<ReturnType<ElectronApplication['firstWindow']>> }> {
-  const { createServer } = await import('node:http')
+  dbPath: string,
+  extraEnv: Record<string, string> = {}
+): Promise<{
+  app: ElectronApplication
+  window: Awaited<ReturnType<ElectronApplication['firstWindow']>>
+  server: Server
+}> {
   const server = createServer((_req, res) => {
     const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
     res.writeHead(200, { 'Content-Type': 'application/json' })
     // activation_id must be a valid UUID for BackendActivationResponseSchema validation
-    res.end(JSON.stringify({ activation_id: '11111111-1111-4111-a111-111111111111', expires_at: expiresAt, rebind_count: 0 }))
+    res.end(
+      JSON.stringify({
+        activation_id: '11111111-1111-4111-a111-111111111111',
+        expires_at: expiresAt,
+        rebind_count: 0
+      })
+    )
   })
 
   const url: string = await new Promise((resolve) => {
@@ -39,7 +50,8 @@ async function launchWithActiveLicense(
       PHASE3_HWID_SMOKE_VALUE: 'c'.repeat(64),
       // Skip EULA gate
       PHASE3_SETTINGS_SMOKE_KEY: 'eula_accepted_version',
-      PHASE3_SETTINGS_SMOKE_VALUE: '1'
+      PHASE3_SETTINGS_SMOKE_VALUE: '1',
+      ...extraEnv
     }
   })
 
@@ -50,16 +62,40 @@ async function launchWithActiveLicense(
   await window.getByRole('button', { name: /kích hoạt/i }).click()
   await expect(window.getByTestId('main-shell')).toBeVisible({ timeout: 10_000 })
 
-  return { app, window }
+  return { app, window, server }
+}
+
+function closeServer(server: Server | null): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (!server || !server.listening) {
+      resolve()
+      return
+    }
+    server.close((err) => {
+      if (err) reject(err)
+      else resolve()
+    })
+  })
+}
+
+async function setTextareaValue(textarea: Locator, value: string): Promise<void> {
+  await textarea.evaluate((node, nextValue) => {
+    const textareaNode = node as HTMLTextAreaElement
+    const valueSetter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set
+    valueSetter?.call(textareaNode, nextValue)
+    textareaNode.dispatchEvent(new Event('input', { bubbles: true }))
+  }, value)
 }
 
 test('[P0] profiles view renders and import button is present when license is active', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-'))
   let app: ElectronApplication | null = null
+  let server: Server | null = null
 
   try {
     const launched = await launchWithActiveLicense(join(dir, 'phase3.db'))
     app = launched.app
+    server = launched.server
     const window = launched.window
 
     // ProfilesView should be visible inside main-shell
@@ -68,6 +104,7 @@ test('[P0] profiles view renders and import button is present when license is ac
     await expect(window.getByTestId('import-button')).toBeVisible()
   } finally {
     if (app) await app.close()
+    await closeServer(server)
     rmSync(dir, { recursive: true, force: true })
   }
 })
@@ -75,10 +112,12 @@ test('[P0] profiles view renders and import button is present when license is ac
 test('[P0] import two profiles shows summary with 2 imported and clears textarea', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-import-'))
   let app: ElectronApplication | null = null
+  let server: Server | null = null
 
   try {
     const launched = await launchWithActiveLicense(join(dir, 'phase3.db'))
     app = launched.app
+    server = launched.server
     const window = launched.window
 
     await expect(window.getByTestId('profiles-view')).toBeVisible({ timeout: 10_000 })
@@ -90,7 +129,7 @@ test('[P0] import two profiles shows summary with 2 imported and clears textarea
       'uid_alpha|pass1|seed1|cookieALPHA|alpha@mail.com|mailpass1',
       'uid_beta|pass2||cookieBETA|'
     ].join('\n')
-    await textarea.fill(bulk)
+    await setTextareaValue(textarea, bulk)
 
     await window.getByTestId('import-button').click()
 
@@ -109,6 +148,69 @@ test('[P0] import two profiles shows summary with 2 imported and clears textarea
     await expect(window.getByText('uid_beta')).toBeVisible()
   } finally {
     if (app) await app.close()
+    await closeServer(server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('[P1] import shows loading state and disables button while processing', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-loading-'))
+  let app: ElectronApplication | null = null
+  let server: Server | null = null
+
+  try {
+    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'), {
+      PHASE3_PROFILE_IMPORT_DELAY_MS: '1500'
+    })
+    app = launched.app
+    server = launched.server
+    const window = launched.window
+
+    await expect(window.getByTestId('profiles-view')).toBeVisible({ timeout: 10_000 })
+    const textarea = window.getByTestId('import-textarea')
+    const bulk = [
+      'uid_loading_1|pass1|seed1|cookie_LOADING_1|mail1@example.com|mailpass1',
+      'uid_loading_2|pass2|seed2|cookie_LOADING_2|mail2@example.com|mailpass2'
+    ].join('\n')
+    await setTextareaValue(textarea, bulk)
+
+    await window.getByTestId('import-button').click()
+
+    await expect(window.getByTestId('import-button')).toBeDisabled()
+    await expect(window.getByTestId('import-loading')).toBeVisible()
+    await expect(window.getByTestId('import-result')).toBeVisible({ timeout: 30_000 })
+  } finally {
+    if (app) await app.close()
+    await closeServer(server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('[P1] import error path keeps textarea value for retry', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-error-'))
+  let app: ElectronApplication | null = null
+  let server: Server | null = null
+
+  try {
+    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'))
+    app = launched.app
+    server = launched.server
+    const window = launched.window
+
+    await expect(window.getByTestId('profiles-view')).toBeVisible({ timeout: 10_000 })
+    const textarea = window.getByTestId('import-textarea')
+    const bulk = Array.from({ length: 5001 }, (_, i) => `uid_error_${i}|p|2fa|ck${i}`).join('\n')
+    await setTextareaValue(textarea, bulk)
+
+    await window.getByTestId('import-button').click()
+
+    await expect(window.getByTestId('import-error')).toBeVisible({ timeout: 10_000 })
+    await expect(window.getByText(/Quá nhiều dòng/i)).toBeVisible()
+    await expect(textarea).toHaveValue(bulk)
+    await expect(window.getByTestId('import-result')).toHaveCount(0)
+  } finally {
+    if (app) await app.close()
+    await closeServer(server)
     rmSync(dir, { recursive: true, force: true })
   }
 })

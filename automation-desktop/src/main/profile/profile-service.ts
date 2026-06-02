@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import type { SecureStorage } from '../../adapters/secure-storage'
+import { brandSecret, revealSecret, type Secret } from '../../shared/types/secret'
 import type { ProfileRepository } from '../db/repositories/profile-repo'
-import { parseBulkProfiles } from './parser'
+import { MAX_LINES, parseBulkProfiles } from './parser'
 
 export class ProfileServiceError extends Error {
   code: string
@@ -49,10 +50,14 @@ export interface ProfileService {
 export interface ProfileServiceDeps {
   storage: SecureStorage
   repo: ProfileRepository
+  importDelayMs?: number
 }
 
 /** Secret key convention: profile.<id>.<field> in safeStorage. */
-function secretKey(id: string, field: 'cookie' | 'twofa' | 'fb_password' | 'mail_password'): string {
+function secretKey(
+  id: string,
+  field: 'cookie' | 'twofa' | 'fb_password' | 'mail_password'
+): string {
   return `profile.${id}.${field}`
 }
 
@@ -61,7 +66,24 @@ export function createProfileService(deps: ProfileServiceDeps): ProfileService {
 
   return {
     async importBulk(text) {
-      const { parsed, errors: parseErrors } = parseBulkProfiles(text)
+      const {
+        parsed,
+        errors: parseErrors,
+        lineCapExceeded,
+        dataLineCount
+      } = parseBulkProfiles(text)
+
+      if (lineCapExceeded) {
+        throw new ProfileServiceError(
+          'LINE_CAP_EXCEEDED',
+          `Quá nhiều dòng: tối đa ${MAX_LINES} dòng mỗi lần import (nhận ${dataLineCount} dòng).`,
+          false
+        )
+      }
+
+      if (deps.importDelayMs && deps.importDelayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, deps.importDelayMs))
+      }
 
       const skipped: SkippedEntry[] = []
       const failed: FailedEntry[] = []
@@ -73,12 +95,20 @@ export function createProfileService(deps: ProfileServiceDeps): ProfileService {
       for (const p of parsed) {
         // Dedupe: in-batch duplicate
         if (batchUids.has(p.uid)) {
-          skipped.push({ line: p.lineNumber, uid: p.uid, reason: 'uid đã tồn tại trong batch hiện tại.' })
+          skipped.push({
+            line: p.lineNumber,
+            uid: p.uid,
+            reason: 'uid đã tồn tại trong batch hiện tại.'
+          })
           continue
         }
         // Dedupe: already in DB
         if (repo.uidExists(p.uid)) {
-          skipped.push({ line: p.lineNumber, uid: p.uid, reason: 'uid đã tồn tại trong cơ sở dữ liệu.' })
+          skipped.push({
+            line: p.lineNumber,
+            uid: p.uid,
+            reason: 'uid đã tồn tại trong cơ sở dữ liệu.'
+          })
           batchUids.add(p.uid)
           continue
         }
@@ -88,11 +118,15 @@ export function createProfileService(deps: ProfileServiceDeps): ProfileService {
         const now = new Date().toISOString()
 
         // Build secret entries (only non-empty values) — R-D3: sink to safeStorage immediately
-        const secretEntries: Array<{ field: 'cookie' | 'twofa' | 'fb_password' | 'mail_password'; value: string }> = []
-        secretEntries.push({ field: 'cookie', value: p.cookie }) // cookie is mandatory
-        if (p.twofa) secretEntries.push({ field: 'twofa', value: p.twofa })
-        if (p.pass) secretEntries.push({ field: 'fb_password', value: p.pass })
-        if (p.passmail) secretEntries.push({ field: 'mail_password', value: p.passmail })
+        const secretEntries: Array<{
+          field: 'cookie' | 'twofa' | 'fb_password' | 'mail_password'
+          value: Secret<string>
+        }> = []
+        secretEntries.push({ field: 'cookie', value: brandSecret(p.cookie) }) // cookie is mandatory
+        if (p.twofa) secretEntries.push({ field: 'twofa', value: brandSecret(p.twofa) })
+        if (p.pass) secretEntries.push({ field: 'fb_password', value: brandSecret(p.pass) })
+        if (p.passmail)
+          secretEntries.push({ field: 'mail_password', value: brandSecret(p.passmail) })
 
         // Build metadata entries for SQLite (non-secret)
         const metadata: Array<{ key: string; value: string }> = []
@@ -104,7 +138,7 @@ export function createProfileService(deps: ProfileServiceDeps): ProfileService {
         const writtenKeys: string[] = []
         try {
           for (const { field, value } of secretEntries) {
-            await storage.set(secretKey(id, field), value)
+            await storage.set(secretKey(id, field), revealSecret(value))
             writtenKeys.push(secretKey(id, field))
           }
 
@@ -116,12 +150,23 @@ export function createProfileService(deps: ProfileServiceDeps): ProfileService {
         } catch (err) {
           // Cleanup: delete any secret keys already written for this id
           for (const k of writtenKeys) {
-            try { await storage.delete(k) } catch { /* best-effort */ }
+            try {
+              await storage.delete(k)
+            } catch {
+              /* best-effort */
+            }
           }
           // Best-effort: remove partial profile row if it exists
-          try { repo.deleteProfile(id) } catch { /* may not exist */ }
+          try {
+            repo.deleteProfile(id)
+          } catch {
+            /* may not exist */
+          }
 
-          const reason = err instanceof Error ? err.message : 'Lỗi không xác định khi lưu profile.'
+          const rawMsg = err instanceof Error ? err.message : ''
+          const reason = /UNIQUE constraint failed/i.test(rawMsg)
+            ? 'uid đã tồn tại trong cơ sở dữ liệu.'
+            : 'Không thể lưu profile (lỗi lưu trữ nội bộ).'
           failed.push({ line: p.lineNumber, uid: p.uid, reason })
           continue
         }

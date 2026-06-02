@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { parseBulkProfiles } from '../../src/main/profile/parser'
+import { MAX_LINES, parseBulkProfiles } from '../../src/main/profile/parser'
 
 test('[P1] parser handles happy path 6-field line', () => {
   const { parsed, errors } = parseBulkProfiles('uid1|pass1|seed1|cookie1|hot@mail.com|mailpass1')
@@ -16,7 +16,9 @@ test('[P1] parser handles happy path 6-field line', () => {
 })
 
 test('[P1] parser handles 7-field line (with token)', () => {
-  const { parsed, errors } = parseBulkProfiles('uid2|pass2|seed2|cookie2|token2|hot2@m.com|mailpass2')
+  const { parsed, errors } = parseBulkProfiles(
+    'uid2|pass2|seed2|cookie2|token2|hot2@m.com|mailpass2'
+  )
   expect(errors).toHaveLength(0)
   expect(parsed).toHaveLength(1)
   const p = parsed[0]
@@ -86,9 +88,10 @@ test('[P1] parser returns errors per line, does not abort batch', () => {
 })
 
 test('[P0] parser rejects text exceeding line cap', () => {
-  const lines = Array.from({ length: 5001 }, (_, i) => `uid${i}|p|2fa|ck${i}`)
-  const { parsed, errors } = parseBulkProfiles(lines.join('\n'))
+  const lines = Array.from({ length: MAX_LINES + 1 }, (_, i) => `uid${i}|p|2fa|ck${i}`)
+  const { parsed, errors, lineCapExceeded, dataLineCount } = parseBulkProfiles(lines.join('\n'))
   expect(parsed).toHaveLength(0)
-  expect(errors).toHaveLength(1)
-  expect(errors[0].reason).toMatch(/5000/)
+  expect(errors).toHaveLength(0)
+  expect(lineCapExceeded).toBe(true)
+  expect(dataLineCount).toBe(MAX_LINES + 1)
 })

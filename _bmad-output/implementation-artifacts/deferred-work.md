@@ -113,3 +113,8 @@
 - Concurrent creation 500 error (`backend/app/api/users.py:44`)
 - Weak password (`backend/app/api/auth.py:24`)
 - Migration re-runs crash (`backend/alembic/versions/c14f91eae2aa_update_user_schema.py:51`)## Deferred from: code review of 14-3-workspace-to-chuc (2026-05-05)\n- Xóa bảo vệ chống Brute-Force trong API login: Cần khôi phục check_login_rate_limit nhưng hiện tại bị vô hiệu hoá do đang refactor.\n
+
+
+## Deferred from: code review of 2-1-import-bulk-profile.md (2026-06-02)
+
+- Orphan safeStorage key khi `storage.delete` trong cleanup tự throw (double-fault). Code đã attempt cleanup (đạt ý AC5); key mồ côi là encrypted + không-referenced trong DB nên KHÔNG phải leak, chỉ là rác không reachable. Cần cơ chế reconciliation/observability (sweep quét key `profile.<id>.*` không có row tương ứng) ở story sau. [automation-desktop/src/main/profile/profile-service.ts:118-120]

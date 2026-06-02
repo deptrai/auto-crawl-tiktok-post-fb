@@ -1,17 +1,23 @@
 import { test, expect } from '@playwright/test'
 import type { SecureStorage } from '../../src/adapters/secure-storage'
 import type { ProfileRepository } from '../../src/main/db/repositories/profile-repo'
-import { createProfileService } from '../../src/main/profile/profile-service'
+import { MAX_LINES } from '../../src/main/profile/parser'
+import { createProfileService, ProfileServiceError } from '../../src/main/profile/profile-service'
 
 // ---- Memory fakes ----
 
-function createMemoryStorage(log: string[] = []): SecureStorage & { data: Map<string, string> } {
+function createMemoryStorage(
+  log: string[] = []
+): SecureStorage & { data: Map<string, string>; valueTypes: string[] } {
   const data = new Map<string, string>()
+  const valueTypes: string[] = []
   return {
     data,
+    valueTypes,
     get: async (key) => data.get(key) ?? null,
     set: async (key, value) => {
       log.push(`set:${key}`)
+      valueTypes.push(typeof value)
       data.set(key, value)
     },
     delete: async (key) => {
@@ -21,7 +27,10 @@ function createMemoryStorage(log: string[] = []): SecureStorage & { data: Map<st
   }
 }
 
-function createMemoryRepo(): ProfileRepository & { profiles: Map<string, object>; metadata: Map<string, string> } {
+function createMemoryRepo(): ProfileRepository & {
+  profiles: Map<string, object>
+  metadata: Map<string, string>
+} {
   const profiles = new Map<string, object>()
   const metadata = new Map<string, string>()
   const uids = new Set<string>()
@@ -73,6 +82,7 @@ test('[P0] importBulk stores secret in storage, metadata in repo', async () => {
   expect(await storage.get(`profile.${id}.twofa`)).toBe('seed1')
   expect(await storage.get(`profile.${id}.fb_password`)).toBe('pass1')
   expect(await storage.get(`profile.${id}.mail_password`)).toBe('mailpass1')
+  expect(storage.valueTypes).toEqual(['string', 'string', 'string', 'string'])
 
   // Metadata in repo
   expect(repo.metadata.get(`${id}:email`)).toBe('hot@m.com')
@@ -110,7 +120,13 @@ test('[P1] importBulk skips uid already in repo', async () => {
   const repo = createMemoryRepo()
   // Pre-insert uid via insertProfileAtomic
   repo.insertProfileAtomic(
-    { id: 'existing-id', uid: 'uid1', displayName: 'uid1', status: 'idle', createdAt: new Date().toISOString() },
+    {
+      id: 'existing-id',
+      uid: 'uid1',
+      displayName: 'uid1',
+      status: 'idle',
+      createdAt: new Date().toISOString()
+    },
     []
   )
   const service = createProfileService({ storage, repo })
@@ -171,5 +187,47 @@ test('[P1] empty pass/twofa fields are not stored in safeStorage', async () => {
   const id = result.profiles[0].id
 
   // Only cookie should be stored
-  expect(log.filter(e => e.startsWith('set:'))).toEqual([`set:profile.${id}.cookie`])
+  expect(log.filter((e) => e.startsWith('set:'))).toEqual([`set:profile.${id}.cookie`])
+})
+
+test('[P0] importBulk throws non-retryable service error when line cap is exceeded', async () => {
+  const storage = createMemoryStorage()
+  const repo = createMemoryRepo()
+  const service = createProfileService({ storage, repo })
+  const text = Array.from({ length: MAX_LINES + 1 }, (_, i) => `uid${i}|p|2fa|ck${i}`).join('\n')
+
+  await expect(service.importBulk(text)).rejects.toMatchObject({
+    code: 'LINE_CAP_EXCEEDED',
+    retryable: false
+  } satisfies Partial<ProfileServiceError>)
+})
+
+test('[P1] importBulk sanitizes DB errors and maps UNIQUE race to Vietnamese reason', async () => {
+  const storage = createMemoryStorage()
+  const repo = createMemoryRepo()
+  repo.insertProfileAtomic = () => {
+    throw new Error('SqliteError: UNIQUE constraint failed: profiles.uid')
+  }
+  const service = createProfileService({ storage, repo })
+
+  const result = await service.importBulk('uid1|p|2fa|ck1')
+
+  expect(result.failed).toHaveLength(1)
+  expect(result.failed[0].reason).toBe('uid đã tồn tại trong cơ sở dữ liệu.')
+  expect(JSON.stringify(result)).not.toMatch(/UNIQUE constraint failed|profiles\.uid/i)
+})
+
+test('[P1] importBulk sanitizes non-unique storage/internal errors', async () => {
+  const storage = createMemoryStorage()
+  const repo = createMemoryRepo()
+  repo.insertProfileAtomic = () => {
+    throw new Error('SqliteError: no such table: profile_metadata')
+  }
+  const service = createProfileService({ storage, repo })
+
+  const result = await service.importBulk('uid1|p|2fa|ck1')
+
+  expect(result.failed).toHaveLength(1)
+  expect(result.failed[0].reason).toBe('Không thể lưu profile (lỗi lưu trữ nội bộ).')
+  expect(JSON.stringify(result)).not.toMatch(/no such table|profile_metadata/i)
 })

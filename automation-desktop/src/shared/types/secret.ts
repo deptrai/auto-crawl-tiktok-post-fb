@@ -12,3 +12,8 @@ export function brandSecret<T>(value: T): Secret<T> {
   })
   return wrapped as Secret<T>
 }
+
+/** Unwrap a branded secret back to its primitive value for storage/native API boundaries. */
+export function revealSecret<T>(secret: Secret<T>): T {
+  return (secret as { valueOf(): T }).valueOf()
+}

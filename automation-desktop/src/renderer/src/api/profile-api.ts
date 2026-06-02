@@ -1,7 +1,4 @@
-import type {
-  ImportResult,
-  ProfileImportBulkResponse
-} from '../../../shared/ipc-schemas'
+import type { ImportResult, ProfileImportBulkResponse } from '../../../shared/ipc-schemas'
 
 function assertOk<T extends { ok: boolean; error?: { message: string } }>(
   response: T

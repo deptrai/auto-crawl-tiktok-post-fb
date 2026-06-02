@@ -46,6 +46,7 @@ interface BootstrapDeps {
 
 type DbSmokeGlobal = typeof globalThis & {
   __PHASE3_DB_SMOKE_RESULT__?: string
+  __PHASE3_PROFILE_REPO_SMOKE_RESULT__?: string
   __PHASE3_EXTERNAL_OPEN_URL__?: string
 }
 
@@ -87,7 +88,11 @@ function initializeDeps(): BootstrapDeps {
       ),
       generateHwid: smokeHwid ? async () => smokeHwid : undefined
     }),
-    profile: createProfileService({ repo: profileRepo, storage: adapters.storage })
+    profile: createProfileService({
+      repo: profileRepo,
+      storage: adapters.storage,
+      importDelayMs: readProfileImportDelayMs()
+    })
   }
   const repos = {
     profile: profileRepo
@@ -131,6 +136,84 @@ function runSettingsSmoke(settings: SettingsRepository): void {
   if (overwriteValue !== undefined) settings.setSetting(key, overwriteValue)
 
   process.env['PHASE3_SETTINGS_SMOKE_RESULT'] = `${key}=${settings.getSetting(key) ?? ''}`
+}
+
+function readProfileImportDelayMs(): number | undefined {
+  if (app.isPackaged) return undefined
+  const raw = process.env['PHASE3_PROFILE_IMPORT_DELAY_MS']
+  if (raw === undefined) return undefined
+  const trimmed = raw.trim()
+  const parsed = Number(trimmed)
+  if (!Number.isInteger(parsed) || parsed < 0 || String(parsed) !== trimmed) return undefined
+  return Math.min(parsed, 5_000)
+}
+
+function runProfileRepoSmoke(db: BootstrapDeps['db'], repo: ProfileRepository): void {
+  if (app.isPackaged) return
+  if (process.env['PHASE3_PROFILE_REPO_SMOKE'] !== '1') return
+
+  let result = 'pass'
+  try {
+    const foreignKeys = db.pragma('foreign_keys', { simple: true })
+    if (foreignKeys !== 1) throw new Error('foreign_keys disabled')
+
+    repo.insertProfileAtomic(
+      {
+        id: 'profile-smoke-1',
+        uid: 'uid_profile_smoke',
+        displayName: 'uid_profile_smoke',
+        status: 'idle',
+        createdAt: '2026-06-02T00:00:00.000Z'
+      },
+      [
+        { key: 'email', value: 'smoke@mail.com' },
+        { key: 'token', value: 'token-smoke' }
+      ]
+    )
+
+    const metadataCount = db
+      .prepare<
+        [string],
+        { c: number }
+      >('SELECT COUNT(*) AS c FROM profile_metadata WHERE profile_id = ?')
+      .get('profile-smoke-1')?.c
+    if (!repo.uidExists('uid_profile_smoke')) throw new Error('uidExists failed')
+    if (repo.countProfiles() !== 1) throw new Error('count after insert failed')
+    if (repo.listProfiles()[0]?.uid !== 'uid_profile_smoke') throw new Error('list failed')
+    if (metadataCount !== 2) throw new Error('metadata insert failed')
+
+    let uniqueFailed = false
+    try {
+      repo.insertProfileAtomic(
+        {
+          id: 'profile-smoke-duplicate',
+          uid: 'uid_profile_smoke',
+          displayName: 'uid_profile_smoke',
+          status: 'idle',
+          createdAt: '2026-06-02T00:00:01.000Z'
+        },
+        []
+      )
+    } catch {
+      uniqueFailed = true
+    }
+    if (!uniqueFailed) throw new Error('unique constraint not enforced')
+
+    repo.deleteProfile('profile-smoke-1')
+    const metadataAfterDelete = db
+      .prepare<
+        [string],
+        { c: number }
+      >('SELECT COUNT(*) AS c FROM profile_metadata WHERE profile_id = ?')
+      .get('profile-smoke-1')?.c
+    if (repo.countProfiles() !== 0) throw new Error('delete failed')
+    if (metadataAfterDelete !== 0) throw new Error('cascade delete failed')
+  } catch (error) {
+    result = `fail:${error instanceof Error ? error.message : String(error)}`
+  }
+
+  ;(globalThis as DbSmokeGlobal).__PHASE3_PROFILE_REPO_SMOKE_RESULT__ = result
+  process.env['PHASE3_PROFILE_REPO_SMOKE_RESULT'] = result
 }
 
 async function runSafeStorageSmoke(storage: ElectronSafeStorage): Promise<void> {
@@ -181,6 +264,7 @@ export async function bootstrapApplication(): Promise<void> {
   const deps = initializeDeps()
   runDatabaseSmoke(deps.db)
   runSettingsSmoke(deps.services.settings)
+  runProfileRepoSmoke(deps.db, deps.repos.profile)
   await runSafeStorageSmoke(deps.adapters.storage)
 
   // Init order: db -> adapters -> services -> ipc -> window -> background workers

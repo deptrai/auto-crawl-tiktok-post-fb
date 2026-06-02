@@ -25,7 +25,7 @@ function normalizeError(error: unknown): IpcErrorResponse {
   if (error instanceof ProfileServiceError) {
     return toErrorResponse(error.code, error.message, error.retryable)
   }
-  return toErrorResponse('PROFILE_ERROR', 'Không thể xử lý profile.', true)
+  return toErrorResponse('PROFILE_ERROR', 'Không thể xử lý profile.', false)
 }
 
 export function registerProfileHandlers(ipcMain: IpcMainLike, service: ProfileService): void {

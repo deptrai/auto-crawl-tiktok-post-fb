@@ -30,8 +30,8 @@ export function ProfilesView(): React.JSX.Element {
       <p className="eyebrow">Quản lý tài khoản</p>
       <h1>Import Profile</h1>
       <p className="lead">
-        Dán danh sách tài khoản theo định dạng{' '}
-        <code>uid|pass|2fa|cookie|hotmail|passmail</code> (mỗi dòng một tài khoản).
+        Dán danh sách tài khoản theo định dạng <code>uid|pass|2fa|cookie|hotmail|passmail</code>{' '}
+        (mỗi dòng một tài khoản).
       </p>
 
       <div className="import-form">
@@ -40,7 +40,9 @@ export function ProfilesView(): React.JSX.Element {
           className="import-textarea"
           value={text}
           onChange={(e) => setText(e.target.value)}
-          placeholder={'uid1|pass1|seed1|cookie1|email@mail.com|mailpass\n# dòng bắt đầu # là comment, bị bỏ qua'}
+          placeholder={
+            'uid1|pass1|seed1|cookie1|email@mail.com|mailpass\n# dòng bắt đầu # là comment, bị bỏ qua'
+          }
           rows={8}
           disabled={importing}
           aria-label="Danh sách profile để import"
