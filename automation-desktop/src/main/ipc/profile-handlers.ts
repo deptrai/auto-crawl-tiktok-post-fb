@@ -1,8 +1,11 @@
 import {
   ProfileImportBulkRequestSchema,
   ProfileImportBulkResponseSchema,
+  ProfileListRequestSchema,
+  ProfileListResponseSchema,
   type IpcErrorResponse,
-  type ProfileImportBulkResponse
+  type ProfileImportBulkResponse,
+  type ProfileListResponse
 } from '../../shared/ipc-schemas'
 import type { ProfileService } from '../profile/profile-service'
 import { ProfileServiceError } from '../profile/profile-service'
@@ -44,4 +47,16 @@ export function registerProfileHandlers(ipcMain: IpcMainLike, service: ProfileSe
       }
     }
   )
+
+  ipcMain.handle('phase3:profile:list', async (_event, request): Promise<ProfileListResponse> => {
+    const parsedRequest = ProfileListRequestSchema.safeParse(request)
+    if (!parsedRequest.success)
+      return ProfileListResponseSchema.parse(parseError(parsedRequest.error.flatten()))
+
+    try {
+      return ProfileListResponseSchema.parse({ ok: true, profiles: service.listProfiles() })
+    } catch (error) {
+      return ProfileListResponseSchema.parse(normalizeError(error))
+    }
+  })
 }

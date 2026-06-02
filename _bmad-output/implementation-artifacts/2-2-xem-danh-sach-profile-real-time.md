@@ -1,6 +1,6 @@
 # Story 2.2: Xem danh sách profile với trạng thái real-time
 
-Status: ready-for-dev
+Status: review
 
 <!-- Phase 3 story (Epic 2 — Profile Management, story 2/3). Sources: epics-phase3.md#Story-2.2 (L282-294), prd-phase3.md#FR3 (L343), architecture.md (DB schema L1399-1401, automation FSM L1553-1554, poll status L1984). ⚠️ automation-desktop/ (Electron client) — 25 rules CLAUDE.md ÁP DỤNG. Previous: 2.1 done (re-review round2, 8 patch + cookie-export accepted). -->
 
@@ -25,24 +25,24 @@ so that tôi biết profile nào đang chạy, lỗi, hay checkpoint mà KHÔNG 
 
 ### Main process (Electron — TypeScript)
 
-- [ ] **Task 1: Schema + channel `phase3:profile:list`** (AC: #1)
-  - [ ] `src/shared/ipc-schemas/profile.ts`: thêm `ProfileListRequestSchema = z.object({})`, `ProfileSummarySchema = z.object({ id, uid, displayName: min(1), status: z.string().min(1), createdAt: min(1) })`, `ProfileListSuccessResponseSchema = z.object({ ok: z.literal(true), profiles: z.array(ProfileSummarySchema) })`, `ProfileListResponseSchema = z.union([success, IpcErrorResponseSchema])` + export types. GIỮ NGUYÊN các schema import-bulk của 2.1.
-  - [ ] `src/shared/ipc-schemas/index.ts`: thêm entry `{ channel:'phase3:profile:list', requestSchema, responseSchema } satisfies ChannelRegistryEntry<...>` vào `channelRegistry` + import schemas. (re-export `./profile` đã có.)
-- [ ] **Task 2: `ProfileService.listProfiles`** (AC: #2)
-  - [ ] `src/main/profile/profile-service.ts`: thêm `listProfiles(): ProfileSummary[]` vào interface `ProfileService` + impl trong `createProfileService` — `return repo.listProfiles().map(r => ({ id:r.id, uid:r.uid, displayName:r.displayName, status:r.status, createdAt:r.createdAt }))`. KHÔNG đọc safeStorage.
-- [ ] **Task 3: IPC handler list** (AC: #1)
-  - [ ] `src/main/ipc/profile-handlers.ts`: trong `registerProfileHandlers`, thêm `ipcMain.handle('phase3:profile:list', ...)`: safeParse request → `parseError` nếu fail; `try { return ResponseSchema.parse({ ok:true, profiles: service.listProfiles() }) } catch (e) { return ResponseSchema.parse(normalizeError(e)) }`. Tái dùng `toErrorResponse`/`normalizeError`/`parseError` sẵn có (KHÔNG viết lại). `registerProfileHandlers(ipcMain, service)` — KHÔNG cần param mới.
-- [ ] **Task 4: Bootstrap** (AC: #1)
-  - [ ] `electron-bootstrap.ts`: **KHÔNG cần đổi** — `registerProfileHandlers` đã nhận `profile` service. Verify list handler được đăng ký (chạy cùng `registerProfileHandlers`).
-- [ ] **Task 5: Renderer API** (AC: #3,#4)
-  - [ ] `src/renderer/src/api/profile-api.ts`: thêm `listProfiles(): Promise<ProfileSummary[]>` gọi `window.api.ipc.call('phase3:profile:list', {})` + `assertOk` → `return response.profiles`. Tái dùng `assertOk` sẵn có.
-- [ ] **Task 6: ProfilesView list + polling** (AC: #3,#4,#5,#6)
-  - [ ] `ProfilesView.tsx`: thêm state `profiles`, `listError`, `listLoading`. `useEffect` mount: load lần đầu + `setInterval(5000)` poll + `clearInterval` + `cancelled` flag + in-flight guard (ref/biến) chống overlap. Sau `handleImport` success → gọi refresh list. Render section danh sách: empty state, loading testid riêng (rule #16), error giữ list cũ. Status badge map (AC5) với fallback. Hardcode tiếng Việt. KHÔNG đụng khu import-result/clear-textarea của 2.1.
-- [ ] **Task 7: Tests** (AC: tất cả)
-  - [ ] Unit `tests/unit/profile-service.spec.ts` (thêm): `listProfiles` map đúng + KHÔNG gọi storage (fake storage.get/set không được gọi) + response shape không secret.
-  - [ ] Integration `tests/integration/profile-ipc-handlers.spec.ts` (thêm, FakeIpcMain): `phase3:profile:list` Zod 2-way; response không secret; ErrorEnvelope khi service throw (retryable đúng).
-  - [ ] E2E `tests/e2e/profiles.spec.ts` (thêm): import 2 profile → list hiển thị 2 uid + status badge "Nhàn rỗi" (idle); empty state khi DB rỗng; (tùy chọn) poll refresh. Tái dùng `launchWithActiveLicense`/`closeServer`/`setTextareaValue` của 2.1.
-  - [ ] `typecheck` PASS, `lint` 0 errors, toàn bộ test cũ (2.1) vẫn xanh.
+- [x] **Task 1: Schema + channel `phase3:profile:list`** (AC: #1)
+  - [x] `src/shared/ipc-schemas/profile.ts`: thêm `ProfileListRequestSchema = z.object({})`, `ProfileSummarySchema = z.object({ id, uid, displayName: min(1), status: z.string().min(1), createdAt: min(1) })`, `ProfileListSuccessResponseSchema = z.object({ ok: z.literal(true), profiles: z.array(ProfileSummarySchema) })`, `ProfileListResponseSchema = z.union([success, IpcErrorResponseSchema])` + export types. GIỮ NGUYÊN các schema import-bulk của 2.1.
+  - [x] `src/shared/ipc-schemas/index.ts`: thêm entry `{ channel:'phase3:profile:list', requestSchema, responseSchema } satisfies ChannelRegistryEntry<...>` vào `channelRegistry` + import schemas. (re-export `./profile` đã có.)
+- [x] **Task 2: `ProfileService.listProfiles`** (AC: #2)
+  - [x] `src/main/profile/profile-service.ts`: thêm `listProfiles(): ProfileSummary[]` vào interface `ProfileService` + impl trong `createProfileService` — `return repo.listProfiles().map(r => ({ id:r.id, uid:r.uid, displayName:r.displayName, status:r.status, createdAt:r.createdAt }))`. KHÔNG đọc safeStorage.
+- [x] **Task 3: IPC handler list** (AC: #1)
+  - [x] `src/main/ipc/profile-handlers.ts`: trong `registerProfileHandlers`, thêm `ipcMain.handle('phase3:profile:list', ...)`: safeParse request → `parseError` nếu fail; `try { return ResponseSchema.parse({ ok:true, profiles: service.listProfiles() }) } catch (e) { return ResponseSchema.parse(normalizeError(e)) }`. Tái dùng `toErrorResponse`/`normalizeError`/`parseError` sẵn có (KHÔNG viết lại). `registerProfileHandlers(ipcMain, service)` — KHÔNG cần param mới.
+- [x] **Task 4: Bootstrap** (AC: #1)
+  - [x] `electron-bootstrap.ts`: **KHÔNG cần đổi** — `registerProfileHandlers` đã nhận `profile` service. Verify list handler được đăng ký (chạy cùng `registerProfileHandlers`).
+- [x] **Task 5: Renderer API** (AC: #3,#4)
+  - [x] `src/renderer/src/api/profile-api.ts`: thêm `listProfiles(): Promise<ProfileSummary[]>` gọi `window.api.ipc.call('phase3:profile:list', {})` + `assertOk` → `return response.profiles`. Tái dùng `assertOk` sẵn có.
+- [x] **Task 6: ProfilesView list + polling** (AC: #3,#4,#5,#6)
+  - [x] `ProfilesView.tsx`: thêm state `profiles`, `listError`, `listLoading`. `useEffect` mount: load lần đầu + `setInterval(5000)` poll + `clearInterval` + `cancelled` flag + in-flight guard (ref/biến) chống overlap. Sau `handleImport` success → gọi refresh list. Render section danh sách: empty state, loading testid riêng (rule #16), error giữ list cũ. Status badge map (AC5) với fallback. Hardcode tiếng Việt. KHÔNG đụng khu import-result/clear-textarea của 2.1.
+- [x] **Task 7: Tests** (AC: tất cả)
+  - [x] Unit `tests/unit/profile-service.spec.ts` (thêm): `listProfiles` map đúng + KHÔNG gọi storage (fake storage.get/set không được gọi) + response shape không secret.
+  - [x] Integration `tests/integration/profile-ipc-handlers.spec.ts` (thêm, FakeIpcMain): `phase3:profile:list` Zod 2-way; response không secret; ErrorEnvelope khi service throw (retryable đúng).
+  - [x] E2E `tests/e2e/profiles.spec.ts` (thêm): import 2 profile → list hiển thị 2 uid + status badge "Nhàn rỗi" (idle); empty state khi DB rỗng; (tùy chọn) poll refresh. Tái dùng `launchWithActiveLicense`/`closeServer`/`setTextareaValue` của 2.1.
+  - [x] `typecheck` PASS, `lint` 0 errors, toàn bộ test cũ (2.1) vẫn xanh.
 
 ## Dev Notes
 
@@ -125,8 +125,38 @@ so that tôi biết profile nào đang chạy, lỗi, hay checkpoint mà KHÔNG 
 
 ### Agent Model Used
 
+GPT-5 Codex
+
 ### Debug Log References
+
+- RED: `npx playwright test tests/unit/profile-service.spec.ts tests/integration/profile-ipc-handlers.spec.ts tests/e2e/profiles.spec.ts --reporter=line` -> 6 failed đúng kỳ vọng: thiếu `ProfileService.listProfiles`, thiếu handler `phase3:profile:list`, UI chưa có list section.
+- Targeted after build: `npm run typecheck && npx electron-vite build && npx playwright test tests/e2e/profiles.spec.ts --reporter=line` -> 5 passed.
+- Full validation: `npm run lint && npm run typecheck && npx playwright test tests/unit tests/integration --reporter=line && npx electron-vite build && npx playwright test tests/e2e --reporter=line` -> lint pass (chỉ warning MODULE_TYPELESS_PACKAGE_JSON hiện hữu), typecheck pass, 76 unit/integration passed, build pass, 13 E2E passed.
 
 ### Completion Notes List
 
+- Added strict empty request + tolerant profile summary/list response schemas and registered `phase3:profile:list` in `channelRegistry` for preload request/response validation.
+- Added `ProfileService.listProfiles()` as a pure repository wrapper; it returns only `id`, `uid`, `displayName`, `status`, `createdAt` and does not read safeStorage or profile metadata.
+- Added IPC list handler with Zod request/response validation and Vietnamese ErrorEnvelope fallback using existing profile handler helpers.
+- Added renderer `listProfiles()` API and a read-only “Danh sách profile” section with initial load, 5s polling, interval cleanup, cancelled flag, in-flight guard, immediate refresh after import success, empty state, error state that preserves old list, and tolerant Vietnamese status badges.
+- Added unit/integration/E2E coverage for list contract, no-secret response, invalid request/error envelope, empty state, and import-success list refresh.
+- Business import logic, repository query, bootstrap wiring, backend, and web frontend were not changed.
+
 ### File List
+
+- automation-desktop/src/shared/ipc-schemas/profile.ts
+- automation-desktop/src/shared/ipc-schemas/index.ts
+- automation-desktop/src/main/profile/profile-service.ts
+- automation-desktop/src/main/ipc/profile-handlers.ts
+- automation-desktop/src/renderer/src/api/profile-api.ts
+- automation-desktop/src/renderer/src/views/ProfilesView.tsx
+- automation-desktop/src/renderer/src/assets/main.css
+- automation-desktop/tests/unit/profile-service.spec.ts
+- automation-desktop/tests/integration/profile-ipc-handlers.spec.ts
+- automation-desktop/tests/e2e/profiles.spec.ts
+- _bmad-output/implementation-artifacts/2-2-xem-danh-sach-profile-real-time.md
+- _bmad-output/implementation-artifacts/sprint-status-phase3.yaml
+
+### Change Log
+
+- 2026-06-03: Implemented Story 2.2 profile list IPC/service/API/UI polling and tests; moved story to review.

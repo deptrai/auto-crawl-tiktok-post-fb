@@ -23,6 +23,14 @@ export interface ImportedProfile {
   status: 'idle'
 }
 
+export interface ProfileSummary {
+  id: string
+  uid: string
+  displayName: string
+  status: string
+  createdAt: string
+}
+
 export interface SkippedEntry {
   line: number
   uid: string
@@ -45,6 +53,7 @@ export interface ImportResult {
 
 export interface ProfileService {
   importBulk(text: string): Promise<ImportResult>
+  listProfiles(): ProfileSummary[]
 }
 
 export interface ProfileServiceDeps {
@@ -65,6 +74,16 @@ export function createProfileService(deps: ProfileServiceDeps): ProfileService {
   const { storage, repo } = deps
 
   return {
+    listProfiles() {
+      return repo.listProfiles().map((row) => ({
+        id: row.id,
+        uid: row.uid,
+        displayName: row.displayName,
+        status: row.status,
+        createdAt: row.createdAt
+      }))
+    },
+
     async importBulk(text) {
       const {
         parsed,

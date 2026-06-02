@@ -32,8 +32,12 @@ import {
 import {
   ProfileImportBulkRequestSchema,
   ProfileImportBulkResponseSchema,
+  ProfileListRequestSchema,
+  ProfileListResponseSchema,
   type ProfileImportBulkRequest,
-  type ProfileImportBulkResponse
+  type ProfileImportBulkResponse,
+  type ProfileListRequest,
+  type ProfileListResponse
 } from './profile'
 
 export type Phase3ChannelName = `phase3:${string}:${string}`
@@ -83,7 +87,12 @@ export const channelRegistry = [
     channel: 'phase3:profile:import-bulk',
     requestSchema: ProfileImportBulkRequestSchema,
     responseSchema: ProfileImportBulkResponseSchema
-  } satisfies ChannelRegistryEntry<ProfileImportBulkRequest, ProfileImportBulkResponse>
+  } satisfies ChannelRegistryEntry<ProfileImportBulkRequest, ProfileImportBulkResponse>,
+  {
+    channel: 'phase3:profile:list',
+    requestSchema: ProfileListRequestSchema,
+    responseSchema: ProfileListResponseSchema
+  } satisfies ChannelRegistryEntry<ProfileListRequest, ProfileListResponse>
 ] as const satisfies ReadonlyArray<ChannelRegistryEntry>
 
 export * from './common'

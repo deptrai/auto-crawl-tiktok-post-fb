@@ -25,10 +25,28 @@ const successResult = {
   profiles: [{ id: 'test-id', uid: 'uid1', displayName: 'uid1', status: 'idle' as const }]
 }
 
+const profileList = [
+  {
+    id: 'profile-new',
+    uid: 'uid_new',
+    displayName: 'uid_new',
+    status: 'running',
+    createdAt: '2026-06-03T02:00:00.000Z'
+  },
+  {
+    id: 'profile-old',
+    uid: 'uid_old',
+    displayName: 'uid_old',
+    status: 'idle',
+    createdAt: '2026-06-03T01:00:00.000Z'
+  }
+]
+
 test('[P0] profile IPC import-bulk returns result without secrets', async () => {
   const fakeIpc = new FakeIpcMain()
   const service: ProfileService = {
-    importBulk: async () => successResult
+    importBulk: async () => successResult,
+    listProfiles: () => []
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -46,7 +64,8 @@ test('[P0] profile IPC import-bulk returns result without secrets', async () => 
 test('[P1] profile IPC rejects invalid payload with ErrorEnvelope retryable=false', async () => {
   const fakeIpc = new FakeIpcMain()
   const service: ProfileService = {
-    importBulk: async () => successResult
+    importBulk: async () => successResult,
+    listProfiles: () => []
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -64,7 +83,8 @@ test('[P1] profile IPC propagates service error as retryable ErrorEnvelope', asy
   const service: ProfileService = {
     importBulk: async () => {
       throw new ProfileServiceError('PROFILE_ERROR', 'Lỗi xử lý profile', true)
-    }
+    },
+    listProfiles: () => []
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -80,7 +100,8 @@ test('[P1] profile IPC maps unknown service errors to non-retryable ErrorEnvelop
   const service: ProfileService = {
     importBulk: async () => {
       throw new Error('programmer bug')
-    }
+    },
+    listProfiles: () => []
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -123,7 +144,8 @@ test('[P0] profile IPC returns ErrorEnvelope when line cap is exceeded', async (
 test('[P1] profile IPC rejects text larger than 1MB with validation ErrorEnvelope', async () => {
   const fakeIpc = new FakeIpcMain()
   const service: ProfileService = {
-    importBulk: async () => successResult
+    importBulk: async () => successResult,
+    listProfiles: () => []
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -135,4 +157,55 @@ test('[P1] profile IPC rejects text larger than 1MB with validation ErrorEnvelop
   const err = (response as { error: { code: string; retryable: boolean } }).error
   expect(err.code).toBe('VALIDATION_ERROR')
   expect(err.retryable).toBe(false)
+})
+
+test('[P0] profile IPC list returns profile summaries without secrets', async () => {
+  const fakeIpc = new FakeIpcMain()
+  const service: ProfileService = {
+    importBulk: async () => successResult,
+    listProfiles: () => profileList
+  }
+  registerProfileHandlers(fakeIpc, service)
+
+  const response = await fakeIpc.invoke('phase3:profile:list', {})
+
+  expect(response).toEqual({ ok: true, profiles: profileList })
+  const json = JSON.stringify(response)
+  expect(json).not.toMatch(/cookie|password|twofa|email|secret/i)
+})
+
+test('[P0] profile IPC list rejects non-empty payload with ErrorEnvelope', async () => {
+  const fakeIpc = new FakeIpcMain()
+  const service: ProfileService = {
+    importBulk: async () => successResult,
+    listProfiles: () => profileList
+  }
+  registerProfileHandlers(fakeIpc, service)
+
+  const response = await fakeIpc.invoke('phase3:profile:list', { unexpected: true })
+
+  expect((response as { ok: boolean }).ok).toBe(false)
+  const err = (response as { error: { code: string; retryable: boolean; message: string } }).error
+  expect(err.code).toBe('VALIDATION_ERROR')
+  expect(err.retryable).toBe(false)
+  expect(err.message).toBe('Dữ liệu yêu cầu không hợp lệ')
+})
+
+test('[P1] profile IPC list maps unknown service errors to non-retryable ErrorEnvelope', async () => {
+  const fakeIpc = new FakeIpcMain()
+  const service: ProfileService = {
+    importBulk: async () => successResult,
+    listProfiles: () => {
+      throw new Error('internal details')
+    }
+  }
+  registerProfileHandlers(fakeIpc, service)
+
+  const response = await fakeIpc.invoke('phase3:profile:list', {})
+
+  expect((response as { ok: boolean }).ok).toBe(false)
+  const err = (response as { error: { code: string; retryable: boolean; message: string } }).error
+  expect(err.code).toBe('PROFILE_ERROR')
+  expect(err.retryable).toBe(false)
+  expect(err.message).toBe('Không thể xử lý profile.')
 })

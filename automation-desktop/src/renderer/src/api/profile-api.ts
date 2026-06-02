@@ -1,4 +1,9 @@
-import type { ImportResult, ProfileImportBulkResponse } from '../../../shared/ipc-schemas'
+import type {
+  ImportResult,
+  ProfileImportBulkResponse,
+  ProfileListResponse,
+  ProfileSummary
+} from '../../../shared/ipc-schemas'
 
 function assertOk<T extends { ok: boolean; error?: { message: string } }>(
   response: T
@@ -14,4 +19,14 @@ export async function importBulkProfiles(text: string): Promise<ImportResult> {
   >('phase3:profile:import-bulk', { text })
   assertOk(response)
   return response.result
+}
+
+export async function listProfiles(): Promise<ProfileSummary[]> {
+  const response = await window.api.ipc.call<
+    'phase3:profile:list',
+    Record<string, never>,
+    ProfileListResponse
+  >('phase3:profile:list', {})
+  assertOk(response)
+  return response.profiles
 }

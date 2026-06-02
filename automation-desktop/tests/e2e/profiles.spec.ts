@@ -109,6 +109,26 @@ test('[P0] profiles view renders and import button is present when license is ac
   }
 })
 
+test('[P0] profiles list shows empty state when no profile exists', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-empty-'))
+  let app: ElectronApplication | null = null
+  let server: Server | null = null
+
+  try {
+    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'))
+    app = launched.app
+    server = launched.server
+    const window = launched.window
+
+    await expect(window.getByTestId('profiles-list-section')).toBeVisible({ timeout: 10_000 })
+    await expect(window.getByTestId('profiles-list-empty')).toContainText('Chưa có profile nào.')
+  } finally {
+    if (app) await app.close()
+    await closeServer(server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('[P0] import two profiles shows summary with 2 imported and clears textarea', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-import-'))
   let app: ElectronApplication | null = null
@@ -142,10 +162,15 @@ test('[P0] import two profiles shows summary with 2 imported and clears textarea
     // Textarea should be cleared after successful import
     await expect(textarea).toHaveValue('')
 
-    // Profiles list should show the 2 uids
+    // Import result should show the 2 uids and the real-time list refreshes immediately.
     await expect(window.getByTestId('imported-profiles-list')).toBeVisible()
-    await expect(window.getByText('uid_alpha')).toBeVisible()
-    await expect(window.getByText('uid_beta')).toBeVisible()
+    await expect(window.getByTestId('profile-row-uid_alpha')).toBeVisible({ timeout: 10_000 })
+    await expect(window.getByTestId('profile-row-uid_beta')).toBeVisible()
+    await expect(window.getByTestId('profile-row-uid_alpha')).toContainText('Nhàn rỗi')
+    await expect(window.getByTestId('profile-row-uid_beta')).toContainText('Nhàn rỗi')
+    await expect(window.getByTestId('profiles-list-section')).not.toContainText('cookieALPHA')
+    await expect(window.getByTestId('profiles-list-section')).not.toContainText('pass1')
+    await expect(window.getByTestId('profiles-list-section')).not.toContainText('seed1')
   } finally {
     if (app) await app.close()
     await closeServer(server)

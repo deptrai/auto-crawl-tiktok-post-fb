@@ -253,3 +253,64 @@ test('[P1] importBulk sanitizes non-unique storage/internal errors', async () =>
   expect(result.failed[0].reason).toBe('Không thể lưu profile (lỗi lưu trữ nội bộ).')
   expect(JSON.stringify(result)).not.toMatch(/no such table|profile_metadata/i)
 })
+
+test('[P0] listProfiles maps repository rows without reading secure storage', () => {
+  const storageCalls: string[] = []
+  const storage: SecureStorage = {
+    get: async (key) => {
+      storageCalls.push(`get:${key}`)
+      throw new Error('listProfiles must not read secure storage')
+    },
+    set: async (key) => {
+      storageCalls.push(`set:${key}`)
+    },
+    delete: async (key) => {
+      storageCalls.push(`delete:${key}`)
+    }
+  }
+  const repo = createMemoryRepo()
+  repo.insertProfileAtomic(
+    {
+      id: 'profile-2',
+      uid: 'uid_new',
+      displayName: 'uid_new',
+      status: 'running',
+      createdAt: '2026-06-03T02:00:00.000Z'
+    },
+    [{ key: 'email', value: 'secret@example.com' }]
+  )
+  repo.insertProfileAtomic(
+    {
+      id: 'profile-1',
+      uid: 'uid_old',
+      displayName: 'uid_old',
+      status: 'idle',
+      createdAt: '2026-06-03T01:00:00.000Z'
+    },
+    []
+  )
+  const service = createProfileService({ storage, repo })
+
+  const profiles = service.listProfiles()
+
+  expect(profiles).toEqual([
+    {
+      id: 'profile-2',
+      uid: 'uid_new',
+      displayName: 'uid_new',
+      status: 'running',
+      createdAt: '2026-06-03T02:00:00.000Z'
+    },
+    {
+      id: 'profile-1',
+      uid: 'uid_old',
+      displayName: 'uid_old',
+      status: 'idle',
+      createdAt: '2026-06-03T01:00:00.000Z'
+    }
+  ])
+  expect(storageCalls).toEqual([])
+  const json = JSON.stringify(profiles)
+  expect(json).not.toContain('secret@example.com')
+  expect(json).not.toMatch(/cookie|password|twofa|email/i)
+})
