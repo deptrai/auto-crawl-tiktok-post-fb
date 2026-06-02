@@ -16,5 +16,8 @@ export function openEncryptedDatabase(options: EncryptedDbOptions): Database.Dat
   db.prepare(
     'CREATE TABLE IF NOT EXISTS __smoke(id INTEGER PRIMARY KEY, value TEXT NOT NULL)'
   ).run()
+  db.prepare(
+    'CREATE TABLE IF NOT EXISTS local_settings(key TEXT PRIMARY KEY, value TEXT NOT NULL)'
+  ).run()
   return db
 }

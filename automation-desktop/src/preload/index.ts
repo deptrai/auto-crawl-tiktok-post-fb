@@ -1,20 +1,63 @@
-import { contextBridge } from 'electron'
-import { electronAPI } from '@electron-toolkit/preload'
+import { contextBridge, ipcRenderer } from 'electron'
 import type { IpcBridge } from '../adapters/ipc'
+import {
+  channelRegistry,
+  type ChannelRegistryEntry,
+  type Phase3ChannelName
+} from '../shared/ipc-schemas'
+
+export type DesktopElectronApi = {
+  process: {
+    versions: NodeJS.ProcessVersions
+  }
+  ipcRenderer: {
+    send(channel: string, ...args: unknown[]): void
+  }
+}
 
 type DesktopApi = {
   ipc: IpcBridge
 }
 
+const electronApi: DesktopElectronApi = {
+  process: {
+    versions: process.versions
+  },
+  ipcRenderer: {
+    send(channel, ...args) {
+      ipcRenderer.send(channel, ...args)
+    }
+  }
+}
+
 const api: DesktopApi = {
   ipc: {
-    async call() {
-      throw new Error('IPC bridge not implemented in Story 1.1')
+    async call<C extends Phase3ChannelName, Req, Res>(channel: C, request: Req): Promise<Res> {
+      const registryEntry = (channelRegistry as ReadonlyArray<ChannelRegistryEntry>).find(
+        (entry) => entry.channel === channel
+      )
+      if (!registryEntry) throw new Error(`Unregistered IPC channel: ${channel}`)
+
+      const parsedRequest = registryEntry.requestSchema.safeParse(request)
+      if (!parsedRequest.success) throw new Error(`Invalid IPC request for ${channel}`)
+
+      const response = await ipcRenderer.invoke(channel, parsedRequest.data)
+      const parsedResponse = registryEntry.responseSchema.safeParse(response)
+      if (!parsedResponse.success) throw new Error(`Invalid IPC response for ${channel}`)
+
+      return parsedResponse.data as Res
     }
   }
 }
 
 if (process.contextIsolated) {
-  contextBridge.exposeInMainWorld('electron', electronAPI)
+  contextBridge.exposeInMainWorld('electron', electronApi)
   contextBridge.exposeInMainWorld('api', api)
+} else {
+  const preloadGlobal = globalThis as typeof globalThis & {
+    electron: DesktopElectronApi
+    api: DesktopApi
+  }
+  preloadGlobal.electron = electronApi
+  preloadGlobal.api = api
 }
