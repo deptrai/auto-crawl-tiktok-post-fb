@@ -7,12 +7,15 @@ from fastapi.testclient import TestClient
 import pytest
 
 TEST_DB_PATH = Path(__file__).with_name("test_suite.db")
+TEST_PHASE3_DB_PATH = TEST_DB_PATH.with_suffix(".phase3.db")
 os.environ["DATABASE_URL"] = f"sqlite:///{TEST_DB_PATH.as_posix()}"
 
 # M6: Cleanup DB file khi test process thoát (kể cả khi bị interrupt)
 def _cleanup_test_db():
     if TEST_DB_PATH.exists():
         TEST_DB_PATH.unlink(missing_ok=True)
+    if TEST_PHASE3_DB_PATH.exists():
+        TEST_PHASE3_DB_PATH.unlink(missing_ok=True)
 
 atexit.register(_cleanup_test_db)
 os.environ["JWT_SECRET"] = "test-jwt-secret"
@@ -27,12 +30,13 @@ os.environ["SCHEDULER_ENABLED"] = "false"
 os.environ["BACKGROUND_JOBS_MODE"] = "dedicated-worker"
 os.environ["APP_ROLE"] = "api"
 
-from app.api import auth, campaigns, facebook, system, users, webhooks, analytics, youtube
+from app.api import analytics, auth, automation, campaigns, facebook, system, users, webhooks, youtube
 from app.api.auth import require_authenticated_user
 from app.api.deps import RBACException, RoleChecker
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from app.core.database import Base, SessionLocal, engine
+from app.models.automation import license as automation_license_models  # noqa: F401
 from app.services.accounts import ensure_default_admin
 
 
@@ -78,6 +82,7 @@ def client():
     app.include_router(users.router, dependencies=[Depends(require_authenticated_user)])
     app.include_router(analytics.router, dependencies=[Depends(require_authenticated_user)])
     app.include_router(youtube.router)
+    app.include_router(automation.router)
     app.include_router(webhooks.router)
     with TestClient(app) as test_client:
         yield test_client

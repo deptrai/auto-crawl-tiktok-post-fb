@@ -1,6 +1,6 @@
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { _electron as electron, test, expect } from '@playwright/test'
 import type { ElectronApplication } from 'playwright-core'
 async function launchDesktopApp(
@@ -15,6 +15,7 @@ async function launchDesktopApp(
     env: {
       ...launchEnv,
       PHASE3_DB_PATH: dbPath,
+      PHASE3_USER_DATA_PATH: dirname(dbPath),
       ...extraEnv
     }
   })
@@ -71,7 +72,7 @@ test('[P0] first-run EULA accept persists settings and restart skips gate', asyn
     await expect(acceptButton).toBeEnabled()
     await acceptButton.click()
 
-    await expect(window.getByTestId('main-shell')).toBeVisible()
+    await expect(window.getByTestId('license-view')).toBeVisible()
     await expect(window.getByRole('heading', { name: /thỏa thuận người dùng/i })).toHaveCount(0)
 
     const persistedSettings = await window.evaluate(async () => {
@@ -91,7 +92,7 @@ test('[P0] first-run EULA accept persists settings and restart skips gate', asyn
 
     const secondApp = await launchDesktopApp(dbPath)
     const secondWindow = await secondApp.firstWindow()
-    await expect(secondWindow.getByTestId('main-shell')).toBeVisible()
+    await expect(secondWindow.getByTestId('license-view')).toBeVisible()
     await expect(secondWindow.getByRole('heading', { name: /thỏa thuận người dùng/i })).toHaveCount(
       0
     )

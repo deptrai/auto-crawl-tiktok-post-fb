@@ -1,6 +1,6 @@
 # Story 1.3: Activate license với HWID binding
 
-Status: ready-for-dev
+Status: review
 
 <!-- Phase 3 story. Sources: prd-phase3.md, architecture.md § Phase 3 Addendum, epics-phase3.md. Previous: 1.1, 1.2 (done) -->
 
@@ -27,47 +27,47 @@ so that tôi có quyền sử dụng tool trong số ngày đã mua.
 
 ### Backend (FastAPI — Python)
 
-- [ ] **Task 1: Alembic migration phase3 schema** (AC: #1)
-  - [ ] `backend/alembic/versions/<rev>_phase3_init.py`: `CREATE SCHEMA IF NOT EXISTS phase3`
-  - [ ] Bảng `phase3.licenses`: id (UUID PK), key (unique), days_total (int), created_at (timestamptz), created_by_admin (FK users.id nullable), revoked (bool default false)
-  - [ ] Bảng `phase3.license_activations`: id (UUID PK), license_id (FK phase3.licenses), hwid_hash (varchar 64), activated_at, expires_at, rebind_count (int default 0)
-  - [ ] Index: `idx_license_activations_hwid`, `uq_licenses_key`
-  - [ ] `search_path = phase3, public` trong migration
-- [ ] **Task 2: SQLAlchemy models** (AC: #1)
-  - [ ] `backend/app/models/automation/license.py`: `License`, `LicenseActivation` (schema='phase3')
-  - [ ] Absolute import `from app.x` (project-context rule), type hints bắt buộc
-- [ ] **Task 3: Pydantic schemas + service** (AC: #2, #3)
-  - [ ] `backend/app/schemas/automation/license.py`: `LicenseActivateRequest{key, hwid}`, `LicenseActivateResponse{activation_id, expires_at, rebind_count}`
-  - [ ] `backend/app/services/automation/license.py`: `activate(key, hwid)` business logic (logic CHỈ ở service layer)
-  - [ ] `backend/app/services/automation/hwid.py`: validate hwid format (64 hex)
-- [ ] **Task 4: FastAPI router** (AC: #2, #3)
-  - [ ] `backend/app/api/automation.py`: router `/api/v1/automation/*`
-  - [ ] `POST /license/activate` — parse request, gọi service, try-except bọc external (anti-pattern rule), trả response
-  - [ ] Include router vào `app/main.py`
-  - [ ] Error codes: `LICENSE_NOT_FOUND`, `LICENSE_REVOKED`, `LICENSE_HWID_MISMATCH` — message tiếng Việt
+- [x] **Task 1: Alembic migration phase3 schema** (AC: #1)
+  - [x] `backend/alembic/versions/<rev>_phase3_init.py`: `CREATE SCHEMA IF NOT EXISTS phase3`
+  - [x] Bảng `phase3.licenses`: id (UUID PK), key (unique), days_total (int), created_at (timestamptz), created_by_admin (FK users.id nullable), revoked (bool default false)
+  - [x] Bảng `phase3.license_activations`: id (UUID PK), license_id (FK phase3.licenses), hwid_hash (varchar 64), activated_at, expires_at, rebind_count (int default 0)
+  - [x] Index: `idx_license_activations_hwid`, `uq_licenses_key`
+  - [x] `search_path = phase3, public` trong migration
+- [x] **Task 2: SQLAlchemy models** (AC: #1)
+  - [x] `backend/app/models/automation/license.py`: `License`, `LicenseActivation` (schema='phase3')
+  - [x] Absolute import `from app.x` (project-context rule), type hints bắt buộc
+- [x] **Task 3: Pydantic schemas + service** (AC: #2, #3)
+  - [x] `backend/app/schemas/automation/license.py`: `LicenseActivateRequest{key, hwid}`, `LicenseActivateResponse{activation_id, expires_at, rebind_count}`
+  - [x] `backend/app/services/automation/license.py`: `activate(key, hwid)` business logic (logic CHỈ ở service layer)
+  - [x] `backend/app/services/automation/hwid.py`: validate hwid format (64 hex)
+- [x] **Task 4: FastAPI router** (AC: #2, #3)
+  - [x] `backend/app/api/automation.py`: router `/api/v1/automation/*`
+  - [x] `POST /license/activate` — parse request, gọi service, try-except bọc external (anti-pattern rule), trả response
+  - [x] Include router vào `app/main.py`
+  - [x] Error codes: `LICENSE_NOT_FOUND`, `LICENSE_REVOKED`, `LICENSE_HWID_MISMATCH` — message tiếng Việt
 
 ### Client (Electron — TypeScript)
 
-- [ ] **Task 5: HWID generator** (AC: #4)
-  - [ ] Install `node-machine-id` + verify electron-rebuild nếu cần native (`npx electron-rebuild -f -w` — story 1.1 rule)
-  - [ ] `src/main/license/hwid-generator.ts`: `generateHwid(): string` = SHA-256(machine_uuid + "|" + mac + "|" + cpu_brand)
-  - [ ] Deterministic — cùng máy luôn cùng HWID
-- [ ] **Task 6: safeStorage adapter thật** (AC: #6)
-  - [ ] Implement `src/main/adapters/electron-safe-storage.ts` (hiện stub) dùng Electron `safeStorage.encryptString`/`decryptString` + lưu encrypted blob (vào local_settings hoặc file riêng)
-  - [ ] `activation_id` lưu qua safeStorage (license private)
-- [ ] **Task 7: License IPC + service client** (AC: #5, #8)
-  - [ ] `src/shared/ipc-schemas/license.ts`: Zod `LicenseActivateRequest/Response`, `LicenseStatusRequest/Response`; đăng ký channelRegistry
-  - [ ] `src/main/license/license-service.ts`: gọi HWID gen + HTTP POST backend (qua `shared/api-client/http-client` — tạo nếu chưa có, cert pinning sẽ thêm Epic 8) + lưu activation_id safeStorage
-  - [ ] `src/main/ipc/license-handlers.ts`: `phase3:license:activate`, `phase3:license:status` — Zod 2-way, ErrorEnvelope + retryable
-  - [ ] `src/renderer/src/api/license-api.ts`: wrapper
-- [ ] **Task 8: LicenseView UI** (AC: #5, #7)
-  - [ ] `src/renderer/src/views/LicenseView.tsx`: input key + nút activate + hiển thị status "còn N ngày" + error messages tiếng Việt + hướng dẫn rebind khi HWID mismatch
-  - [ ] Integrate vào App.tsx gate flow (sau EULA accept → check license → nếu chưa activate hiện LicenseView)
-- [ ] **Task 9: Tests** (AC: tất cả)
-  - [ ] Backend pytest: `backend/tests/api/test_automation_license.py` — activate success, HWID mismatch, revoked, not found (DB rollback an toàn)
-  - [ ] Client integration: license-service HWID gen deterministic + safeStorage round-trip
-  - [ ] E2E `@playwright/test`: nhập key → activate → hiển thị status; mismatch flow
-  - [ ] lint + typecheck + test PASS cả backend lẫn client
+- [x] **Task 5: HWID generator** (AC: #4)
+  - [x] Install `node-machine-id` + verify electron-rebuild nếu cần native (`npx electron-rebuild -f -w` — story 1.1 rule)
+  - [x] `src/main/license/hwid-generator.ts`: `generateHwid(): string` = SHA-256(machine_uuid + "|" + mac + "|" + cpu_brand)
+  - [x] Deterministic — cùng máy luôn cùng HWID
+- [x] **Task 6: safeStorage adapter thật** (AC: #6)
+  - [x] Implement `src/main/adapters/electron-safe-storage.ts` (hiện stub) dùng Electron `safeStorage.encryptString`/`decryptString` + lưu encrypted blob (vào local_settings hoặc file riêng)
+  - [x] `activation_id` lưu qua safeStorage (license private)
+- [x] **Task 7: License IPC + service client** (AC: #5, #8)
+  - [x] `src/shared/ipc-schemas/license.ts`: Zod `LicenseActivateRequest/Response`, `LicenseStatusRequest/Response`; đăng ký channelRegistry
+  - [x] `src/main/license/license-service.ts`: gọi HWID gen + HTTP POST backend (qua `shared/api-client/http-client` — tạo nếu chưa có, cert pinning sẽ thêm Epic 8) + lưu activation_id safeStorage
+  - [x] `src/main/ipc/license-handlers.ts`: `phase3:license:activate`, `phase3:license:status` — Zod 2-way, ErrorEnvelope + retryable
+  - [x] `src/renderer/src/api/license-api.ts`: wrapper
+- [x] **Task 8: LicenseView UI** (AC: #5, #7)
+  - [x] `src/renderer/src/views/LicenseView.tsx`: input key + nút activate + hiển thị status "còn N ngày" + error messages tiếng Việt + hướng dẫn rebind khi HWID mismatch
+  - [x] Integrate vào App.tsx gate flow (sau EULA accept → check license → nếu chưa activate hiện LicenseView)
+- [x] **Task 9: Tests** (AC: tất cả)
+  - [x] Backend pytest: `backend/tests/api/test_automation_license.py` — activate success, HWID mismatch, revoked, not found (DB rollback an toàn)
+  - [x] Client integration: license-service HWID gen deterministic + safeStorage round-trip
+  - [x] E2E `@playwright/test`: nhập key → activate → hiển thị status; mismatch flow
+  - [x] lint + typecheck + test PASS cả backend lẫn client
 
 ## Dev Notes
 
@@ -131,12 +131,73 @@ Tất cả rules từ review Story 1.1 & 1.2 đã được distill. Đặc biệ
 
 ### Agent Model Used
 
-(điền khi dev)
+GPT-5 Codex
 
 ### Debug Log References
 
+- 2026-06-02: Backend targeted regression `cd backend && .venv/bin/pytest tests/test_storage_cleanup.py tests/test_automation_license.py -q` -> `19 passed`.
+- 2026-06-02: Backend full regression `cd backend && .venv/bin/pytest -q` -> `303 passed`.
+- 2026-06-02: Desktop `cd automation-desktop && npm run typecheck` -> pass.
+- 2026-06-02: Desktop `cd automation-desktop && npm run lint` -> pass (Node module-type warning only).
+- 2026-06-02: Desktop targeted Playwright `npx playwright test tests/unit/hwid-generator.spec.ts tests/integration/safe-storage.spec.ts tests/integration/license-ipc-handlers.spec.ts tests/e2e/license.spec.ts` -> `8 passed`.
+- 2026-06-02: Desktop `cd automation-desktop && npm run postinstall` -> electron rebuild completed.
+- 2026-06-02: Desktop `cd automation-desktop && npm run build` -> pass.
+- 2026-06-02: Desktop `cd automation-desktop && npm run test:automation` -> `26 passed`.
+- 2026-06-02: Desktop `cd automation-desktop && npm run test:e2e:p0` -> first exposed E2E safeStorage/userData state leak, fixed by isolating `PHASE3_USER_DATA_PATH`, rerun -> `5 passed`.
+
 ### Completion Notes List
+
+- Implemented Phase 3 backend license schema with Alembic migration, SQLAlchemy models, Pydantic request/response schemas, HWID validation, and service-layer activation logic.
+- Added `/api/v1/automation/license/activate` with Vietnamese domain errors for missing, revoked, invalid HWID, and HWID mismatch/rebind guidance.
+- Implemented Electron HWID generation using `node-machine-id`, OS MAC, CPU brand, and SHA-256 deterministic hashing.
+- Replaced safeStorage stub with real Electron `safeStorage` encryption/decryption persisted to a per-user encrypted blob file; `activation_id` stays private and is never returned raw to renderer.
+- Added typed Zod IPC channels `phase3:license:activate` and `phase3:license:status`, plus renderer API wrapper and LicenseView activation UI.
+- Integrated gate flow: EULA accepted -> license status check -> `LicenseView` if inactive -> `MainShell` with remaining days if active.
+- Added backend, unit, integration, and E2E coverage for activation success, HWID mismatch, revoked/missing keys, HWID determinism, safeStorage round-trip, IPC envelopes, and P0 license/EULA flows.
+- Fixed backend SQLite test infrastructure to attach the `phase3` schema for independent in-memory engines and clean up the phase3 sidecar test database.
+- Moved HWID smoke override into Electron bootstrap with `app.isPackaged` guard and isolated E2E `userData` paths to prevent safeStorage state leakage between tests.
 
 ### File List
 
+- `_bmad-output/implementation-artifacts/1-3-activate-license-voi-hwid-binding.md`
+- `_bmad-output/implementation-artifacts/sprint-status-phase3.yaml`
+- `automation-desktop/package-lock.json`
+- `automation-desktop/package.json`
+- `automation-desktop/src/main/adapters/electron-bootstrap.ts`
+- `automation-desktop/src/main/adapters/electron-safe-storage.ts`
+- `automation-desktop/src/main/ipc/index.ts`
+- `automation-desktop/src/main/ipc/license-handlers.ts`
+- `automation-desktop/src/main/license/hwid-generator.ts`
+- `automation-desktop/src/main/license/license-service.ts`
+- `automation-desktop/src/renderer/src/App.tsx`
+- `automation-desktop/src/renderer/src/api/license-api.ts`
+- `automation-desktop/src/renderer/src/assets/main.css`
+- `automation-desktop/src/renderer/src/views/LicenseView.tsx`
+- `automation-desktop/src/shared/ipc-schemas/index.ts`
+- `automation-desktop/src/shared/ipc-schemas/license.ts`
+- `automation-desktop/tests/e2e/eula.spec.ts`
+- `automation-desktop/tests/e2e/license.spec.ts`
+- `automation-desktop/tests/integration/license-ipc-handlers.spec.ts`
+- `automation-desktop/tests/integration/safe-storage.spec.ts`
+- `automation-desktop/tests/unit/adapter-stubs.spec.ts`
+- `automation-desktop/tests/unit/hwid-generator.spec.ts`
+- `backend/alembic/env.py`
+- `backend/alembic/versions/20260602_01_phase3_license_init.py`
+- `backend/app/api/automation.py`
+- `backend/app/core/database.py`
+- `backend/app/main.py`
+- `backend/app/models/automation/__init__.py`
+- `backend/app/models/automation/license.py`
+- `backend/app/schemas/automation/__init__.py`
+- `backend/app/schemas/automation/license.py`
+- `backend/app/services/automation/__init__.py`
+- `backend/app/services/automation/hwid.py`
+- `backend/app/services/automation/license.py`
+- `backend/tests/conftest.py`
+- `backend/tests/test_automation_license.py`
+- `backend/tests/test_storage_cleanup.py`
+
 ### Change Log
+
+- 2026-06-02: Implemented Story 1.3 license activation with HWID binding across backend and Electron client; added migration, models, service/router, safeStorage, IPC, LicenseView, gate flow, and tests.
+- 2026-06-02: Fixed validation blockers: backend SQLite `phase3` schema attach for independent tests, safeStorage encrypted blob storage lint issue, guarded HWID smoke override, and E2E userData isolation.

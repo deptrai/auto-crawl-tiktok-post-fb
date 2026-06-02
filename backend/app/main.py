@@ -9,11 +9,12 @@ from fastapi.staticfiles import StaticFiles
 from sqlalchemy import text
 from sqlalchemy.exc import OperationalError
 
-from app.api import auth, campaigns, facebook, system, users, webhooks, analytics, youtube, organizations
+from app.api import analytics, auth, automation, campaigns, facebook, organizations, system, users, webhooks, youtube
 from app.api.auth import require_authenticated_user
 from app.core.config import settings
 from app.core.database import Base, SessionLocal, engine
 from app.models import models  # noqa: F401
+from app.models.automation import license as automation_license_models  # noqa: F401
 from app.services.observability import configure_logging, record_event
 from app.services.accounts import ensure_default_admin
 from app.services.runtime_settings import write_runtime_env_file
@@ -84,6 +85,7 @@ app.include_router(users.router, dependencies=[Depends(require_authenticated_use
 app.include_router(analytics.router, dependencies=[Depends(require_authenticated_user)])
 app.include_router(youtube.router)
 app.include_router(organizations.router, dependencies=[Depends(require_authenticated_user)])
+app.include_router(automation.router)
 app.include_router(webhooks.router)
 
 os.makedirs(settings.DOWNLOAD_DIR, exist_ok=True)

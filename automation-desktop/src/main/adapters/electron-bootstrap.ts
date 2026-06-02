@@ -3,7 +3,12 @@ import { join } from 'node:path'
 import icon from '../../../resources/icon.png?asset'
 import { openEncryptedDatabase } from '../db/client'
 import { createSettingsRepository, type SettingsRepository } from '../db/repositories/settings-repo'
-import { registerSettingsHandlers, registerShellHandlers } from '../ipc'
+import {
+  createFetchLicenseBackendClient,
+  createLicenseService,
+  type LicenseService
+} from '../license/license-service'
+import { registerLicenseHandlers, registerSettingsHandlers, registerShellHandlers } from '../ipc'
 import { ElectronAutoUpdater } from './electron-auto-updater'
 import { ElectronIpcBridge } from './electron-ipc-bridge'
 import { ElectronSafeStorage } from './electron-safe-storage'
@@ -13,6 +18,7 @@ interface BootstrapDeps {
   db: ReturnType<typeof openEncryptedDatabase>
   services: {
     settings: SettingsRepository
+    license: LicenseService
   }
   adapters: {
     updater: ElectronAutoUpdater
@@ -35,17 +41,33 @@ function initializeDeps(): BootstrapDeps {
     const msg = dbError instanceof Error ? dbError.message : String(dbError)
     throw new Error(`[Phase3] Không thể mở database: ${msg}\nCó thể một phiên bản đang chạy rồi.`)
   }
-  const services = {
-    settings: createSettingsRepository(db)
-  }
-
   const adapters = {
     updater: new ElectronAutoUpdater(),
     ipc: new ElectronIpcBridge(),
     storage: new ElectronSafeStorage()
   }
 
+  const settings = createSettingsRepository(db)
+  const smokeHwid = app.isPackaged ? undefined : process.env['PHASE3_HWID_SMOKE_VALUE']
+  const services = {
+    settings,
+    license: createLicenseService({
+      settings,
+      storage: adapters.storage,
+      backendClient: createFetchLicenseBackendClient(
+        process.env['PHASE3_AUTOMATION_API_BASE_URL'] ?? 'http://localhost:8000'
+      ),
+      generateHwid: smokeHwid ? async () => smokeHwid : undefined
+    })
+  }
+
   return { db, services, adapters }
+}
+
+function configureUserDataPath(): void {
+  if (app.isPackaged) return
+  const userDataPath = process.env['PHASE3_USER_DATA_PATH']
+  if (userDataPath) app.setPath('userData', userDataPath)
 }
 
 function runDatabaseSmoke(db: BootstrapDeps['db']): void {
@@ -76,6 +98,17 @@ function runSettingsSmoke(settings: SettingsRepository): void {
   process.env['PHASE3_SETTINGS_SMOKE_RESULT'] = `${key}=${settings.getSetting(key) ?? ''}`
 }
 
+async function runSafeStorageSmoke(storage: ElectronSafeStorage): Promise<void> {
+  if (app.isPackaged) return
+  const key = process.env['PHASE3_SAFE_STORAGE_SMOKE_KEY']
+  if (!key) return
+
+  const value = process.env['PHASE3_SAFE_STORAGE_SMOKE_VALUE']
+  if (value !== undefined) await storage.set(key, value)
+  const result = await storage.get(key)
+  process.env['PHASE3_SAFE_STORAGE_SMOKE_RESULT'] = result ?? ''
+}
+
 function createWindow(): BrowserWindow {
   const mainWindow = new BrowserWindow({
     ...buildMainWindowOptions(),
@@ -102,19 +135,22 @@ function createWindow(): BrowserWindow {
 
 export async function bootstrapApplication(): Promise<void> {
   app.setAppUserModelId('com.electron')
+  configureUserDataPath()
   registerCspHeaders(session.defaultSession)
 
   const deps = initializeDeps()
   runDatabaseSmoke(deps.db)
   runSettingsSmoke(deps.services.settings)
+  await runSafeStorageSmoke(deps.adapters.storage)
 
   // Init order: db -> adapters -> services -> ipc -> window
   void deps.db
   void deps.adapters
   void deps.services
   registerSettingsHandlers(ipcMain, deps.services.settings)
+  registerLicenseHandlers(ipcMain, deps.services.license)
   registerShellHandlers(ipcMain, async (url) => {
-    if (process.env['PHASE3_EXTERNAL_OPEN_SMOKE']) {
+    if (!app.isPackaged && process.env['PHASE3_EXTERNAL_OPEN_SMOKE']) {
       ;(globalThis as DbSmokeGlobal).__PHASE3_EXTERNAL_OPEN_URL__ = url
       process.env['PHASE3_EXTERNAL_OPEN_URL'] = url
       return

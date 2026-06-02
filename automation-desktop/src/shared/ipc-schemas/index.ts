@@ -1,5 +1,15 @@
 import type { z } from 'zod'
 import {
+  LicenseActivateRequestSchema,
+  LicenseActivateResponseSchema,
+  LicenseStatusRequestSchema,
+  LicenseStatusResponseSchema,
+  type LicenseActivateRequest,
+  type LicenseActivateResponse,
+  type LicenseStatusRequest,
+  type LicenseStatusResponse
+} from './license'
+import {
   SettingsGetRequestSchema,
   SettingsGetResponseSchema,
   SettingsSetRequestSchema,
@@ -43,9 +53,20 @@ export const channelRegistry = [
     channel: 'phase3:shell:open-external',
     requestSchema: ShellOpenExternalRequestSchema,
     responseSchema: ShellOpenExternalResponseSchema
-  } satisfies ChannelRegistryEntry<ShellOpenExternalRequest, ShellOpenExternalResponse>
+  } satisfies ChannelRegistryEntry<ShellOpenExternalRequest, ShellOpenExternalResponse>,
+  {
+    channel: 'phase3:license:activate',
+    requestSchema: LicenseActivateRequestSchema,
+    responseSchema: LicenseActivateResponseSchema
+  } satisfies ChannelRegistryEntry<LicenseActivateRequest, LicenseActivateResponse>,
+  {
+    channel: 'phase3:license:status',
+    requestSchema: LicenseStatusRequestSchema,
+    responseSchema: LicenseStatusResponseSchema
+  } satisfies ChannelRegistryEntry<LicenseStatusRequest, LicenseStatusResponse>
 ] as const satisfies ReadonlyArray<ChannelRegistryEntry>
 
 export * from './common'
 export * from './settings'
 export * from './shell'
+export * from './license'
