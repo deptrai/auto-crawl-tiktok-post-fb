@@ -30,13 +30,16 @@ function createMemoryStorage(
 function createMemoryRepo(): ProfileRepository & {
   profiles: Map<string, object>
   metadata: Map<string, string>
+  deleteCalls: string[]
 } {
   const profiles = new Map<string, object>()
   const metadata = new Map<string, string>()
+  const deleteCalls: string[] = []
   const uids = new Set<string>()
   return {
     profiles,
     metadata,
+    deleteCalls,
     uidExists: (uid) => uids.has(uid),
     insertProfileAtomic: (p, metaEntries) => {
       profiles.set(p.id, p)
@@ -46,6 +49,7 @@ function createMemoryRepo(): ProfileRepository & {
       }
     },
     deleteProfile: (id) => {
+      deleteCalls.push(id)
       const p = profiles.get(id) as { uid?: string } | undefined
       if (p?.uid) uids.delete(p.uid)
       profiles.delete(id)
@@ -53,6 +57,13 @@ function createMemoryRepo(): ProfileRepository & {
         if (k.startsWith(`${id}:`)) metadata.delete(k)
       }
     },
+    updateDisplayName: (id, displayName) => {
+      const p = profiles.get(id) as { displayName?: string } | undefined
+      if (!p) return 0
+      p.displayName = displayName
+      return 1
+    },
+    getProfileById: (id) => profiles.get(id) as never,
     listProfiles: () => [...profiles.values()] as never,
     countProfiles: () => profiles.size
   }
@@ -313,4 +324,140 @@ test('[P0] listProfiles maps repository rows without reading secure storage', ()
   const json = JSON.stringify(profiles)
   expect(json).not.toContain('secret@example.com')
   expect(json).not.toMatch(/cookie|password|twofa|email/i)
+})
+
+test('[P0] updateProfile updates displayName and returns updated summary without touching storage', () => {
+  const storageCalls: string[] = []
+  const storage: SecureStorage = {
+    get: async (key) => {
+      storageCalls.push(`get:${key}`)
+      return null
+    },
+    set: async (key) => {
+      storageCalls.push(`set:${key}`)
+    },
+    delete: async (key) => {
+      storageCalls.push(`delete:${key}`)
+    }
+  }
+  const repo = createMemoryRepo()
+  repo.insertProfileAtomic(
+    {
+      id: 'profile-edit-1',
+      uid: 'uid_edit',
+      displayName: 'Tên cũ',
+      status: 'idle',
+      createdAt: '2026-06-03T03:00:00.000Z'
+    },
+    []
+  )
+  const service = createProfileService({ storage, repo })
+
+  const updated = service.updateProfile('profile-edit-1', { displayName: 'Tên mới' })
+
+  expect(updated).toEqual({
+    id: 'profile-edit-1',
+    uid: 'uid_edit',
+    displayName: 'Tên mới',
+    status: 'idle',
+    createdAt: '2026-06-03T03:00:00.000Z'
+  })
+  expect(storageCalls).toEqual([])
+  expect(JSON.stringify(updated)).not.toMatch(/cookie|password|twofa|email/i)
+})
+
+test('[P0] updateProfile throws PROFILE_NOT_FOUND when id does not exist', () => {
+  const storage = createMemoryStorage()
+  const repo = createMemoryRepo()
+  const service = createProfileService({ storage, repo })
+
+  expect(() => service.updateProfile('missing-id', { displayName: 'Tên mới' })).toThrow(
+    ProfileServiceError
+  )
+  expect(() => service.updateProfile('missing-id', { displayName: 'Tên mới' })).toThrow(
+    /Không tìm thấy profile/
+  )
+})
+
+test('[P0] deleteProfile deletes all secret keys before deleting repo row', async () => {
+  const log: string[] = []
+  const storage = createMemoryStorage(log)
+  const repo = createMemoryRepo()
+  repo.insertProfileAtomic(
+    {
+      id: 'profile-delete-1',
+      uid: 'uid_delete',
+      displayName: 'uid_delete',
+      status: 'idle',
+      createdAt: '2026-06-03T03:00:00.000Z'
+    },
+    [{ key: 'email', value: 'delete@example.com' }]
+  )
+  const service = createProfileService({ storage, repo })
+
+  await service.deleteProfile('profile-delete-1')
+
+  expect(log).toEqual([
+    'del:profile.profile-delete-1.cookie',
+    'del:profile.profile-delete-1.twofa',
+    'del:profile.profile-delete-1.fb_password',
+    'del:profile.profile-delete-1.mail_password'
+  ])
+  expect(repo.deleteCalls).toEqual(['profile-delete-1'])
+  expect(repo.profiles.has('profile-delete-1')).toBe(false)
+  expect(repo.metadata.has('profile-delete-1:email')).toBe(false)
+})
+
+test('[P0] deleteProfile aborts row delete when any secret delete fails', async () => {
+  const deleteAttempts: string[] = []
+  const storage: SecureStorage = {
+    get: async () => null,
+    set: async () => undefined,
+    delete: async (key) => {
+      deleteAttempts.push(key)
+      if (key.endsWith('.twofa')) throw new Error('disk fail')
+    }
+  }
+  const repo = createMemoryRepo()
+  repo.insertProfileAtomic(
+    {
+      id: 'profile-delete-fail',
+      uid: 'uid_delete_fail',
+      displayName: 'uid_delete_fail',
+      status: 'idle',
+      createdAt: '2026-06-03T03:00:00.000Z'
+    },
+    []
+  )
+  const service = createProfileService({ storage, repo })
+
+  await expect(service.deleteProfile('profile-delete-fail')).rejects.toMatchObject({
+    code: 'PROFILE_DELETE_FAILED',
+    retryable: true
+  } satisfies Partial<ProfileServiceError>)
+  expect(deleteAttempts).toEqual([
+    'profile.profile-delete-fail.cookie',
+    'profile.profile-delete-fail.twofa',
+    'profile.profile-delete-fail.fb_password',
+    'profile.profile-delete-fail.mail_password'
+  ])
+  expect(repo.deleteCalls).toEqual([])
+  expect(repo.profiles.has('profile-delete-fail')).toBe(true)
+})
+
+test('[P1] deleteProfile is idempotent when id does not exist', async () => {
+  const log: string[] = []
+  const storage = createMemoryStorage(log)
+  const repo = createMemoryRepo()
+  const service = createProfileService({ storage, repo })
+
+  await expect(service.deleteProfile('missing-id')).resolves.toBeUndefined()
+
+  expect(log).toEqual([
+    'del:profile.missing-id.cookie',
+    'del:profile.missing-id.twofa',
+    'del:profile.missing-id.fb_password',
+    'del:profile.missing-id.mail_password'
+  ])
+  expect(repo.deleteCalls).toEqual(['missing-id'])
 })

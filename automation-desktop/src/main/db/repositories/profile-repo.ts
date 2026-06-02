@@ -25,6 +25,8 @@ export interface ProfileRepository {
   uidExists(uid: string): boolean
   /** Atomically insert profile + metadata in one SQLite transaction. */
   insertProfileAtomic(params: InsertProfileParams, metadata: ProfileMetadataEntry[]): void
+  updateDisplayName(id: string, displayName: string): number
+  getProfileById(id: string): ProfileRow | undefined
   deleteProfile(id: string): void
   listProfiles(): ProfileRow[]
   countProfiles(): number
@@ -43,6 +45,13 @@ export function createProfileRepository(db: Database.Database): ProfileRepositor
      ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
   )
   const stmtDelete = db.prepare<[string]>('DELETE FROM profiles WHERE id = ?')
+  const stmtUpdateDisplayName = db.prepare<[string, string]>(
+    'UPDATE profiles SET display_name = ? WHERE id = ?'
+  )
+  const stmtGetById = db.prepare<
+    [string],
+    { id: string; uid: string; display_name: string; status: string; created_at: string }
+  >('SELECT id, uid, display_name, status, created_at FROM profiles WHERE id = ?')
   const stmtList = db.prepare<
     [],
     { id: string; uid: string; display_name: string; status: string; created_at: string }
@@ -67,6 +76,22 @@ export function createProfileRepository(db: Database.Database): ProfileRepositor
 
     insertProfileAtomic(params, metadata) {
       txInsert(params, metadata)
+    },
+
+    updateDisplayName(id, displayName) {
+      return Number(stmtUpdateDisplayName.run(displayName, id).changes)
+    },
+
+    getProfileById(id) {
+      const row = stmtGetById.get(id)
+      if (!row) return undefined
+      return {
+        id: row.id,
+        uid: row.uid,
+        displayName: row.display_name,
+        status: row.status,
+        createdAt: row.created_at
+      }
     },
 
     deleteProfile(id) {

@@ -32,12 +32,20 @@ import {
 import {
   ProfileImportBulkRequestSchema,
   ProfileImportBulkResponseSchema,
+  ProfileDeleteRequestSchema,
+  ProfileDeleteResponseSchema,
   ProfileListRequestSchema,
   ProfileListResponseSchema,
+  ProfileUpdateRequestSchema,
+  ProfileUpdateResponseSchema,
   type ProfileImportBulkRequest,
   type ProfileImportBulkResponse,
+  type ProfileDeleteRequest,
+  type ProfileDeleteResponse,
   type ProfileListRequest,
-  type ProfileListResponse
+  type ProfileListResponse,
+  type ProfileUpdateRequest,
+  type ProfileUpdateResponse
 } from './profile'
 
 export type Phase3ChannelName = `phase3:${string}:${string}`
@@ -92,7 +100,17 @@ export const channelRegistry = [
     channel: 'phase3:profile:list',
     requestSchema: ProfileListRequestSchema,
     responseSchema: ProfileListResponseSchema
-  } satisfies ChannelRegistryEntry<ProfileListRequest, ProfileListResponse>
+  } satisfies ChannelRegistryEntry<ProfileListRequest, ProfileListResponse>,
+  {
+    channel: 'phase3:profile:update',
+    requestSchema: ProfileUpdateRequestSchema,
+    responseSchema: ProfileUpdateResponseSchema
+  } satisfies ChannelRegistryEntry<ProfileUpdateRequest, ProfileUpdateResponse>,
+  {
+    channel: 'phase3:profile:delete',
+    requestSchema: ProfileDeleteRequestSchema,
+    responseSchema: ProfileDeleteResponseSchema
+  } satisfies ChannelRegistryEntry<ProfileDeleteRequest, ProfileDeleteResponse>
 ] as const satisfies ReadonlyArray<ChannelRegistryEntry>
 
 export * from './common'

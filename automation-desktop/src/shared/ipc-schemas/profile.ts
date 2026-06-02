@@ -9,6 +9,15 @@ export const ProfileImportBulkRequestSchema = z.object({
 
 export const ProfileListRequestSchema = z.object({}).strict()
 
+export const ProfileUpdateRequestSchema = z.object({
+  id: z.string().min(1),
+  displayName: z.string().min(1)
+})
+
+export const ProfileDeleteRequestSchema = z.object({
+  id: z.string().min(1)
+})
+
 // ---- Response payload ----
 
 export const ImportedProfileSchema = z.object({
@@ -66,6 +75,25 @@ export const ProfileListResponseSchema = z.union([
   IpcErrorResponseSchema
 ])
 
+export const ProfileUpdateSuccessResponseSchema = z.object({
+  ok: z.literal(true),
+  profile: ProfileSummarySchema
+})
+
+export const ProfileUpdateResponseSchema = z.union([
+  ProfileUpdateSuccessResponseSchema,
+  IpcErrorResponseSchema
+])
+
+export const ProfileDeleteSuccessResponseSchema = z.object({
+  ok: z.literal(true)
+})
+
+export const ProfileDeleteResponseSchema = z.union([
+  ProfileDeleteSuccessResponseSchema,
+  IpcErrorResponseSchema
+])
+
 // ---- Types ----
 
 export type ProfileImportBulkRequest = z.infer<typeof ProfileImportBulkRequestSchema>
@@ -75,3 +103,7 @@ export type ProfileImportBulkResponse = z.infer<typeof ProfileImportBulkResponse
 export type ProfileListRequest = z.infer<typeof ProfileListRequestSchema>
 export type ProfileSummary = z.infer<typeof ProfileSummarySchema>
 export type ProfileListResponse = z.infer<typeof ProfileListResponseSchema>
+export type ProfileUpdateRequest = z.infer<typeof ProfileUpdateRequestSchema>
+export type ProfileUpdateResponse = z.infer<typeof ProfileUpdateResponseSchema>
+export type ProfileDeleteRequest = z.infer<typeof ProfileDeleteRequestSchema>
+export type ProfileDeleteResponse = z.infer<typeof ProfileDeleteResponseSchema>

@@ -22,7 +22,7 @@ const electronImportRestriction = [
 ]
 
 export default defineConfig(
-  { ignores: ['**/node_modules', '**/dist', '**/out', '**/.playwright'] },
+  { ignores: ['**/node_modules', '**/dist', '**/out', '**/.playwright', '**/.phase3-manual'] },
   tseslint.configs.recommended,
   eslintPluginReact.configs.flat.recommended,
   eslintPluginReact.configs.flat['jsx-runtime'],

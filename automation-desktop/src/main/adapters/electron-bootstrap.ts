@@ -182,6 +182,11 @@ function runProfileRepoSmoke(db: BootstrapDeps['db'], repo: ProfileRepository): 
     if (repo.listProfiles()[0]?.uid !== 'uid_profile_smoke') throw new Error('list failed')
     if (metadataCount !== 2) throw new Error('metadata insert failed')
 
+    const updated = repo.updateDisplayName('profile-smoke-1', 'Smoke Edited')
+    if (updated !== 1) throw new Error('updateDisplayName failed')
+    const updatedProfile = repo.getProfileById('profile-smoke-1')
+    if (updatedProfile?.displayName !== 'Smoke Edited') throw new Error('getProfileById failed')
+
     let uniqueFailed = false
     try {
       repo.insertProfileAtomic(

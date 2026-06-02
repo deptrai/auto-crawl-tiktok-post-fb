@@ -1,8 +1,10 @@
 import type {
   ImportResult,
+  ProfileDeleteResponse,
   ProfileImportBulkResponse,
   ProfileListResponse,
-  ProfileSummary
+  ProfileSummary,
+  ProfileUpdateResponse
 } from '../../../shared/ipc-schemas'
 
 function assertOk<T extends { ok: boolean; error?: { message: string } }>(
@@ -29,4 +31,23 @@ export async function listProfiles(): Promise<ProfileSummary[]> {
   >('phase3:profile:list', {})
   assertOk(response)
   return response.profiles
+}
+
+export async function updateProfile(id: string, displayName: string): Promise<ProfileSummary> {
+  const response = await window.api.ipc.call<
+    'phase3:profile:update',
+    { id: string; displayName: string },
+    ProfileUpdateResponse
+  >('phase3:profile:update', { id, displayName })
+  assertOk(response)
+  return response.profile
+}
+
+export async function deleteProfile(id: string): Promise<void> {
+  const response = await window.api.ipc.call<
+    'phase3:profile:delete',
+    { id: string },
+    ProfileDeleteResponse
+  >('phase3:profile:delete', { id })
+  assertOk(response)
 }

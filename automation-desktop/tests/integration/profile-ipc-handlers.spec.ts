@@ -46,7 +46,9 @@ test('[P0] profile IPC import-bulk returns result without secrets', async () => 
   const fakeIpc = new FakeIpcMain()
   const service: ProfileService = {
     importBulk: async () => successResult,
-    listProfiles: () => []
+    listProfiles: () => [],
+    updateProfile: () => profileList[0],
+    deleteProfile: async () => undefined
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -65,7 +67,9 @@ test('[P1] profile IPC rejects invalid payload with ErrorEnvelope retryable=fals
   const fakeIpc = new FakeIpcMain()
   const service: ProfileService = {
     importBulk: async () => successResult,
-    listProfiles: () => []
+    listProfiles: () => [],
+    updateProfile: () => profileList[0],
+    deleteProfile: async () => undefined
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -84,7 +88,9 @@ test('[P1] profile IPC propagates service error as retryable ErrorEnvelope', asy
     importBulk: async () => {
       throw new ProfileServiceError('PROFILE_ERROR', 'Lỗi xử lý profile', true)
     },
-    listProfiles: () => []
+    listProfiles: () => [],
+    updateProfile: () => profileList[0],
+    deleteProfile: async () => undefined
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -101,7 +107,9 @@ test('[P1] profile IPC maps unknown service errors to non-retryable ErrorEnvelop
     importBulk: async () => {
       throw new Error('programmer bug')
     },
-    listProfiles: () => []
+    listProfiles: () => [],
+    updateProfile: () => profileList[0],
+    deleteProfile: async () => undefined
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -126,6 +134,8 @@ test('[P0] profile IPC returns ErrorEnvelope when line cap is exceeded', async (
       uidExists: () => false,
       insertProfileAtomic: () => undefined,
       deleteProfile: () => undefined,
+      updateDisplayName: () => 1,
+      getProfileById: () => undefined,
       listProfiles: () => [],
       countProfiles: () => 0
     }
@@ -145,7 +155,9 @@ test('[P1] profile IPC rejects text larger than 1MB with validation ErrorEnvelop
   const fakeIpc = new FakeIpcMain()
   const service: ProfileService = {
     importBulk: async () => successResult,
-    listProfiles: () => []
+    listProfiles: () => [],
+    updateProfile: () => profileList[0],
+    deleteProfile: async () => undefined
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -163,7 +175,9 @@ test('[P0] profile IPC list returns profile summaries without secrets', async ()
   const fakeIpc = new FakeIpcMain()
   const service: ProfileService = {
     importBulk: async () => successResult,
-    listProfiles: () => profileList
+    listProfiles: () => profileList,
+    updateProfile: () => profileList[0],
+    deleteProfile: async () => undefined
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -178,7 +192,9 @@ test('[P0] profile IPC list rejects non-empty payload with ErrorEnvelope', async
   const fakeIpc = new FakeIpcMain()
   const service: ProfileService = {
     importBulk: async () => successResult,
-    listProfiles: () => profileList
+    listProfiles: () => profileList,
+    updateProfile: () => profileList[0],
+    deleteProfile: async () => undefined
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -197,7 +213,9 @@ test('[P1] profile IPC list maps unknown service errors to non-retryable ErrorEn
     importBulk: async () => successResult,
     listProfiles: () => {
       throw new Error('internal details')
-    }
+    },
+    updateProfile: () => profileList[0],
+    deleteProfile: async () => undefined
   }
   registerProfileHandlers(fakeIpc, service)
 
@@ -208,4 +226,107 @@ test('[P1] profile IPC list maps unknown service errors to non-retryable ErrorEn
   expect(err.code).toBe('PROFILE_ERROR')
   expect(err.retryable).toBe(false)
   expect(err.message).toBe('Không thể xử lý profile.')
+})
+
+test('[P0] profile IPC update returns updated profile without secrets', async () => {
+  const fakeIpc = new FakeIpcMain()
+  const updated = { ...profileList[0], displayName: 'Tên mới' }
+  const service: ProfileService = {
+    importBulk: async () => successResult,
+    listProfiles: () => profileList,
+    updateProfile: () => updated,
+    deleteProfile: async () => undefined
+  }
+  registerProfileHandlers(fakeIpc, service)
+
+  const response = await fakeIpc.invoke('phase3:profile:update', {
+    id: 'profile-new',
+    displayName: 'Tên mới'
+  })
+
+  expect(response).toEqual({ ok: true, profile: updated })
+  expect(JSON.stringify(response)).not.toMatch(/cookie|password|twofa|email|secret/i)
+})
+
+test('[P0] profile IPC update maps not-found service error to ErrorEnvelope', async () => {
+  const fakeIpc = new FakeIpcMain()
+  const { ProfileServiceError } = await import('../../src/main/profile/profile-service')
+  const service: ProfileService = {
+    importBulk: async () => successResult,
+    listProfiles: () => profileList,
+    updateProfile: () => {
+      throw new ProfileServiceError('PROFILE_NOT_FOUND', 'Không tìm thấy profile.', false)
+    },
+    deleteProfile: async () => undefined
+  }
+  registerProfileHandlers(fakeIpc, service)
+
+  const response = await fakeIpc.invoke('phase3:profile:update', {
+    id: 'missing-id',
+    displayName: 'Tên mới'
+  })
+
+  expect((response as { ok: boolean }).ok).toBe(false)
+  const err = (response as { error: { code: string; retryable: boolean; message: string } }).error
+  expect(err.code).toBe('PROFILE_NOT_FOUND')
+  expect(err.retryable).toBe(false)
+  expect(err.message).toBe('Không tìm thấy profile.')
+})
+
+test('[P1] profile IPC update rejects invalid payload with validation ErrorEnvelope', async () => {
+  const fakeIpc = new FakeIpcMain()
+  const service: ProfileService = {
+    importBulk: async () => successResult,
+    listProfiles: () => profileList,
+    updateProfile: () => profileList[0],
+    deleteProfile: async () => undefined
+  }
+  registerProfileHandlers(fakeIpc, service)
+
+  const response = await fakeIpc.invoke('phase3:profile:update', {
+    id: 'profile-new',
+    displayName: ''
+  })
+
+  expect((response as { ok: boolean }).ok).toBe(false)
+  const err = (response as { error: { code: string; retryable: boolean } }).error
+  expect(err.code).toBe('VALIDATION_ERROR')
+  expect(err.retryable).toBe(false)
+})
+
+test('[P0] profile IPC delete returns ok response', async () => {
+  const fakeIpc = new FakeIpcMain()
+  const calls: string[] = []
+  const service: ProfileService = {
+    importBulk: async () => successResult,
+    listProfiles: () => profileList,
+    updateProfile: () => profileList[0],
+    deleteProfile: async (id) => {
+      calls.push(id)
+    }
+  }
+  registerProfileHandlers(fakeIpc, service)
+
+  const response = await fakeIpc.invoke('phase3:profile:delete', { id: 'profile-new' })
+
+  expect(response).toEqual({ ok: true })
+  expect(calls).toEqual(['profile-new'])
+})
+
+test('[P1] profile IPC delete rejects invalid payload with validation ErrorEnvelope', async () => {
+  const fakeIpc = new FakeIpcMain()
+  const service: ProfileService = {
+    importBulk: async () => successResult,
+    listProfiles: () => profileList,
+    updateProfile: () => profileList[0],
+    deleteProfile: async () => undefined
+  }
+  registerProfileHandlers(fakeIpc, service)
+
+  const response = await fakeIpc.invoke('phase3:profile:delete', { id: '' })
+
+  expect((response as { ok: boolean }).ok).toBe(false)
+  const err = (response as { error: { code: string; retryable: boolean } }).error
+  expect(err.code).toBe('VALIDATION_ERROR')
+  expect(err.retryable).toBe(false)
 })

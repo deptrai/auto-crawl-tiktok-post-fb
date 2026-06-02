@@ -47,6 +47,8 @@ export interface ImportResult {
 export interface ProfileService {
   importBulk(text: string): Promise<ImportResult>
   listProfiles(): ProfileSummary[]
+  updateProfile(id: string, fields: { displayName: string }): ProfileSummary
+  deleteProfile(id: string): Promise<void>
 }
 
 export interface ProfileServiceDeps {
@@ -66,15 +68,66 @@ function secretKey(
 export function createProfileService(deps: ProfileServiceDeps): ProfileService {
   const { storage, repo } = deps
 
+  function mapSummary(row: {
+    id: string
+    uid: string
+    displayName: string
+    status: string
+    createdAt: string
+  }): ProfileSummary {
+    return {
+      id: row.id,
+      uid: row.uid,
+      displayName: row.displayName,
+      status: row.status,
+      createdAt: row.createdAt
+    }
+  }
+
   return {
     listProfiles() {
-      return repo.listProfiles().map((row) => ({
-        id: row.id,
-        uid: row.uid,
-        displayName: row.displayName,
-        status: row.status,
-        createdAt: row.createdAt
-      }))
+      return repo.listProfiles().map(mapSummary)
+    },
+
+    updateProfile(id, fields) {
+      const changes = repo.updateDisplayName(id, fields.displayName)
+      if (changes === 0) {
+        throw new ProfileServiceError('PROFILE_NOT_FOUND', 'Không tìm thấy profile.', false)
+      }
+
+      const row = repo.getProfileById(id)
+      if (!row) {
+        throw new ProfileServiceError('PROFILE_NOT_FOUND', 'Không tìm thấy profile.', false)
+      }
+      return mapSummary(row)
+    },
+
+    async deleteProfile(id) {
+      const fields: Array<'cookie' | 'twofa' | 'fb_password' | 'mail_password'> = [
+        'cookie',
+        'twofa',
+        'fb_password',
+        'mail_password'
+      ]
+      let secretDeleteFailed = false
+
+      for (const field of fields) {
+        try {
+          await storage.delete(secretKey(id, field))
+        } catch {
+          secretDeleteFailed = true
+        }
+      }
+
+      if (secretDeleteFailed) {
+        throw new ProfileServiceError(
+          'PROFILE_DELETE_FAILED',
+          'Không thể xóa dữ liệu nhạy cảm của profile. Vui lòng thử lại.',
+          true
+        )
+      }
+
+      repo.deleteProfile(id)
     },
 
     async importBulk(text) {

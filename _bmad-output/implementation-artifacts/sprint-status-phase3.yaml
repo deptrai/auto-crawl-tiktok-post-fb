@@ -1,5 +1,5 @@
 # generated: 2026-06-02
-# last_updated: 2026-06-03 (Epic 1 done; 2.1+2.2 done; 2.3 ready-for-dev — sửa displayName + xóa cleanup secrets-first; automation_jobs cleanup defer Epic 4; epic-2 in-progress)
+# last_updated: 2026-06-03 (Epic 1 done; 2.1+2.2 done; 2.3 review — sửa displayName + xóa cleanup secrets-first; automation_jobs cleanup defer Epic 4; epic-2 in-progress)
 # project: auto-crawl-tiktok-post-fb (Phase 3 — Facebook Cookie-Based Automation Desktop)
 # project_key: NOKEY
 # tracking_system: file-system
@@ -64,7 +64,7 @@ development_status:
   epic-2: in-progress
   2-1-import-bulk-profile: done
   2-2-xem-danh-sach-profile-real-time: done
-  2-3-sua-va-xoa-profile: ready-for-dev
+  2-3-sua-va-xoa-profile: review
   epic-2-retrospective: optional
 
   # Epic 3: Quản lý Proxy (Proxy Management)

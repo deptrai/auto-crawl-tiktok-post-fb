@@ -239,3 +239,54 @@ test('[P1] import error path keeps textarea value for retry', async () => {
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('[P0] edit profile display name then delete profile from list', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-edit-delete-'))
+  let app: ElectronApplication | null = null
+  let server: Server | null = null
+
+  try {
+    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'))
+    app = launched.app
+    server = launched.server
+    const window = launched.window
+
+    await expect(window.getByTestId('profiles-view')).toBeVisible({ timeout: 10_000 })
+    const textarea = window.getByTestId('import-textarea')
+    await setTextareaValue(
+      textarea,
+      'uid_edit_delete|pass|seed|cookie_EDIT|mail@example.com|mailpass'
+    )
+    await window.getByTestId('import-button').click()
+    await expect(window.getByTestId('profile-row-uid_edit_delete')).toBeVisible({ timeout: 10_000 })
+
+    await window.getByTestId('profile-edit-uid_edit_delete').click()
+    await expect(window.getByTestId('profile-edit-input-uid_edit_delete')).toBeVisible()
+    await window.getByTestId('profile-edit-input-uid_edit_delete').fill('Tên profile mới')
+    await window.getByTestId('profile-edit-save-uid_edit_delete').click()
+
+    await expect(window.getByTestId('profile-row-uid_edit_delete')).toContainText(
+      'Tên profile mới',
+      {
+        timeout: 10_000
+      }
+    )
+    await expect(window.getByTestId('profiles-list-section')).not.toContainText('cookie_EDIT')
+    await expect(window.getByTestId('profiles-list-section')).not.toContainText('mailpass')
+
+    await window.getByTestId('profile-delete-uid_edit_delete').click()
+    await expect(window.getByTestId('profile-delete-confirm-uid_edit_delete')).toContainText(
+      'Cookie + dữ liệu sẽ bị xóa vĩnh viễn.'
+    )
+    await window.getByTestId('profile-delete-confirm-submit-uid_edit_delete').click()
+
+    await expect(window.getByTestId('profile-row-uid_edit_delete')).toHaveCount(0, {
+      timeout: 10_000
+    })
+    await expect(window.getByTestId('profiles-list-empty')).toContainText('Chưa có profile nào.')
+  } finally {
+    if (app) await app.close()
+    await closeServer(server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

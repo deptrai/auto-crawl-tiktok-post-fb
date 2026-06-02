@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { ImportResult, ProfileSummary } from '../../../shared/ipc-schemas'
-import { importBulkProfiles, listProfiles } from '../api/profile-api'
+import { deleteProfile, importBulkProfiles, listProfiles, updateProfile } from '../api/profile-api'
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   idle: { label: 'Nhàn rỗi', className: 'status-idle' },
@@ -21,6 +21,11 @@ export function ProfilesView(): React.JSX.Element {
   const [profiles, setProfiles] = useState<ProfileSummary[]>([])
   const [listLoading, setListLoading] = useState(true)
   const [listError, setListError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
+  const [editName, setEditName] = useState('')
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [rowBusyId, setRowBusyId] = useState<string | null>(null)
+  const [rowError, setRowError] = useState<string | null>(null)
   const listInFlightRef = useRef(false)
   const listCancelledRef = useRef(false)
   const pendingRefreshRef = useRef(false)
@@ -90,6 +95,51 @@ export function ProfilesView(): React.JSX.Element {
       setError(err instanceof Error ? err.message : 'Không thể import profile.')
     } finally {
       setImporting(false)
+    }
+  }
+
+  function startEdit(profile: ProfileSummary): void {
+    setRowError(null)
+    setConfirmDeleteId(null)
+    setEditingId(profile.id)
+    setEditName(profile.displayName)
+  }
+
+  async function handleSaveEdit(profile: ProfileSummary): Promise<void> {
+    const nextName = editName.trim()
+    if (!nextName || rowBusyId) return
+
+    setRowBusyId(profile.id)
+    setRowError(null)
+    try {
+      await updateProfile(profile.id, nextName)
+      setEditingId(null)
+      setEditName('')
+      await refreshProfiles(false)
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : 'Không thể sửa profile.')
+    } finally {
+      setRowBusyId(null)
+    }
+  }
+
+  async function handleDelete(profile: ProfileSummary): Promise<void> {
+    if (rowBusyId) return
+
+    setRowBusyId(profile.id)
+    setRowError(null)
+    try {
+      await deleteProfile(profile.id)
+      setConfirmDeleteId(null)
+      if (editingId === profile.id) {
+        setEditingId(null)
+        setEditName('')
+      }
+      await refreshProfiles(false)
+    } catch (err) {
+      setRowError(err instanceof Error ? err.message : 'Không thể xóa profile.')
+    } finally {
+      setRowBusyId(null)
     }
   }
 
@@ -231,6 +281,9 @@ export function ProfilesView(): React.JSX.Element {
           <ul className="profiles-list" data-testid="profiles-list">
             {profiles.map((profile) => {
               const badge = getStatusBadge(profile.status)
+              const isEditing = editingId === profile.id
+              const isConfirmingDelete = confirmDeleteId === profile.id
+              const isBusy = rowBusyId === profile.id
               return (
                 <li
                   key={profile.id}
@@ -239,9 +292,108 @@ export function ProfilesView(): React.JSX.Element {
                 >
                   <div className="profile-list-identity">
                     <span className="profile-list-uid">{profile.uid}</span>
-                    <span className="profile-list-name">Tên hiển thị: {profile.displayName}</span>
+                    {isEditing ? (
+                      <div className="profile-edit-form">
+                        <label className="sr-only" htmlFor={`profile-edit-input-${profile.uid}`}>
+                          Tên hiển thị
+                        </label>
+                        <input
+                          id={`profile-edit-input-${profile.uid}`}
+                          data-testid={`profile-edit-input-${profile.uid}`}
+                          className="profile-edit-input"
+                          value={editName}
+                          disabled={isBusy}
+                          onChange={(e) => setEditName(e.target.value)}
+                        />
+                        <button
+                          data-testid={`profile-edit-save-${profile.uid}`}
+                          className="profile-row-button primary-row-action"
+                          type="button"
+                          disabled={isBusy || !editName.trim()}
+                          onClick={(e) => {
+                            ;(e.currentTarget as HTMLButtonElement).disabled = true
+                            void handleSaveEdit(profile)
+                          }}
+                        >
+                          {isBusy ? 'Đang lưu...' : 'Lưu'}
+                        </button>
+                        <button
+                          className="profile-row-button"
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => {
+                            setEditingId(null)
+                            setEditName('')
+                          }}
+                        >
+                          Hủy
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="profile-list-name">Tên hiển thị: {profile.displayName}</span>
+                    )}
                   </div>
-                  <span className={`status-badge ${badge.className}`}>{badge.label}</span>
+                  <div className="profile-row-side">
+                    <span className={`status-badge ${badge.className}`}>{badge.label}</span>
+                    <div className="profile-row-actions">
+                      <button
+                        data-testid={`profile-edit-${profile.uid}`}
+                        className="profile-row-button"
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => startEdit(profile)}
+                      >
+                        Sửa
+                      </button>
+                      <button
+                        data-testid={`profile-delete-${profile.uid}`}
+                        className="profile-row-button danger-row-action"
+                        type="button"
+                        disabled={isBusy}
+                        onClick={() => {
+                          setRowError(null)
+                          setEditingId(null)
+                          setEditName('')
+                          setConfirmDeleteId(profile.id)
+                        }}
+                      >
+                        Xóa
+                      </button>
+                    </div>
+                  </div>
+                  {isConfirmingDelete ? (
+                    <div
+                      className="profile-delete-confirm"
+                      data-testid={`profile-delete-confirm-${profile.uid}`}
+                    >
+                      <span>Xóa profile {profile.uid}? Cookie + dữ liệu sẽ bị xóa vĩnh viễn.</span>
+                      <div className="profile-row-actions">
+                        <button
+                          data-testid={`profile-delete-confirm-submit-${profile.uid}`}
+                          className="profile-row-button danger-row-action"
+                          type="button"
+                          disabled={isBusy}
+                          onClick={(e) => {
+                            ;(e.currentTarget as HTMLButtonElement).disabled = true
+                            void handleDelete(profile)
+                          }}
+                        >
+                          {isBusy ? 'Đang xóa...' : 'Xóa'}
+                        </button>
+                        <button
+                          className="profile-row-button"
+                          type="button"
+                          disabled={isBusy}
+                          onClick={() => setConfirmDeleteId(null)}
+                        >
+                          Hủy
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+                  {rowError && (isEditing || isConfirmingDelete) ? (
+                    <p className="error-message profile-row-error">{rowError}</p>
+                  ) : null}
                 </li>
               )
             })}

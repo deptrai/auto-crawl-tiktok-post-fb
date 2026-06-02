@@ -1,6 +1,6 @@
 # Story 2.3: Sửa và xóa profile
 
-Status: ready-for-dev
+Status: review
 
 <!-- Phase 3 story (Epic 2 — Profile Management, story cuối 3/3). Sources: epics-phase3.md#Story-2.3 (L296-308), prd-phase3.md#FR2 (L342), architecture.md (DB schema L1399-1401 CASCADE, R-D3 secret hygiene). ⚠️ automation-desktop/ (Electron client) — 25 rules CLAUDE.md ÁP DỤNG. Previous: 2.1 done (8 patch + cookie-export), 2.2 done (list+polling, 3 patch). -->
 
@@ -26,27 +26,27 @@ so that tôi quản lý vòng đời tài khoản, và khi xóa thì cookie + d�
 
 ### Main process (Electron — TypeScript)
 
-- [ ] **Task 1: Schema + 2 channel** (AC: #1,#2)
-  - [ ] `src/shared/ipc-schemas/profile.ts`: thêm `ProfileUpdateRequestSchema = z.object({ id: z.string().min(1), displayName: z.string().min(1) })`, `ProfileUpdateSuccessResponseSchema = z.object({ ok: z.literal(true), profile: ProfileSummarySchema })`, `ProfileUpdateResponseSchema = union([success, IpcErrorResponseSchema])`; `ProfileDeleteRequestSchema = z.object({ id: z.string().min(1) })`, `ProfileDeleteSuccessResponseSchema = z.object({ ok: z.literal(true) })`, `ProfileDeleteResponseSchema = union([success, IpcErrorResponseSchema])` + export types. GIỮ NGUYÊN schema 2.1/2.2.
-  - [ ] `src/shared/ipc-schemas/index.ts`: thêm 2 entry `phase3:profile:update` + `phase3:profile:delete` vào `channelRegistry` + import.
-- [ ] **Task 2: profile-repo mở rộng** (AC: #5)
-  - [ ] `src/main/db/repositories/profile-repo.ts`: thêm vào interface + impl: `updateDisplayName(id, displayName): number` (prepared UPDATE, trả `.changes`), `getProfileById(id): ProfileRow | undefined` (prepared SELECT). `deleteProfile` reuse.
-- [ ] **Task 3: ProfileService update + delete** (AC: #1,#2,#3,#4)
-  - [ ] `src/main/profile/profile-service.ts`: thêm vào interface `ProfileService`: `updateProfile(id: string, fields: { displayName: string }): ProfileSummary` + `deleteProfile(id: string): Promise<void>`. Impl: update verify-not-found→throw; delete secrets-first (loop 4 field, `await storage.delete(secretKey(id,field))`, gom lỗi → nếu có → throw `ProfileServiceError('PROFILE_DELETE_FAILED','Không thể xóa dữ liệu nhạy cảm của profile. Vui lòng thử lại.', true)` KHÔNG xóa row) → `repo.deleteProfile(id)`. Reuse `secretKey` helper sẵn có.
-- [ ] **Task 4: IPC handlers** (AC: #1,#2)
-  - [ ] `src/main/ipc/profile-handlers.ts`: trong `registerProfileHandlers` thêm 2 `ipcMain.handle` cho update + delete: safeParse request → `parseError`; `try { ... ResponseSchema.parse(...) } catch { normalizeError }`. Reuse `toErrorResponse`/`parseError`/`normalizeError`. `registerProfileHandlers(ipcMain, service)` — KHÔNG đổi param.
-- [ ] **Task 5: Bootstrap** (AC: #1,#2)
-  - [ ] `electron-bootstrap.ts`: **KHÔNG cần đổi** (handlers chạy cùng `registerProfileHandlers`). Verify đăng ký.
-- [ ] **Task 6: Renderer API** (AC: #6)
-  - [ ] `src/renderer/src/api/profile-api.ts`: thêm `updateProfile(id, displayName): Promise<ProfileSummary>` + `deleteProfile(id): Promise<void>` (gọi `window.api.ipc.call` + `assertOk`). Reuse `assertOk`.
-- [ ] **Task 7: ProfilesView actions** (AC: #6,#7)
-  - [ ] `ProfilesView.tsx`: thêm per-row state (editingId, confirmDeleteId, rowBusy). Nút Sửa→inline edit displayName + Lưu/Hủy; nút Xóa→confirm inline + Xóa/Hủy. Handlers gọi update/delete API rồi `refreshProfiles(false)`. Disable khi busy (rule #17). testid: `profile-edit-<uid>`, `profile-delete-<uid>`, `profile-edit-input-<uid>`, `profile-edit-save-<uid>`, `profile-delete-confirm-<uid>`. KHÔNG đụng khu import.
-- [ ] **Task 8: Tests** (AC: tất cả)
-  - [ ] Unit `tests/unit/profile-service.spec.ts` (thêm): `updateProfile` đổi displayName + trả summary; update id không tồn tại → throw PROFILE_NOT_FOUND; **`deleteProfile` xóa CẢ 4 secret key + gọi repo.deleteProfile** (verify fake storage.delete nhận đủ 4 key); **delete secret-fail → throw + repo.deleteProfile KHÔNG được gọi** (row giữ); delete id không tồn tại → vẫn resolve (idempotent); KHÔNG log secret.
-  - [ ] Integration `tests/integration/profile-ipc-handlers.spec.ts` (thêm, FakeIpcMain): update Zod 2-way + PROFILE_NOT_FOUND ErrorEnvelope; delete Zod 2-way + ok; response không secret.
-  - [ ] Integration real SQLCipher: mở rộng `runProfileRepoSmoke` (electron-bootstrap, `PHASE3_PROFILE_REPO_SMOKE`) — sau insert: `updateDisplayName` đổi tên + `getProfileById` xác nhận; delete → `profile_metadata` của profile đó bị CASCADE xóa (đã có sẵn check cascade ở 2.1 smoke — verify lại).
-  - [ ] E2E `tests/e2e/profiles.spec.ts` (thêm): import 1 profile → Sửa displayName → list hiển thị tên mới; Xóa (confirm) → row biến mất + empty state. Reuse `launchWithActiveLicense`/`closeServer`/`setTextareaValue`.
-  - [ ] `typecheck` PASS, `lint` 0 errors, toàn bộ test 2.1/2.2 vẫn xanh.
+- [x] **Task 1: Schema + 2 channel** (AC: #1,#2)
+  - [x] `src/shared/ipc-schemas/profile.ts`: thêm `ProfileUpdateRequestSchema = z.object({ id: z.string().min(1), displayName: z.string().min(1) })`, `ProfileUpdateSuccessResponseSchema = z.object({ ok: z.literal(true), profile: ProfileSummarySchema })`, `ProfileUpdateResponseSchema = union([success, IpcErrorResponseSchema])`; `ProfileDeleteRequestSchema = z.object({ id: z.string().min(1) })`, `ProfileDeleteSuccessResponseSchema = z.object({ ok: z.literal(true) })`, `ProfileDeleteResponseSchema = union([success, IpcErrorResponseSchema])` + export types. GIỮ NGUYÊN schema 2.1/2.2.
+  - [x] `src/shared/ipc-schemas/index.ts`: thêm 2 entry `phase3:profile:update` + `phase3:profile:delete` vào `channelRegistry` + import.
+- [x] **Task 2: profile-repo mở rộng** (AC: #5)
+  - [x] `src/main/db/repositories/profile-repo.ts`: thêm vào interface + impl: `updateDisplayName(id, displayName): number` (prepared UPDATE, trả `.changes`), `getProfileById(id): ProfileRow | undefined` (prepared SELECT). `deleteProfile` reuse.
+- [x] **Task 3: ProfileService update + delete** (AC: #1,#2,#3,#4)
+  - [x] `src/main/profile/profile-service.ts`: thêm vào interface `ProfileService`: `updateProfile(id: string, fields: { displayName: string }): ProfileSummary` + `deleteProfile(id: string): Promise<void>`. Impl: update verify-not-found→throw; delete secrets-first (loop 4 field, `await storage.delete(secretKey(id,field))`, gom lỗi → nếu có → throw `ProfileServiceError('PROFILE_DELETE_FAILED','Không thể xóa dữ liệu nhạy cảm của profile. Vui lòng thử lại.', true)` KHÔNG xóa row) → `repo.deleteProfile(id)`. Reuse `secretKey` helper sẵn có.
+- [x] **Task 4: IPC handlers** (AC: #1,#2)
+  - [x] `src/main/ipc/profile-handlers.ts`: trong `registerProfileHandlers` thêm 2 `ipcMain.handle` cho update + delete: safeParse request → `parseError`; `try { ... ResponseSchema.parse(...) } catch { normalizeError }`. Reuse `toErrorResponse`/`parseError`/`normalizeError`. `registerProfileHandlers(ipcMain, service)` — KHÔNG đổi param.
+- [x] **Task 5: Bootstrap** (AC: #1,#2)
+  - [x] `electron-bootstrap.ts`: **KHÔNG cần đổi** (handlers chạy cùng `registerProfileHandlers`). Verify đăng ký.
+- [x] **Task 6: Renderer API** (AC: #6)
+  - [x] `src/renderer/src/api/profile-api.ts`: thêm `updateProfile(id, displayName): Promise<ProfileSummary>` + `deleteProfile(id): Promise<void>` (gọi `window.api.ipc.call` + `assertOk`). Reuse `assertOk`.
+- [x] **Task 7: ProfilesView actions** (AC: #6,#7)
+  - [x] `ProfilesView.tsx`: thêm per-row state (editingId, confirmDeleteId, rowBusy). Nút Sửa→inline edit displayName + Lưu/Hủy; nút Xóa→confirm inline + Xóa/Hủy. Handlers gọi update/delete API rồi `refreshProfiles(false)`. Disable khi busy (rule #17). testid: `profile-edit-<uid>`, `profile-delete-<uid>`, `profile-edit-input-<uid>`, `profile-edit-save-<uid>`, `profile-delete-confirm-<uid>`. KHÔNG đụng khu import.
+- [x] **Task 8: Tests** (AC: tất cả)
+  - [x] Unit `tests/unit/profile-service.spec.ts` (thêm): `updateProfile` đổi displayName + trả summary; update id không tồn tại → throw PROFILE_NOT_FOUND; **`deleteProfile` xóa CẢ 4 secret key + gọi repo.deleteProfile** (verify fake storage.delete nhận đủ 4 key); **delete secret-fail → throw + repo.deleteProfile KHÔNG được gọi** (row giữ); delete id không tồn tại → vẫn resolve (idempotent); KHÔNG log secret.
+  - [x] Integration `tests/integration/profile-ipc-handlers.spec.ts` (thêm, FakeIpcMain): update Zod 2-way + PROFILE_NOT_FOUND ErrorEnvelope; delete Zod 2-way + ok; response không secret.
+  - [x] Integration real SQLCipher: mở rộng `runProfileRepoSmoke` (electron-bootstrap, `PHASE3_PROFILE_REPO_SMOKE`) — sau insert: `updateDisplayName` đổi tên + `getProfileById` xác nhận; delete → `profile_metadata` của profile đó bị CASCADE xóa (đã có sẵn check cascade ở 2.1 smoke — verify lại).
+  - [x] E2E `tests/e2e/profiles.spec.ts` (thêm): import 1 profile → Sửa displayName → list hiển thị tên mới; Xóa (confirm) → row biến mất + empty state. Reuse `launchWithActiveLicense`/`closeServer`/`setTextareaValue`.
+  - [x] `typecheck` PASS, `lint` 0 errors, toàn bộ test 2.1/2.2 vẫn xanh.
 
 ## Dev Notes
 
@@ -130,9 +130,39 @@ async deleteProfile(id):
 ## Dev Agent Record
 
 ### Agent Model Used
+Codex GPT-5
 
 ### Debug Log References
+- RED baseline: `npx playwright test tests/unit/profile-service.spec.ts tests/integration/profile-ipc-handlers.spec.ts tests/e2e/profiles.spec.ts --reporter=line` failed as expected on missing `phase3:profile:update`, `phase3:profile:delete`, `service.updateProfile`, `service.deleteProfile`.
+- Targeted unit/integration: `npx playwright test tests/unit/profile-service.spec.ts tests/integration/profile-ipc-handlers.spec.ts tests/integration/profile-repo.spec.ts --reporter=line` -> 32 passed.
+- Typecheck: `npm run typecheck` -> passed.
+- Lint: `npm run lint` -> passed (Node warning only about existing eslint-rules module type).
+- Build + profile E2E: `npx electron-vite build && npx playwright test tests/e2e/profiles.spec.ts --reporter=line` -> build passed, 6 passed.
+- Full unit/integration: `npx playwright test tests/unit tests/integration --reporter=line` -> 86 passed.
+- Full E2E: `npx playwright test tests/e2e --reporter=line` -> 14 passed.
 
 ### Completion Notes List
+- Added typed IPC schemas and registry entries for `phase3:profile:update` and `phase3:profile:delete` with Vietnamese ErrorEnvelope handling.
+- Extended profile repository with prepared `updateDisplayName` and `getProfileById`; extended real SQLCipher smoke to verify update/get plus existing uniqueness/FK/cascade behavior.
+- Implemented ProfileService update/delete. Delete removes all 4 known safeStorage secret keys before deleting the DB row, aborts row delete on any secret-delete failure, and remains idempotent for missing IDs.
+- Added renderer API and ProfilesView per-row inline edit + inline two-step delete confirmation with required testids, busy-state disabling, and no secret display.
+- Excluded local `.phase3-manual/` from ESLint scanning so manual smoke data that may contain secrets stays outside normal code validation.
+- Added/kept regression coverage for service, IPC, real SQLCipher repo smoke, and E2E import -> edit -> delete.
 
 ### File List
+- `automation-desktop/eslint.config.mjs`
+- `automation-desktop/src/main/adapters/electron-bootstrap.ts`
+- `automation-desktop/src/main/db/repositories/profile-repo.ts`
+- `automation-desktop/src/main/ipc/profile-handlers.ts`
+- `automation-desktop/src/main/profile/profile-service.ts`
+- `automation-desktop/src/renderer/src/api/profile-api.ts`
+- `automation-desktop/src/renderer/src/assets/main.css`
+- `automation-desktop/src/renderer/src/views/ProfilesView.tsx`
+- `automation-desktop/src/shared/ipc-schemas/index.ts`
+- `automation-desktop/src/shared/ipc-schemas/profile.ts`
+- `automation-desktop/tests/e2e/profiles.spec.ts`
+- `automation-desktop/tests/integration/profile-ipc-handlers.spec.ts`
+- `automation-desktop/tests/unit/profile-service.spec.ts`
+
+### Change Log
+- 2026-06-03: Implemented Story 2.3 edit/delete profile flow with secrets-first cleanup, UI actions, IPC schemas/handlers, repository/service support, and full validation pass.

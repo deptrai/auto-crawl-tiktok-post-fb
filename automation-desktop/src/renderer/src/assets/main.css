@@ -17,6 +17,18 @@ input {
   font: inherit;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 textarea {
   font: inherit;
 }
@@ -304,6 +316,7 @@ h1 {
 
 .profile-list-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 14px;
   align-items: center;
   justify-content: space-between;
@@ -316,6 +329,7 @@ h1 {
 .profile-list-identity {
   display: grid;
   gap: 4px;
+  min-width: 220px;
 }
 
 .profile-list-uid {
@@ -326,6 +340,77 @@ h1 {
 .profile-list-name {
   color: #b9c9d9;
   font-size: 13px;
+}
+
+.profile-row-side {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.profile-row-actions,
+.profile-edit-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.profile-edit-input {
+  width: min(280px, 100%);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  border-radius: 12px;
+  padding: 9px 11px;
+  color: #fff7e9;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.profile-row-button {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 999px;
+  padding: 8px 12px;
+  color: #fff7e9;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.profile-row-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.primary-row-action {
+  border-color: rgba(130, 220, 166, 0.4);
+  background: rgba(76, 214, 119, 0.18);
+}
+
+.danger-row-action {
+  border-color: rgba(255, 122, 102, 0.4);
+  color: #ffd4ce;
+  background: rgba(255, 102, 82, 0.16);
+}
+
+.profile-delete-confirm,
+.profile-row-error {
+  flex: 1 0 100%;
+}
+
+.profile-delete-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid rgba(255, 122, 102, 0.28);
+  border-radius: 14px;
+  padding: 12px;
+  color: #ffd4ce;
+  background: rgba(255, 102, 82, 0.1);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .status-badge {
@@ -377,8 +462,14 @@ h1 {
   }
 
   .profiles-list-header,
-  .profile-list-row {
+  .profile-list-row,
+  .profile-row-side {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .profile-row-side,
+  .profile-edit-input {
+    width: 100%;
   }
 }

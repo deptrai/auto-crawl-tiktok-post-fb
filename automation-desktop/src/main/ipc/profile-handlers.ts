@@ -1,11 +1,17 @@
 import {
   ProfileImportBulkRequestSchema,
   ProfileImportBulkResponseSchema,
+  ProfileDeleteRequestSchema,
+  ProfileDeleteResponseSchema,
   ProfileListRequestSchema,
   ProfileListResponseSchema,
+  ProfileUpdateRequestSchema,
+  ProfileUpdateResponseSchema,
   type IpcErrorResponse,
+  type ProfileDeleteResponse,
   type ProfileImportBulkResponse,
-  type ProfileListResponse
+  type ProfileListResponse,
+  type ProfileUpdateResponse
 } from '../../shared/ipc-schemas'
 import type { ProfileService } from '../profile/profile-service'
 import { ProfileServiceError } from '../profile/profile-service'
@@ -59,4 +65,37 @@ export function registerProfileHandlers(ipcMain: IpcMainLike, service: ProfileSe
       return ProfileListResponseSchema.parse(normalizeError(error))
     }
   })
+
+  ipcMain.handle(
+    'phase3:profile:update',
+    async (_event, request): Promise<ProfileUpdateResponse> => {
+      const parsedRequest = ProfileUpdateRequestSchema.safeParse(request)
+      if (!parsedRequest.success)
+        return ProfileUpdateResponseSchema.parse(parseError(parsedRequest.error.flatten()))
+
+      try {
+        const { id, displayName } = parsedRequest.data
+        const profile = service.updateProfile(id, { displayName })
+        return ProfileUpdateResponseSchema.parse({ ok: true, profile })
+      } catch (error) {
+        return ProfileUpdateResponseSchema.parse(normalizeError(error))
+      }
+    }
+  )
+
+  ipcMain.handle(
+    'phase3:profile:delete',
+    async (_event, request): Promise<ProfileDeleteResponse> => {
+      const parsedRequest = ProfileDeleteRequestSchema.safeParse(request)
+      if (!parsedRequest.success)
+        return ProfileDeleteResponseSchema.parse(parseError(parsedRequest.error.flatten()))
+
+      try {
+        await service.deleteProfile(parsedRequest.data.id)
+        return ProfileDeleteResponseSchema.parse({ ok: true })
+      } catch (error) {
+        return ProfileDeleteResponseSchema.parse(normalizeError(error))
+      }
+    }
+  )
 }
