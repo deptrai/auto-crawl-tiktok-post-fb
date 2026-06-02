@@ -8,8 +8,13 @@ import type { IpcMainLike } from './settings-handlers'
 
 export type OpenExternal = (url: string) => Promise<void> | void
 
-function toErrorResponse(code: string, message: string, details?: unknown): IpcErrorResponse {
-  return { ok: false, error: { code, message, details } }
+function toErrorResponse(
+  code: string,
+  message: string,
+  details?: unknown,
+  retryable = false
+): IpcErrorResponse {
+  return { ok: false, error: { code, message, retryable, details } }
 }
 
 export function registerShellHandlers(ipcMain: IpcMainLike, openExternal: OpenExternal): void {
@@ -21,7 +26,7 @@ export function registerShellHandlers(ipcMain: IpcMainLike, openExternal: OpenEx
         return ShellOpenExternalResponseSchema.parse(
           toErrorResponse(
             'VALIDATION_ERROR',
-            'Invalid external URL payload',
+            'Dữ liệu URL không hợp lệ',
             parsedRequest.error.flatten()
           )
         )
@@ -32,7 +37,7 @@ export function registerShellHandlers(ipcMain: IpcMainLike, openExternal: OpenEx
         return ShellOpenExternalResponseSchema.parse({ ok: true })
       } catch (error) {
         return ShellOpenExternalResponseSchema.parse(
-          toErrorResponse('OPEN_EXTERNAL_FAILED', 'Unable to open external URL', error)
+          toErrorResponse('OPEN_EXTERNAL_FAILED', 'Không thể mở liên kết', error)
         )
       }
     }

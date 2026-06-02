@@ -20,6 +20,32 @@ async function launchDesktopApp(
   })
 }
 
+test('[P0] EULA gate is re-shown when code version is bumped above accepted version', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-eula-bump-'))
+  const dbPath = join(dir, 'phase3.db')
+
+  try {
+    // Seed the DB with an old accepted version using the smoke env
+    const seedApp = await launchDesktopApp(dbPath, {
+      PHASE3_SETTINGS_SMOKE_KEY: 'eula_accepted_version',
+      PHASE3_SETTINGS_SMOKE_VALUE: '0'
+    })
+    await seedApp.firstWindow()
+    await seedApp.close()
+
+    // Launch without overriding EULA_VERSION — the app's EULA_VERSION (1) > stored (0)
+    const app = await launchDesktopApp(dbPath)
+    const window = await app.firstWindow()
+
+    await expect(window.getByRole('heading', { name: /thỏa thuận người dùng/i })).toBeVisible()
+    await expect(window.getByTestId('main-shell')).toHaveCount(0)
+
+    await app.close()
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('[P0] first-run EULA accept persists settings and restart skips gate', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'phase3-eula-e2e-'))
   const dbPath = join(dir, 'phase3.db')

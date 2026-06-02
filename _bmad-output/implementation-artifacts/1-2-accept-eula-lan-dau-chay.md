@@ -1,6 +1,6 @@
 # Story 1.2: Accept EULA lần đầu chạy
 
-Status: review
+Status: done
 
 <!-- Phase 3 story. Sources: prd-phase3.md, architecture.md § Phase 3 Addendum, epics-phase3.md. Previous: 1.1 (done) -->
 
@@ -47,6 +47,40 @@ so that tôi hiểu rủi ro FB ToS và trách nhiệm của mình (tool vendor 
   - [x] Integration test: IPC settings round-trip với Zod validation (reject payload sai schema)
   - [x] E2E `@playwright/test`: first-run hiện EULA → accept → restart không hiện lại; verify telemetry_enabled flag set
   - [x] `npm run lint` + `typecheck` + test PASS (lint gate phải xanh trên file test mới — bài học review 1.1)
+
+## Review Findings
+
+> Code review 2026-06-02 (3-layer adversarial: Blind Hunter + Edge Case + Acceptance Auditor). 3 Critical + 8 Major + 6 Minor. Dev claim "lint+typecheck+test PASS, all AC done" — review tìm ra lỗ bypass thật.
+
+### Critical
+
+- [x] [Review][Patch] `runSettingsSmoke`/`runDatabaseSmoke` chạy vô điều kiện trong production + `PHASE3_DB_PATH` env override → attacker set `PHASE3_SETTINGS_SMOKE_KEY=eula_accepted_version` + `VALUE=99` để bypass EULA gate vĩnh viễn. Guard sau `if (!app.isPackaged)` hoặc xóa khỏi prod build [`automation-desktop/src/main/adapters/electron-bootstrap.ts`]
+- [x] [Review][Patch] `setWindowOpenHandler` gọi `shell.openExternal(details.url)` KHÔNG validate protocol → bypass hoàn toàn Zod https filter của `ShellOpenExternalRequestSchema`. Validate protocol (chỉ http/https) trước khi mở [`automation-desktop/src/main/adapters/electron-bootstrap.ts`:81]
+- [x] [Review][Patch] preload fallback ghi bridge vào `globalThis` khi `!contextIsolated` → renderer truy cập trực tiếp ipcRenderer, bypass toàn bộ Zod validation. Bỏ fallback hoặc throw nếu contextIsolation tắt [`automation-desktop/src/preload/index.ts`]
+
+### Major
+
+- [x] [Review][Patch] `Number.parseInt("1abc",10)=1` chấp nhận trailing garbage → ghi `"1junk"` vào `eula_accepted_version` bypass gate. Dùng strict parse (`Number()` + check `String(n)===trimmed`) [`automation-desktop/src/shared/eula-version.ts`:9]
+- [x] [Review][Patch] `handleAccept` 2× `setSetting` không atomic → nếu set thứ 2 (`telemetry_enabled`) fail/crash sau set đầu (`eula_accepted_version`), restart skip EULA nhưng `telemetry_enabled` không bao giờ set → vi phạm NFR21 vĩnh viễn. Persist atomic (1 object/transaction, hoặc set telemetry trước) [`automation-desktop/src/renderer/src/App.tsx`]
+- [x] [Review][Patch] `openEncryptedDatabase`/`initializeDeps` không try/catch → DB locked (instance thứ 2) hoặc key sai → crash uncaught không message. Wrap try/catch + graceful message [`automation-desktop/src/main/db/client.ts`, `electron-bootstrap.ts`]
+- [x] [Review][Patch] `ErrorEnvelope` schema thiếu field `retryable: boolean` bắt buộc theo arch ADR-P3-D8 → renderer không implement được RETRY_POLICY [`automation-desktop/src/shared/ipc-schemas/common.ts`]
+- [x] [Review][Patch] preload throw raw `Error` thay vì `ErrorEnvelope` khi response schema invalid → vi phạm ADR-P3-D8 "error always envelope, không throw raw" [`automation-desktop/src/preload/index.ts`]
+- [x] [Review][Patch] `automation-desktop/LICENSE-EULA.md` file thiếu hoàn toàn (G-2 arch requirement) — Dev Notes hứa placeholder DRAFT nhưng file vắng mặt. Tạo file DRAFT [`automation-desktop/LICENSE-EULA.md`]
+- [x] [Review][Patch] AC6 (re-show khi EULA_VERSION bump) chỉ có unit test pure function, KHÔNG có E2E full-app — ticked nhưng coverage thực = 0. Thêm E2E [`automation-desktop/tests/e2e/eula.spec.ts`]
+- [x] [Review][Patch] Error message tiếng Anh (`'Invalid IPC payload'`, `'Unable to read/write...'`) vi phạm NFR-P3-Localization-VN-Lock (message field phải tiếng Việt) [`automation-desktop/src/main/ipc/settings-handlers.ts`, `shell-handlers.ts`]
+
+### Minor
+
+- [x] [Review][Patch] `SettingValueSchema = z.string().max(4096)` thiếu `min(1)` → cho phép empty string, tạo state mơ hồ [`automation-desktop/src/shared/ipc-schemas/settings.ts`:10]
+- [x] [Review][Patch] Nút Accept không disable trong microtask giữa click và `setAccepting(true)` → double-click race 2× setSetting song song [`automation-desktop/src/renderer/src/views/EulaAcceptanceView.tsx`]
+- [x] [Review][Patch] `settings:get` error path `SettingsGetResponseSchema.parse(parseError(...))` có thể throw ZodError không catch [`automation-desktop/src/main/ipc/settings-handlers.ts`]
+- [x] [Review][Patch] `getSetting` Res generic không constrain → type-safety gap [`automation-desktop/src/renderer/src/api/settings-api.ts`]
+- [x] [Review][Patch] Bootstrap comment "init order: db → adapters → services → ipc → window" nhưng code chỉ `void db`/`void adapters`, không `void services` — comment ≠ code [`automation-desktop/src/main/adapters/electron-bootstrap.ts`]
+- [x] [Review][Patch] Loading state render `<main className="main-shell">` (cùng class main shell) gây nhầm lẫn AC1 gate + test selector [`automation-desktop/src/renderer/src/App.tsx`]
+
+### Dismissed (noise)
+
+- `phase3:shell:open-external` channel đăng ký ngoài AC7 (chỉ đặc tả 2 settings channel) — KHÔNG phải defect, shell cần cho AC2 privacy link. Justified scope.
 
 ## Dev Notes
 

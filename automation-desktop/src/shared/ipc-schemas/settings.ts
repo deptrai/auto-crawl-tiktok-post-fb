@@ -7,7 +7,7 @@ export const SettingKeySchema = z
   .max(128)
   .regex(/^[a-z0-9_.:-]+$/)
 
-export const SettingValueSchema = z.string().max(4096)
+export const SettingValueSchema = z.string().min(1).max(4096)
 
 export const SettingsGetRequestSchema = z.object({
   key: SettingKeySchema

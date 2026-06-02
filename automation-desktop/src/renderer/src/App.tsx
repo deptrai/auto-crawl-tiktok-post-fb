@@ -48,16 +48,23 @@ function App(): React.JSX.Element {
     setAccepting(true)
     setError(null)
     try {
-      await setSetting('eula_accepted_version', String(EULA_VERSION))
+      // Persist telemetry flag first — if it fails we haven't committed eula version yet
       await setSetting('telemetry_enabled', 'true')
+      await setSetting('eula_accepted_version', String(EULA_VERSION))
       setGateState('ready')
+    } catch (acceptError) {
+      setError(acceptError instanceof Error ? acceptError.message : 'Không thể lưu trạng thái EULA')
     } finally {
       setAccepting(false)
     }
   }
 
   if (gateState === 'loading') {
-    return <main className="main-shell">Đang kiểm tra EULA...</main>
+    return (
+      <main className="loading-shell" data-testid="loading-shell">
+        Đang kiểm tra EULA...
+      </main>
+    )
   }
 
   if (gateState === 'needs-eula') {

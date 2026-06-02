@@ -13,19 +13,24 @@ export interface IpcMainLike {
   handle(channel: string, listener: (_event: unknown, request: unknown) => unknown): void
 }
 
-function toErrorResponse(code: string, message: string, details?: unknown): IpcErrorResponse {
-  return { ok: false, error: { code, message, details } }
+function toErrorResponse(
+  code: string,
+  message: string,
+  details?: unknown,
+  retryable = false
+): IpcErrorResponse {
+  return { ok: false, error: { code, message, retryable, details } }
 }
 
 function parseError(details: unknown): IpcErrorResponse {
-  return toErrorResponse('VALIDATION_ERROR', 'Invalid IPC payload', details)
+  return toErrorResponse('VALIDATION_ERROR', 'Dữ liệu yêu cầu không hợp lệ', details)
 }
 
 export function registerSettingsHandlers(ipcMain: IpcMainLike, repo: SettingsRepository): void {
   ipcMain.handle('phase3:settings:get', (_event, request): SettingsGetResponse => {
     const parsedRequest = SettingsGetRequestSchema.safeParse(request)
     if (!parsedRequest.success)
-      return SettingsGetResponseSchema.parse(parseError(parsedRequest.error.flatten()))
+      return parseError(parsedRequest.error.flatten()) as SettingsGetResponse
 
     try {
       return SettingsGetResponseSchema.parse({
@@ -34,7 +39,7 @@ export function registerSettingsHandlers(ipcMain: IpcMainLike, repo: SettingsRep
       })
     } catch (error) {
       return SettingsGetResponseSchema.parse(
-        toErrorResponse('SETTINGS_GET_FAILED', 'Unable to read local setting', error)
+        toErrorResponse('SETTINGS_GET_FAILED', 'Không thể đọc cài đặt cục bộ', error, true)
       )
     }
   })
@@ -42,14 +47,14 @@ export function registerSettingsHandlers(ipcMain: IpcMainLike, repo: SettingsRep
   ipcMain.handle('phase3:settings:set', (_event, request): SettingsSetResponse => {
     const parsedRequest = SettingsSetRequestSchema.safeParse(request)
     if (!parsedRequest.success)
-      return SettingsSetResponseSchema.parse(parseError(parsedRequest.error.flatten()))
+      return parseError(parsedRequest.error.flatten()) as SettingsSetResponse
 
     try {
       repo.setSetting(parsedRequest.data.key, parsedRequest.data.value)
       return SettingsSetResponseSchema.parse({ ok: true })
     } catch (error) {
       return SettingsSetResponseSchema.parse(
-        toErrorResponse('SETTINGS_SET_FAILED', 'Unable to write local setting', error)
+        toErrorResponse('SETTINGS_SET_FAILED', 'Không thể ghi cài đặt cục bộ', error, true)
       )
     }
   })

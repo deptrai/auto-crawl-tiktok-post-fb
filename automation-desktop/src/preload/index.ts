@@ -43,21 +43,26 @@ const api: DesktopApi = {
 
       const response = await ipcRenderer.invoke(channel, parsedRequest.data)
       const parsedResponse = registryEntry.responseSchema.safeParse(response)
-      if (!parsedResponse.success) throw new Error(`Invalid IPC response for ${channel}`)
+      if (!parsedResponse.success) {
+        const envelope = {
+          ok: false,
+          error: {
+            code: 'IPC_RESPONSE_INVALID',
+            message: `Phản hồi IPC không hợp lệ: ${channel}`,
+            retryable: false
+          }
+        }
+        return envelope as unknown as Res
+      }
 
       return parsedResponse.data as Res
     }
   }
 }
 
-if (process.contextIsolated) {
-  contextBridge.exposeInMainWorld('electron', electronApi)
-  contextBridge.exposeInMainWorld('api', api)
-} else {
-  const preloadGlobal = globalThis as typeof globalThis & {
-    electron: DesktopElectronApi
-    api: DesktopApi
-  }
-  preloadGlobal.electron = electronApi
-  preloadGlobal.api = api
+if (!process.contextIsolated) {
+  throw new Error('[Phase3] contextIsolation is required. Check BrowserWindow webPreferences.')
 }
+
+contextBridge.exposeInMainWorld('electron', electronApi)
+contextBridge.exposeInMainWorld('api', api)

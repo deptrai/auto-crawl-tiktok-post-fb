@@ -6,8 +6,9 @@ export function needsEulaAcceptance(
 ): boolean {
   if (!acceptedVersion) return true
 
-  const parsedVersion = Number.parseInt(acceptedVersion, 10)
-  if (!Number.isInteger(parsedVersion)) return true
+  const trimmed = acceptedVersion.trim()
+  const parsedVersion = Number(trimmed)
+  if (!Number.isInteger(parsedVersion) || String(parsedVersion) !== trimmed) return true
 
   return parsedVersion < currentVersion
 }

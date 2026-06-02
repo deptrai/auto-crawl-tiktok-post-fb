@@ -28,10 +28,13 @@ type DbSmokeGlobal = typeof globalThis & {
 
 function initializeDeps(): BootstrapDeps {
   const dbPath = process.env['PHASE3_DB_PATH'] ?? join(app.getPath('userData'), 'phase3.db')
-  const db = openEncryptedDatabase({
-    path: dbPath,
-    key: 'phase3-story-1-1-temp-key'
-  })
+  let db: ReturnType<typeof openEncryptedDatabase>
+  try {
+    db = openEncryptedDatabase({ path: dbPath, key: 'phase3-story-1-1-temp-key' })
+  } catch (dbError) {
+    const msg = dbError instanceof Error ? dbError.message : String(dbError)
+    throw new Error(`[Phase3] Không thể mở database: ${msg}\nCó thể một phiên bản đang chạy rồi.`)
+  }
   const services = {
     settings: createSettingsRepository(db)
   }
@@ -46,6 +49,7 @@ function initializeDeps(): BootstrapDeps {
 }
 
 function runDatabaseSmoke(db: BootstrapDeps['db']): void {
+  if (app.isPackaged) return
   const value = process.env['PHASE3_DB_SMOKE_VALUE']
   if (!value) return
 
@@ -60,6 +64,7 @@ function runDatabaseSmoke(db: BootstrapDeps['db']): void {
 }
 
 function runSettingsSmoke(settings: SettingsRepository): void {
+  if (app.isPackaged) return
   const key = process.env['PHASE3_SETTINGS_SMOKE_KEY']
   const value = process.env['PHASE3_SETTINGS_SMOKE_VALUE']
   if (!key || value === undefined) return
@@ -79,7 +84,10 @@ function createWindow(): BrowserWindow {
 
   mainWindow.on('ready-to-show', () => mainWindow.show())
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    const url = details.url
+    if (url.startsWith('https://') || url.startsWith('http://')) {
+      void shell.openExternal(url)
+    }
     return { action: 'deny' }
   })
 
@@ -103,6 +111,7 @@ export async function bootstrapApplication(): Promise<void> {
   // Init order: db -> adapters -> services -> ipc -> window
   void deps.db
   void deps.adapters
+  void deps.services
   registerSettingsHandlers(ipcMain, deps.services.settings)
   registerShellHandlers(ipcMain, async (url) => {
     if (process.env['PHASE3_EXTERNAL_OPEN_SMOKE']) {

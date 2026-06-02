@@ -77,7 +77,10 @@ export function EulaAcceptanceView({
         className="primary-button"
         type="button"
         disabled={!agreed || accepting}
-        onClick={handleAccept}
+        onClick={(e) => {
+          ;(e.currentTarget as HTMLButtonElement).disabled = true
+          void handleAccept()
+        }}
       >
         {accepting ? 'Đang lưu...' : 'Chấp nhận và tiếp tục'}
       </button>

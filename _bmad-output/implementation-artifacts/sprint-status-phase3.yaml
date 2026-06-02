@@ -1,5 +1,5 @@
 # generated: 2026-06-02
-# last_updated: 2026-06-02 (Story 1.2 → review)
+# last_updated: 2026-06-02 (Story 1.1, 1.2 → done; Story 1.3 → ready-for-dev)
 # project: auto-crawl-tiktok-post-fb (Phase 3 — Facebook Cookie-Based Automation Desktop)
 # project_key: NOKEY
 # tracking_system: file-system
@@ -54,8 +54,8 @@ development_status:
   # Epic 1: Nền tảng App & Cấp phép (Foundation & Licensing)
   epic-1: in-progress
   1-1-khoi-tao-scaffold-automation-desktop: done
-  1-2-accept-eula-lan-dau-chay: review
-  1-3-activate-license-voi-hwid-binding: backlog
+  1-2-accept-eula-lan-dau-chay: done
+  1-3-activate-license-voi-hwid-binding: ready-for-dev
   1-4-kiem-tra-license-dinh-ky-xu-ly-het-han: backlog
   1-5-admin-tao-va-thu-hoi-license-key: backlog
   epic-1-retrospective: optional
