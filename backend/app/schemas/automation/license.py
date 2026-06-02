@@ -30,3 +30,12 @@ class LicenseActivateResponse(BaseModel):
     activation_id: UUID
     expires_at: datetime
     rebind_count: int
+
+class LicenseCheckRequest(BaseModel):
+    activation_id: UUID
+
+class LicenseCheckResponse(BaseModel):
+    active: bool
+    expires_at: datetime
+    revoked: bool
+    rebind_count: int

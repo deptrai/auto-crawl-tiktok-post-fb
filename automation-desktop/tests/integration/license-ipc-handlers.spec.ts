@@ -20,6 +20,7 @@ class FakeIpcMain {
 
 const activeStatus = {
   active: true,
+  gate: 'active' as const,
   expiresAt: new Date('2026-06-09T00:00:00.000Z').toISOString(),
   daysRemaining: 7
 }
@@ -28,6 +29,7 @@ test('[P0] license IPC activate returns public status without activation id', as
   const fakeIpc = new FakeIpcMain()
   const service: LicenseService = {
     activate: async () => activeStatus,
+    check: async () => activeStatus,
     getStatus: async () => activeStatus
   }
   registerLicenseHandlers(fakeIpc, service)
@@ -42,6 +44,7 @@ test('[P1] license IPC rejects invalid payload with ErrorEnvelope retryable=fals
   const fakeIpc = new FakeIpcMain()
   const service: LicenseService = {
     activate: async () => activeStatus,
+    check: async () => activeStatus,
     getStatus: async () => ({ active: false })
   }
   registerLicenseHandlers(fakeIpc, service)
@@ -67,6 +70,7 @@ test('[P1] license IPC maps typed service domain errors to Vietnamese ErrorEnvel
         false
       )
     },
+    check: async () => ({ active: false }),
     getStatus: async () => ({ active: false })
   }
   registerLicenseHandlers(fakeIpc, service)
@@ -81,4 +85,19 @@ test('[P1] license IPC maps typed service domain errors to Vietnamese ErrorEnvel
       retryable: false
     }
   })
+})
+
+test('[P1] license IPC check returns public status through Zod 2-way envelope', async () => {
+  const fakeIpc = new FakeIpcMain()
+  const checkedStatus = { ...activeStatus, gate: 'active' as const, offlineGraceValid: false }
+  const service: LicenseService = {
+    activate: async () => activeStatus,
+    check: async () => checkedStatus,
+    getStatus: async () => ({ active: false })
+  }
+  registerLicenseHandlers(fakeIpc, service)
+
+  const response = await fakeIpc.invoke('phase3:license:check', {})
+
+  expect(response).toEqual({ ok: true, status: checkedStatus })
 })

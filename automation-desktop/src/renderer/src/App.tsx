@@ -6,15 +6,29 @@ import { getSetting, openPrivacyPolicy, setSetting } from './api/settings-api'
 import { EulaAcceptanceView } from './views/EulaAcceptanceView'
 import { LicenseView } from './views/LicenseView'
 
-type GateState = 'loading' | 'needs-eula' | 'needs-license' | 'ready'
+type GateState =
+  | 'loading'
+  | 'needs-eula'
+  | 'needs-license'
+  | 'ready'
+  | 'license-expired-readonly'
+  | 'license-locked'
 
 function MainShell({
-  licenseStatus
+  licenseStatus,
+  offlineGrace = false
 }: {
   licenseStatus: LicensePublicStatus | null
+  offlineGrace?: boolean
 }): React.JSX.Element {
   return (
     <main className="main-shell" data-testid="main-shell">
+      {offlineGrace ? (
+        <p className="warning-banner" data-testid="offline-grace-banner">
+          Không kết nối được máy chủ license. Bạn vẫn có thể dùng các tác vụ đọc trong 24 giờ sau
+          lần kiểm tra thành công gần nhất.
+        </p>
+      ) : null}
       <p className="eyebrow">Phase 3 desktop automation</p>
       <h1>Automation Desktop</h1>
       <p className="lead">
@@ -24,6 +38,36 @@ function MainShell({
       </p>
     </main>
   )
+}
+
+function ReadonlyShell({
+  licenseStatus
+}: {
+  licenseStatus: LicensePublicStatus | null
+}): React.JSX.Element {
+  return (
+    <main className="readonly-shell" data-testid="readonly-shell">
+      <p className="eyebrow">License hết hạn</p>
+      <h1>Chế độ chỉ đọc</h1>
+      <p className="lead">
+        License đã hết hạn hoặc bị thu hồi. Bạn vẫn có 7 ngày chỉ đọc để xem dữ liệu và export
+        backup trước khi gia hạn.
+      </p>
+      <div className="readonly-actions">
+        <button className="secondary-button" type="button">
+          Export backup (sẽ được nối ở Story 7.1)
+        </button>
+        <p className="lead small">Hết hạn: {licenseStatus?.expiresAt ?? 'không rõ'}</p>
+      </div>
+    </main>
+  )
+}
+
+function gateFromStatus(status: LicensePublicStatus): GateState {
+  if (status.gate === 'active' || status.gate === 'offline-grace') return 'ready'
+  if (status.gate === 'expired-readonly') return 'license-expired-readonly'
+  if (status.gate === 'locked') return 'license-locked'
+  return status.active ? 'ready' : 'needs-license'
 }
 
 function App(): React.JSX.Element {
@@ -37,7 +81,7 @@ function App(): React.JSX.Element {
     const status = await getLicenseStatus()
     if (cancelled) return
     setLicenseStatus(status)
-    setGateState(status.active ? 'ready' : 'needs-license')
+    setGateState(gateFromStatus(status))
   }
 
   useEffect(() => {
@@ -93,7 +137,7 @@ function App(): React.JSX.Element {
       if (!status.active) {
         setError('License chưa hoạt động hoặc đã hết hạn. Vui lòng kiểm tra lại key.')
       }
-      setGateState(status.active ? 'ready' : 'needs-license')
+      setGateState(gateFromStatus(status))
     } finally {
       setActivating(false)
     }
@@ -120,7 +164,7 @@ function App(): React.JSX.Element {
     )
   }
 
-  if (gateState === 'needs-license') {
+  if (gateState === 'needs-license' || gateState === 'license-locked') {
     return (
       <>
         {error ? <p className="error-message">{error}</p> : null}
@@ -129,7 +173,16 @@ function App(): React.JSX.Element {
     )
   }
 
-  return <MainShell licenseStatus={licenseStatus} />
+  if (gateState === 'license-expired-readonly') {
+    return <ReadonlyShell licenseStatus={licenseStatus} />
+  }
+
+  return (
+    <MainShell
+      licenseStatus={licenseStatus}
+      offlineGrace={licenseStatus?.gate === 'offline-grace'}
+    />
+  )
 }
 
 export default App

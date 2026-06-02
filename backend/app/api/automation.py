@@ -9,8 +9,13 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
-from app.schemas.automation.license import LicenseActivateRequest, LicenseActivateResponse
-from app.services.automation.license import LicenseActivationError, activate_license
+from app.schemas.automation.license import (
+    LicenseActivateRequest,
+    LicenseActivateResponse,
+    LicenseCheckRequest,
+    LicenseCheckResponse,
+)
+from app.services.automation.license import LicenseActivationError, activate_license, check_license
 
 router = APIRouter(prefix="/api/v1/automation", tags=["Automation Phase 3"])
 
@@ -95,5 +100,29 @@ def activate_license_endpoint(
         return _error_response(
             "LICENSE_DB_ERROR",
             "Không thể kích hoạt license do lỗi cơ sở dữ liệu.",
+            retryable=True,
+        )
+
+@router.post("/license/check", response_model=LicenseCheckResponse)
+def check_license_endpoint(
+    request_body: LicenseCheckRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> LicenseCheckResponse | JSONResponse:
+    if not _activation_rate_limiter.allow(_client_ip(request), str(request_body.activation_id)):
+        return _error_response(
+            "RATE_LIMITED",
+            "Bạn đã kiểm tra license quá nhiều lần. Vui lòng chờ một lúc rồi thử lại.",
+            retryable=True,
+        )
+
+    try:
+        return check_license(db, activation_id=request_body.activation_id)
+    except LicenseActivationError as exc:
+        return _error_response(exc.code, exc.message, exc.retryable)
+    except SQLAlchemyError:
+        return _error_response(
+            "LICENSE_DB_ERROR",
+            "Không thể kiểm tra license do lỗi cơ sở dữ liệu.",
             retryable=True,
         )

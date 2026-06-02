@@ -270,3 +270,63 @@ def test_activate_endpoint_rate_limits_per_ip_and_key(client: TestClient, db_ses
         "retryable": True,
     }
     reset_activation_rate_limiter()
+
+def test_check_license_endpoint_reports_active_expired_revoked_and_missing(
+    client: TestClient,
+    db_session: Session,
+):
+    from app.models.automation.license import LicenseActivation
+    from app.services.automation.license import activate_license
+
+    active = create_license(db_session, key="LIC-CHECK-ACTIVE", days_total=7)
+    active_activation = activate_license(db_session, key=active.key, hwid=VALID_HWID)
+
+    active_response = client.post(
+        "/api/v1/automation/license/check",
+        json={"activation_id": str(active_activation.activation_id)},
+    )
+    assert active_response.status_code == 200
+    assert active_response.json() == {
+        "active": True,
+        "expires_at": active_activation.expires_at.isoformat().replace("+00:00", "Z"),
+        "revoked": False,
+        "rebind_count": 0,
+    }
+
+    expired = create_license(db_session, key="LIC-CHECK-EXPIRED", days_total=7)
+    expired_activation = activate_license(db_session, key=expired.key, hwid=OTHER_HWID)
+    expired_record = db_session.query(LicenseActivation).filter_by(id=expired_activation.activation_id).one()
+    expired_record.expires_at = datetime.now(timezone.utc) - timedelta(minutes=1)
+    db_session.commit()
+
+    expired_response = client.post(
+        "/api/v1/automation/license/check",
+        json={"activation_id": str(expired_activation.activation_id)},
+    )
+    assert expired_response.status_code == 200
+    assert expired_response.json()["active"] is False
+    assert expired_response.json()["revoked"] is False
+
+    revoked = create_license(db_session, key="LIC-CHECK-REVOKED", days_total=7)
+    revoked_activation = activate_license(db_session, key=revoked.key, hwid="c" * 64)
+    revoked.revoked = True
+    db_session.commit()
+
+    revoked_response = client.post(
+        "/api/v1/automation/license/check",
+        json={"activation_id": str(revoked_activation.activation_id)},
+    )
+    assert revoked_response.status_code == 200
+    assert revoked_response.json()["active"] is False
+    assert revoked_response.json()["revoked"] is True
+
+    missing_response = client.post(
+        "/api/v1/automation/license/check",
+        json={"activation_id": str(uuid.uuid4())},
+    )
+    assert missing_response.status_code == 404
+    assert missing_response.json()["error"] == {
+        "code": "LICENSE_NOT_FOUND",
+        "message": "Không tìm thấy lượt kích hoạt license.",
+        "retryable": False,
+    }

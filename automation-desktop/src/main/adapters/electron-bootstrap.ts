@@ -9,6 +9,7 @@ import {
   type LicenseService
 } from '../license/license-service'
 import { registerLicenseHandlers, registerSettingsHandlers, registerShellHandlers } from '../ipc'
+import { createLicenseChecker, type LicenseChecker } from '../license/license-checker'
 import { ElectronAutoUpdater } from './electron-auto-updater'
 import { ElectronIpcBridge } from './electron-ipc-bridge'
 import { ElectronSafeStorage } from './electron-safe-storage'
@@ -19,6 +20,9 @@ interface BootstrapDeps {
   services: {
     settings: SettingsRepository
     license: LicenseService
+  }
+  workers: {
+    licenseChecker: LicenseChecker
   }
   adapters: {
     updater: ElectronAutoUpdater
@@ -60,8 +64,11 @@ function initializeDeps(): BootstrapDeps {
       generateHwid: smokeHwid ? async () => smokeHwid : undefined
     })
   }
+  const workers = {
+    licenseChecker: createLicenseChecker(services.license)
+  }
 
-  return { db, services, adapters }
+  return { db, services, adapters, workers }
 }
 
 function configureUserDataPath(): void {
@@ -147,6 +154,8 @@ export async function bootstrapApplication(): Promise<void> {
   void deps.db
   void deps.adapters
   void deps.services
+  deps.workers.licenseChecker.start()
+  app.once('before-quit', () => deps.workers.licenseChecker.stop())
   registerSettingsHandlers(ipcMain, deps.services.settings)
   registerLicenseHandlers(ipcMain, deps.services.license)
   registerShellHandlers(ipcMain, async (url) => {

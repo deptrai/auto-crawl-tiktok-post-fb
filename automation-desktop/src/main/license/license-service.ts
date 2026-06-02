@@ -1,31 +1,43 @@
 import type { SecureStorage } from '../../adapters/secure-storage'
 import {
   BackendActivationResponseSchema,
+  BackendLicenseCheckResponseSchema,
   BackendHttpError,
   postJson,
-  type BackendActivationResponse
+  type BackendActivationResponse,
+  type BackendLicenseCheckResponse
 } from '../../shared/api-client/http-client'
 import type { SettingsRepository } from '../db/repositories/settings-repo'
 import { generateHwid } from './hwid-generator'
 
 const ACTIVATION_ID_KEY = 'license.activation_id'
 const EXPIRES_AT_KEY = 'license.expires_at'
+const LAST_SUCCESS_CHECK_KEY = 'license.last_success_check'
 const REBIND_COUNT_KEY = 'license.rebind_count'
+const OFFLINE_GRACE_MS = 24 * 60 * 60 * 1000
+const EXPIRED_READONLY_GRACE_MS = 7 * 24 * 60 * 60 * 1000
+
+export type LicenseGate = 'active' | 'offline-grace' | 'expired-readonly' | 'locked'
 
 export interface LicenseStatus {
   active: boolean
+  gate: LicenseGate
   expiresAt?: string
   daysRemaining?: number
+  offlineGraceValid?: boolean
+  expiredReadonlyValid?: boolean
 }
 
-export type { BackendActivationResponse }
+export type { BackendActivationResponse, BackendLicenseCheckResponse }
 
 export interface LicenseBackendClient {
   activate(key: string, hwid: string): Promise<BackendActivationResponse>
+  check(activationId: string): Promise<BackendLicenseCheckResponse>
 }
 
 export interface LicenseService {
   activate(key: string): Promise<LicenseStatus>
+  check(): Promise<LicenseStatus>
   getStatus(): Promise<LicenseStatus>
 }
 
@@ -58,6 +70,63 @@ export function calculateDaysRemaining(expiresAt: string, now = new Date()): num
   return Math.max(1, Math.ceil(ms / (24 * 60 * 60 * 1000)))
 }
 
+function isWithin(value: Date | null, now: Date, durationMs: number): boolean {
+  if (!value) return false
+  const elapsedMs = now.getTime() - value.getTime()
+  return elapsedMs >= 0 && elapsedMs < durationMs
+}
+
+function localStatus(options: {
+  activationId: string | null
+  expiresAt: string | null
+  lastSuccessCheck: string | null
+  now: Date
+  offlineFallback?: boolean
+  revoked?: boolean
+}): LicenseStatus {
+  if (!options.activationId || !options.expiresAt) return { active: false, gate: 'locked' }
+
+  const expiry = strictDate(options.expiresAt)
+  if (!expiry) return { active: false, gate: 'locked', expiresAt: options.expiresAt }
+
+  const lastSuccess = strictDate(options.lastSuccessCheck)
+  const offlineGraceValid = isWithin(lastSuccess, options.now, OFFLINE_GRACE_MS)
+  const expiredReadonlyValid = options.revoked
+    ? true
+    : expiry.getTime() <= options.now.getTime() &&
+      options.now.getTime() - expiry.getTime() < EXPIRED_READONLY_GRACE_MS
+
+  if (!options.revoked && expiry.getTime() > options.now.getTime() && offlineGraceValid) {
+    return {
+      active: true,
+      gate: options.offlineFallback ? 'offline-grace' : 'active',
+      expiresAt: options.expiresAt,
+      daysRemaining: calculateDaysRemaining(options.expiresAt, options.now),
+      offlineGraceValid
+    }
+  }
+
+  if (options.revoked || expiredReadonlyValid) {
+    return {
+      active: false,
+      gate: 'expired-readonly',
+      expiresAt: options.expiresAt,
+      daysRemaining: 0,
+      offlineGraceValid,
+      expiredReadonlyValid
+    }
+  }
+
+  return {
+    active: false,
+    gate: 'locked',
+    expiresAt: options.expiresAt,
+    daysRemaining: 0,
+    offlineGraceValid,
+    expiredReadonlyValid: false
+  }
+}
+
 function normalizeServiceError(error: unknown): LicenseServiceError {
   if (error instanceof LicenseServiceError) return error
   if (error instanceof BackendHttpError) {
@@ -83,6 +152,14 @@ export function createFetchLicenseBackendClient(
         schema: BackendActivationResponseSchema,
         timeoutMs
       })
+    },
+    async check(activationId) {
+      return postJson({
+        url: `${baseUrl.replace(/\/$/, '')}/api/v1/automation/license/check`,
+        body: { activation_id: activationId },
+        schema: BackendLicenseCheckResponseSchema,
+        timeoutMs
+      })
     }
   }
 }
@@ -92,8 +169,10 @@ export function createLicenseService(deps: {
   storage: SecureStorage
   backendClient: LicenseBackendClient
   generateHwid?: () => Promise<string>
+  now?: () => Date
 }): LicenseService {
   const getHwid = deps.generateHwid ?? generateHwid
+  const getNow = deps.now ?? (() => new Date())
 
   return {
     async activate(key) {
@@ -104,6 +183,7 @@ export function createLicenseService(deps: {
         await deps.storage.set(ACTIVATION_ID_KEY, result.activation_id)
         try {
           await deps.settings.setSetting(EXPIRES_AT_KEY, result.expires_at)
+          await deps.settings.setSetting(LAST_SUCCESS_CHECK_KEY, getNow().toISOString())
           await deps.settings.setSetting(REBIND_COUNT_KEY, String(result.rebind_count))
         } catch (settingsError) {
           await deps.storage.delete(ACTIVATION_ID_KEY)
@@ -121,15 +201,44 @@ export function createLicenseService(deps: {
       }
     },
 
+    async check() {
+      const activationId = await deps.storage.get(ACTIVATION_ID_KEY)
+      if (!activationId) return { active: false, gate: 'locked' }
+
+      try {
+        const result = await deps.backendClient.check(activationId)
+        await deps.settings.setSetting(EXPIRES_AT_KEY, result.expires_at)
+        await deps.settings.setSetting(REBIND_COUNT_KEY, String(result.rebind_count))
+        await deps.settings.setSetting(LAST_SUCCESS_CHECK_KEY, getNow().toISOString())
+        return localStatus({
+          activationId,
+          expiresAt: result.expires_at,
+          lastSuccessCheck: deps.settings.getSetting(LAST_SUCCESS_CHECK_KEY),
+          now: getNow(),
+          revoked: result.revoked
+        })
+      } catch (error) {
+        const normalized = normalizeServiceError(error)
+        if (!normalized.retryable) throw normalized
+        return localStatus({
+          activationId,
+          expiresAt: deps.settings.getSetting(EXPIRES_AT_KEY),
+          lastSuccessCheck: deps.settings.getSetting(LAST_SUCCESS_CHECK_KEY),
+          now: getNow(),
+          offlineFallback: true
+        })
+      }
+    },
+
     async getStatus() {
       const activationId = await deps.storage.get(ACTIVATION_ID_KEY)
       const expiresAt = deps.settings.getSetting(EXPIRES_AT_KEY)
-      if (!activationId || !expiresAt) return { active: false }
-
-      const daysRemaining = calculateDaysRemaining(expiresAt)
-      if (daysRemaining <= 0) return { active: false, expiresAt, daysRemaining: 0 }
-
-      return { active: true, expiresAt, daysRemaining }
+      return localStatus({
+        activationId,
+        expiresAt,
+        lastSuccessCheck: deps.settings.getSetting(LAST_SUCCESS_CHECK_KEY),
+        now: getNow()
+      })
     }
   }
 }

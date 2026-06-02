@@ -8,6 +8,15 @@ export const BackendActivationResponseSchema = z.object({
 
 export type BackendActivationResponse = z.infer<typeof BackendActivationResponseSchema>
 
+export const BackendLicenseCheckResponseSchema = z.object({
+  active: z.boolean(),
+  expires_at: z.string().datetime({ offset: true }),
+  revoked: z.boolean(),
+  rebind_count: z.number().int().min(0)
+})
+
+export type BackendLicenseCheckResponse = z.infer<typeof BackendLicenseCheckResponseSchema>
+
 export class BackendHttpError extends Error {
   code: string
   retryable: boolean

@@ -1,10 +1,13 @@
 import {
   LicenseActivateRequestSchema,
   LicenseActivateResponseSchema,
+  LicenseCheckRequestSchema,
+  LicenseCheckResponseSchema,
   LicenseStatusRequestSchema,
   LicenseStatusResponseSchema,
   type IpcErrorResponse,
   type LicenseActivateResponse,
+  type LicenseCheckResponse,
   type LicenseStatusResponse
 } from '../../shared/ipc-schemas'
 import type { LicenseService } from '../license/license-service'
@@ -63,4 +66,17 @@ export function registerLicenseHandlers(ipcMain: IpcMainLike, service: LicenseSe
       }
     }
   )
+
+  ipcMain.handle('phase3:license:check', async (_event, request): Promise<LicenseCheckResponse> => {
+    const parsedRequest = LicenseCheckRequestSchema.safeParse(request)
+    if (!parsedRequest.success)
+      return LicenseCheckResponseSchema.parse(parseError(parsedRequest.error.flatten()))
+
+    try {
+      const status = await service.check()
+      return LicenseCheckResponseSchema.parse({ ok: true, status })
+    } catch (error) {
+      return LicenseCheckResponseSchema.parse(normalizeError(error))
+    }
+  })
 }

@@ -1,5 +1,6 @@
 import type {
   LicenseActivateResponse,
+  LicenseCheckResponse,
   LicensePublicStatus,
   LicenseStatusResponse
 } from '../../../shared/ipc-schemas'
@@ -26,6 +27,16 @@ export async function getLicenseStatus(): Promise<LicensePublicStatus> {
     Record<string, never>,
     LicenseStatusResponse
   >('phase3:license:status', {})
+  assertOk(response)
+  return response.status
+}
+
+export async function checkLicense(): Promise<LicensePublicStatus> {
+  const response = await window.api.ipc.call<
+    'phase3:license:check',
+    Record<string, never>,
+    LicenseCheckResponse
+  >('phase3:license:check', {})
   assertOk(response)
   return response.status
 }

@@ -6,7 +6,7 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.automation.license import License, LicenseActivation
-from app.schemas.automation.license import LicenseActivateResponse
+from app.schemas.automation.license import LicenseActivateResponse, LicenseCheckResponse
 from app.services.automation.hwid import validate_hwid
 
 
@@ -124,5 +124,34 @@ def activate_license(db: Session, key: str, hwid: str) -> LicenseActivateRespons
         raise _status_error(
             "LICENSE_DB_ERROR",
             "Không thể kích hoạt license do lỗi cơ sở dữ liệu.",
+            retryable=True,
+        ) from exc
+
+def check_license(db: Session, activation_id) -> LicenseCheckResponse:
+    try:
+        activation = db.query(LicenseActivation).filter(LicenseActivation.id == activation_id).one_or_none()
+        if activation is None:
+            raise _status_error("LICENSE_NOT_FOUND", "Không tìm thấy lượt kích hoạt license.")
+
+        license_record = db.query(License).filter(License.id == activation.license_id).one_or_none()
+        if license_record is None:
+            raise _status_error("LICENSE_NOT_FOUND", "Không tìm thấy license key.")
+
+        expires_at = _as_utc(activation.expires_at)
+        active = not license_record.revoked and expires_at >= _utc_now()
+        return LicenseCheckResponse(
+            active=active,
+            expires_at=expires_at,
+            revoked=license_record.revoked,
+            rebind_count=activation.rebind_count,
+        )
+    except LicenseActivationError:
+        db.rollback()
+        raise
+    except SQLAlchemyError as exc:
+        db.rollback()
+        raise _status_error(
+            "LICENSE_DB_ERROR",
+            "Không thể kiểm tra license do lỗi cơ sở dữ liệu.",
             retryable=True,
         ) from exc

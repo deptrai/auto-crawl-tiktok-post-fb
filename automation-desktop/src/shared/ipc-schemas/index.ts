@@ -2,10 +2,14 @@ import type { z } from 'zod'
 import {
   LicenseActivateRequestSchema,
   LicenseActivateResponseSchema,
+  LicenseCheckRequestSchema,
+  LicenseCheckResponseSchema,
   LicenseStatusRequestSchema,
   LicenseStatusResponseSchema,
   type LicenseActivateRequest,
   type LicenseActivateResponse,
+  type LicenseCheckRequest,
+  type LicenseCheckResponse,
   type LicenseStatusRequest,
   type LicenseStatusResponse
 } from './license'
@@ -63,7 +67,12 @@ export const channelRegistry = [
     channel: 'phase3:license:status',
     requestSchema: LicenseStatusRequestSchema,
     responseSchema: LicenseStatusResponseSchema
-  } satisfies ChannelRegistryEntry<LicenseStatusRequest, LicenseStatusResponse>
+  } satisfies ChannelRegistryEntry<LicenseStatusRequest, LicenseStatusResponse>,
+  {
+    channel: 'phase3:license:check',
+    requestSchema: LicenseCheckRequestSchema,
+    responseSchema: LicenseCheckResponseSchema
+  } satisfies ChannelRegistryEntry<LicenseCheckRequest, LicenseCheckResponse>
 ] as const satisfies ReadonlyArray<ChannelRegistryEntry>
 
 export * from './common'

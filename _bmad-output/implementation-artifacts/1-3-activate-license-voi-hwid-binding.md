@@ -1,6 +1,6 @@
 # Story 1.3: Activate license với HWID binding
 
-Status: review
+Status: done
 
 <!-- Phase 3 story. Sources: prd-phase3.md, architecture.md § Phase 3 Addendum, epics-phase3.md. Previous: 1.1, 1.2 (done) -->
 
@@ -33,9 +33,18 @@ so that tôi có quyền sử dụng tool trong số ngày đã mua.
 - [x] [Review][Patch][Major] SQLite ATTACH = 2 file DB riêng, FK cross-schema (`phase3.licenses` ← `users.id`) KHÔNG enforce → test FK constraint không catch lỗi thật [`backend/tests/test_automation_license.py`]
 - [x] [Review][Patch][Major] Test có nhánh `if bind.dialect.name == "sqlite"` → code smell, adapt theo engine thay vì test production behavior. Xóa nhánh sqlite [`backend/tests/test_automation_license.py`:27]
 
+## Re-review Verdict (2026-06-02) — ✅ TẤT CẢ 21 PATCH RESOLVED → DONE
+
+> Re-review sau dev apply 21 patch (commit `b1e81ac`). Verify từng patch + chạy test:
+> - **13 automation test PASS** trên PostgreSQL thật (testcontainers/PG + Alembic upgrade head)
+> - Client typecheck + lint clean
+> - Phase 1+2 test 13 PASS (SQLite, no regression sau khi xóa ATTACH)
+> - Coverage mới: rate-limit 429, cross-schema FK enforce, license-service renew/timeout/rollback/invalid-shape, hwid deterministic + virtual-interface filter
+> Story 1.3 → **done**. Foundation sạch cho 1.4.
+
 ## Review Findings (full code review 2026-06-02)
 
-> 3-layer adversarial (Blind + Edge + Auditor) sau khi dev fix test fidelity. Prior 4 findings (DB fidelity) CONFIRMED resolved (database.py sạch, testcontainers PG + alembic upgrade, no sqlite branch) — TRỪ 2 điểm dưới (S, R). Live smoke 5/5 happy-path vẫn pass; findings tập trung edge cases + 1 rule-violation tái phát.
+> 3-layer adversarial (Blind + Edge + Auditor) sau khi dev fix test fidelity. Findings edge cases + 1 rule-violation tái phát. **→ Tất cả 21 đã resolved + có test (xem verdict trên).**
 
 ### Decision resolved → patch
 

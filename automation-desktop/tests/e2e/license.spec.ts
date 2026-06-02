@@ -5,7 +5,7 @@ import { dirname, join } from 'node:path'
 import { _electron as electron, test, expect } from '@playwright/test'
 import type { ElectronApplication } from 'playwright-core'
 
-type MockMode = 'success' | 'mismatch'
+type MockMode = 'success' | 'mismatch' | 'expired-readonly' | 'expired-locked'
 
 function startLicenseServer(mode: MockMode): Promise<{ server: Server; url: string }> {
   const server = createServer((request, response) => {
@@ -50,11 +50,17 @@ function startLicenseServer(mode: MockMode): Promise<{ server: Server; url: stri
         return
       }
 
+      const expiresAt = (() => {
+        if (mode === 'expired-readonly') return new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)
+        if (mode === 'expired-locked') return new Date(Date.now() - 8 * 24 * 60 * 60 * 1000)
+        return new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+      })()
+
       response.writeHead(200, { 'Content-Type': 'application/json' })
       response.end(
         JSON.stringify({
           activation_id: '550e8400-e29b-41d4-a716-446655440000',
-          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          expires_at: expiresAt.toISOString(),
           rebind_count: 0
         })
       )
@@ -124,6 +130,48 @@ test('[P0] license activation shows HWID mismatch rebind guidance', async () => 
     await expect(window.getByText(/kích hoạt trên máy khác/i)).toBeVisible()
     await expect(window.getByText(/License đã.*rebind/i)).toBeVisible()
     await expect(window.getByTestId('license-view')).toBeVisible()
+    await app.close()
+  } finally {
+    server.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('[P0] expired license enters 7 day read-only export grace', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-license-expired-readonly-'))
+  const { server, url } = await startLicenseServer('expired-readonly')
+
+  try {
+    const app = await launchDesktopApp(join(dir, 'phase3.db'), url)
+    const window = await app.firstWindow()
+
+    await expect(window.getByTestId('license-view')).toBeVisible()
+    await window.getByRole('textbox', { name: /license key/i }).fill('LIC-EXPIRED')
+    await window.getByRole('button', { name: /kích hoạt/i }).click()
+
+    await expect(window.getByTestId('readonly-shell')).toBeVisible()
+    await expect(window.getByRole('button', { name: /export backup/i })).toBeVisible()
+    await app.close()
+  } finally {
+    server.close()
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('[P0] license after 7 day read-only grace is locked to LicenseView', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-license-expired-locked-'))
+  const { server, url } = await startLicenseServer('expired-locked')
+
+  try {
+    const app = await launchDesktopApp(join(dir, 'phase3.db'), url)
+    const window = await app.firstWindow()
+
+    await expect(window.getByTestId('license-view')).toBeVisible()
+    await window.getByRole('textbox', { name: /license key/i }).fill('LIC-LOCKED')
+    await window.getByRole('button', { name: /kích hoạt/i }).click()
+
+    await expect(window.getByTestId('license-view')).toBeVisible()
+    await expect(window.getByText(/License chưa hoạt động hoặc đã hết hạn/i)).toBeVisible()
     await app.close()
   } finally {
     server.close()
