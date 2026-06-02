@@ -3,7 +3,7 @@ import { IpcErrorResponseSchema } from './common'
 
 export const LicensePublicStatusSchema = z.object({
   active: z.boolean(),
-  expiresAt: z.string().datetime().optional(),
+  expiresAt: z.string().datetime({ offset: true }).optional(),
   daysRemaining: z.number().int().min(0).optional()
 })
 

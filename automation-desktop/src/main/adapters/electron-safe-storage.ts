@@ -1,5 +1,5 @@
 import { app, safeStorage } from 'electron'
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import type { SecureStorage } from '../../adapters/secure-storage'
 
@@ -13,10 +13,17 @@ export class ElectronSafeStorage implements SecureStorage {
   }
 
   async get(key: string): Promise<string | null> {
+    if (!safeStorage.isEncryptionAvailable()) return null
+
     const blob = this.readStore()[key]
     if (!blob) return null
-    const encrypted = Buffer.from(blob)
-    return safeStorage.decryptString(encrypted)
+
+    try {
+      const encrypted = Buffer.from(blob)
+      return safeStorage.decryptString(encrypted)
+    } catch {
+      return null
+    }
   }
 
   async set(key: string, value: string): Promise<void> {
@@ -36,11 +43,19 @@ export class ElectronSafeStorage implements SecureStorage {
 
   private readStore(): Store {
     if (!existsSync(this.path)) return {}
-    return JSON.parse(readFileSync(this.path, 'utf8')) as Store
+    try {
+      const parsed = JSON.parse(readFileSync(this.path, 'utf8')) as unknown
+      if (!parsed || typeof parsed !== 'object') return {}
+      return parsed as Store
+    } catch {
+      return {}
+    }
   }
 
   private writeStore(store: Store): void {
     mkdirSync(dirname(this.path), { recursive: true })
-    writeFileSync(this.path, JSON.stringify(store, null, 2), 'utf8')
+    const tempPath = `${this.path}.${process.pid}.tmp`
+    writeFileSync(tempPath, JSON.stringify(store, null, 2), 'utf8')
+    renameSync(tempPath, this.path)
   }
 }

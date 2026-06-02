@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test'
-import { buildHwid } from '../../src/main/license/hwid-generator'
+import { buildHwid, selectStableMacAddress } from '../../src/main/license/hwid-generator'
 
 test('[P0] HWID hash is deterministic 64-character SHA-256 hex', () => {
   // Given: stable machine identity ingredients.
@@ -25,4 +25,28 @@ test('[P1] HWID hash changes when machine identity changes', () => {
 
   // Then: different machines do not collapse to the same HWID.
   expect(changed).not.toBe(base)
+})
+
+test('[P1] stable MAC selection ignores virtual Docker/VPN interfaces', () => {
+  const interfaces = {
+    utun4: [{ internal: false, mac: '10:10:10:10:10:10' }],
+    docker0: [{ internal: false, mac: '20:20:20:20:20:20' }],
+    en1: [{ internal: false, mac: 'cc:cc:cc:cc:cc:cc' }],
+    en0: [{ internal: false, mac: 'aa:aa:aa:aa:aa:aa' }]
+  }
+
+  expect(selectStableMacAddress(interfaces)).toBe('aa:aa:aa:aa:aa:aa')
+})
+
+test('[P1] stable MAC selection is unchanged when virtual interfaces toggle', () => {
+  const withoutVpn = {
+    en0: [{ internal: false, mac: 'aa:aa:aa:aa:aa:aa' }]
+  }
+  const withVpnAndDocker = {
+    docker0: [{ internal: false, mac: '20:20:20:20:20:20' }],
+    utun2: [{ internal: false, mac: '10:10:10:10:10:10' }],
+    en0: [{ internal: false, mac: 'aa:aa:aa:aa:aa:aa' }]
+  }
+
+  expect(selectStableMacAddress(withoutVpn)).toBe(selectStableMacAddress(withVpnAndDocker))
 })

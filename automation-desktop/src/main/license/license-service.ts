@@ -1,4 +1,10 @@
 import type { SecureStorage } from '../../adapters/secure-storage'
+import {
+  BackendActivationResponseSchema,
+  BackendHttpError,
+  postJson,
+  type BackendActivationResponse
+} from '../../shared/api-client/http-client'
 import type { SettingsRepository } from '../db/repositories/settings-repo'
 import { generateHwid } from './hwid-generator'
 
@@ -12,11 +18,7 @@ export interface LicenseStatus {
   daysRemaining?: number
 }
 
-export interface BackendActivationResponse {
-  activation_id: string
-  expires_at: string
-  rebind_count: number
-}
+export type { BackendActivationResponse }
 
 export interface LicenseBackendClient {
   activate(key: string, hwid: string): Promise<BackendActivationResponse>
@@ -56,51 +58,31 @@ export function calculateDaysRemaining(expiresAt: string, now = new Date()): num
   return Math.max(1, Math.ceil(ms / (24 * 60 * 60 * 1000)))
 }
 
-async function parseBackendError(response: Response): Promise<LicenseServiceError> {
-  try {
-    const payload = (await response.json()) as {
-      error?: { code?: string; message?: string; retryable?: boolean; details?: unknown }
-      detail?: string
-    }
-    const code = payload.error?.code ?? `HTTP_${response.status}`
-    const message = payload.error?.message ?? payload.detail ?? 'Không thể kích hoạt license.'
-    return new LicenseServiceError(
-      code,
-      message,
-      payload.error?.retryable ?? response.status >= 500,
-      payload
-    )
-  } catch (error) {
-    return new LicenseServiceError(
-      `HTTP_${response.status}`,
-      'Không thể đọc phản hồi kích hoạt license.',
-      response.status >= 500,
-      error
-    )
+function normalizeServiceError(error: unknown): LicenseServiceError {
+  if (error instanceof LicenseServiceError) return error
+  if (error instanceof BackendHttpError) {
+    return new LicenseServiceError(error.code, error.message, error.retryable, error.details)
   }
+  return new LicenseServiceError(
+    'LICENSE_ERROR',
+    error instanceof Error ? error.message : 'Không thể xử lý license.',
+    true,
+    error
+  )
 }
 
-export function createFetchLicenseBackendClient(baseUrl: string): LicenseBackendClient {
+export function createFetchLicenseBackendClient(
+  baseUrl: string,
+  timeoutMs = 15_000
+): LicenseBackendClient {
   return {
     async activate(key, hwid) {
-      let response: Response
-      try {
-        response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/v1/automation/license/activate`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key, hwid })
-        })
-      } catch (error) {
-        throw new LicenseServiceError(
-          'NETWORK_ERROR',
-          'Không thể kết nối máy chủ kích hoạt license. Vui lòng kiểm tra mạng rồi thử lại.',
-          true,
-          error
-        )
-      }
-
-      if (!response.ok) throw await parseBackendError(response)
-      return (await response.json()) as BackendActivationResponse
+      return postJson({
+        url: `${baseUrl.replace(/\/$/, '')}/api/v1/automation/license/activate`,
+        body: { key, hwid },
+        schema: BackendActivationResponseSchema,
+        timeoutMs
+      })
     }
   }
 }
@@ -115,14 +97,28 @@ export function createLicenseService(deps: {
 
   return {
     async activate(key) {
-      const hwid = await getHwid()
-      const result = await deps.backendClient.activate(key, hwid)
+      try {
+        const hwid = await getHwid()
+        const result = await deps.backendClient.activate(key, hwid)
 
-      await deps.settings.setSetting(EXPIRES_AT_KEY, result.expires_at)
-      await deps.settings.setSetting(REBIND_COUNT_KEY, String(result.rebind_count))
-      await deps.storage.set(ACTIVATION_ID_KEY, result.activation_id)
+        await deps.storage.set(ACTIVATION_ID_KEY, result.activation_id)
+        try {
+          await deps.settings.setSetting(EXPIRES_AT_KEY, result.expires_at)
+          await deps.settings.setSetting(REBIND_COUNT_KEY, String(result.rebind_count))
+        } catch (settingsError) {
+          await deps.storage.delete(ACTIVATION_ID_KEY)
+          throw new LicenseServiceError(
+            'LICENSE_PERSIST_FAILED',
+            'Không thể lưu trạng thái license. Vui lòng thử lại.',
+            true,
+            settingsError
+          )
+        }
 
-      return this.getStatus()
+        return this.getStatus()
+      } catch (error) {
+        throw normalizeServiceError(error)
+      }
     },
 
     async getStatus() {

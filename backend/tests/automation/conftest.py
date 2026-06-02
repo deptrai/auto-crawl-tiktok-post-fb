@@ -22,11 +22,14 @@ def _backend_dir() -> Path:
 def _assert_safe_test_database(database_url: str) -> None:
     url = make_url(database_url)
     database_name = url.database or ""
+    host = url.host or ""
     if "test" not in database_name.lower() and "phase3" not in database_name.lower():
         raise RuntimeError(
             "Phase 3 automation tests refuse to reset a non-test database. "
             "Use PHASE3_TEST_DATABASE_URL with a database name containing 'test' or 'phase3'."
         )
+    if host not in {"localhost", "127.0.0.1", "::1"}:
+        raise RuntimeError("Phase 3 automation tests only reset local PostgreSQL databases.")
 
 
 def _reset_postgres_database(database_url: str) -> None:
@@ -34,10 +37,18 @@ def _reset_postgres_database(database_url: str) -> None:
     try:
         with engine.connect() as connection:
             connection.execute(text("DROP SCHEMA IF EXISTS phase3 CASCADE"))
-            connection.execute(text("DROP SCHEMA IF EXISTS public CASCADE"))
-            connection.execute(text("CREATE SCHEMA public"))
-            connection.execute(text("GRANT ALL ON SCHEMA public TO public"))
-            connection.execute(text("GRANT ALL ON SCHEMA public TO CURRENT_USER"))
+            connection.execute(
+                text(
+                    "DO $$ "
+                    "BEGIN "
+                    "IF to_regclass('public.alembic_version') IS NOT NULL THEN "
+                    "UPDATE public.alembic_version "
+                    "SET version_num = '58dc46872d17' "
+                    "WHERE version_num = '20260602_01_phase3_license_init'; "
+                    "END IF; "
+                    "END $$;"
+                )
+            )
     finally:
         engine.dispose()
 
@@ -108,6 +119,15 @@ def clean_phase3_tables(postgres_engine: Engine) -> Iterator[None]:
     _truncate_phase3_tables(postgres_engine)
     yield
     _truncate_phase3_tables(postgres_engine)
+
+@pytest.fixture(autouse=True)
+def reset_activation_rate_limiter(migrated_postgres: str) -> Iterator[None]:
+    # Import after migrated_postgres configures DATABASE_URL; app.api.automation imports app.core.database.
+    from app.api.automation import reset_activation_rate_limiter
+
+    reset_activation_rate_limiter()
+    yield
+    reset_activation_rate_limiter()
 
 
 @pytest.fixture

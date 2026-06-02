@@ -27,7 +27,8 @@ def upgrade() -> None:
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("CURRENT_TIMESTAMP")),
         sa.Column("created_by_admin", sa.Uuid(as_uuid=True), nullable=True),
         sa.Column("revoked", sa.Boolean(), nullable=False, server_default=sa.false()),
-        sa.ForeignKeyConstraint(["created_by_admin"], ["users.id"]),
+        sa.CheckConstraint("days_total > 0", name="ck_licenses_days_total_positive"),
+        sa.ForeignKeyConstraint(["created_by_admin"], ["public.users.id"]),
         sa.PrimaryKeyConstraint("id"),
         schema="phase3",
     )
@@ -43,6 +44,7 @@ def upgrade() -> None:
         sa.Column("rebind_count", sa.Integer(), nullable=False, server_default="0"),
         sa.ForeignKeyConstraint(["license_id"], ["phase3.licenses.id"], ondelete="CASCADE"),
         sa.PrimaryKeyConstraint("id"),
+        sa.UniqueConstraint("license_id", name="uq_license_activations_license_id"),
         schema="phase3",
     )
     op.create_index(
@@ -52,6 +54,7 @@ def upgrade() -> None:
         unique=False,
         schema="phase3",
     )
+    op.execute("RESET search_path")
 
 
 def downgrade() -> None:
@@ -59,4 +62,4 @@ def downgrade() -> None:
     op.drop_table("license_activations", schema="phase3")
     op.drop_index("uq_licenses_key", table_name="licenses", schema="phase3")
     op.drop_table("licenses", schema="phase3")
-    op.execute("DROP SCHEMA IF EXISTS phase3")
+    op.execute("DROP SCHEMA IF EXISTS phase3 RESTRICT")

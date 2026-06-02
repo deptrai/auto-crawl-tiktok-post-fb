@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from app.models.models import Base, Video, VideoStatus, TaskQueue, TaskStatus
@@ -19,13 +19,6 @@ from app.worker.cron import storage_cleanup_job, start_scheduler
 @pytest.fixture
 def db_session():
     engine = create_engine("sqlite:///:memory:")
-
-    @event.listens_for(engine, "connect")
-    def attach_phase3_schema(dbapi_connection, _connection_record):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("ATTACH DATABASE ':memory:' AS phase3")
-        cursor.close()
-
     Base.metadata.create_all(bind=engine)
     Session = sessionmaker(bind=engine, expire_on_commit=False)
     session = Session()

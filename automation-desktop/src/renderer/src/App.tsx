@@ -90,6 +90,9 @@ function App(): React.JSX.Element {
     try {
       const status = await activateLicense(key)
       setLicenseStatus(status)
+      if (!status.active) {
+        setError('License chưa hoạt động hoặc đã hết hạn. Vui lòng kiểm tra lại key.')
+      }
       setGateState(status.active ? 'ready' : 'needs-license')
     } finally {
       setActivating(false)

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -44,7 +44,7 @@ def test_phase3_license_tables_exist(db_session: Session):
     assert set(rows) == {"licenses", "license_activations"}
 
 
-def test_phase3_cross_schema_fk_is_enforced(db_session: Session):
+def test_phase3_activation_fk_is_enforced(db_session: Session):
     # Given: PostgreSQL has the phase3 schema and FK constraints from Alembic.
     missing_license_id = uuid.uuid4()
 
@@ -66,6 +66,48 @@ def test_phase3_cross_schema_fk_is_enforced(db_session: Session):
     db_session.rollback()
 
 
+def test_phase3_created_by_admin_cross_schema_fk_is_enforced(db_session: Session):
+    # Given: the phase3 licenses table references public.users explicitly.
+    missing_user_id = uuid.uuid4()
+
+    # When/Then: inserting a license with a missing public.users id fails FK enforcement.
+    with pytest.raises(IntegrityError):
+        db_session.execute(
+            text(
+                "INSERT INTO phase3.licenses (id, key, days_total, created_by_admin) "
+                "VALUES (:id, :key, :days_total, :created_by_admin)"
+            ),
+            {
+                "id": uuid.uuid4(),
+                "key": "LIC-CROSS-FK",
+                "days_total": 7,
+                "created_by_admin": missing_user_id,
+            },
+        )
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_phase3_license_days_total_check_constraint(db_session: Session):
+    # Given/When/Then: migration enforces positive license duration at DB level.
+    with pytest.raises(IntegrityError):
+        db_session.execute(
+            text("INSERT INTO phase3.licenses (id, key, days_total) VALUES (:id, :key, :days_total)"),
+            {"id": uuid.uuid4(), "key": "LIC-ZERO", "days_total": 0},
+        )
+        db_session.commit()
+    db_session.rollback()
+
+
+def test_license_activation_error_str_contains_message():
+    from app.services.automation.license import LicenseActivationError
+
+    error = LicenseActivationError("LICENSE_X", "Thông báo lỗi", retryable=True)
+
+    assert str(error) == "Thông báo lỗi"
+    assert error.args == ("Thông báo lỗi",)
+
+
 def test_activate_license_success_binds_hwid_and_computes_expiry(db_session: Session):
     from app.models.automation.license import LicenseActivation
     from app.services.automation.license import activate_license
@@ -84,7 +126,7 @@ def test_activate_license_success_binds_hwid_and_computes_expiry(db_session: Ses
     assert activation.hwid_hash == VALID_HWID
 
 
-def test_activate_license_same_hwid_is_idempotent(db_session: Session):
+def test_activate_license_same_hwid_is_idempotent_while_active(db_session: Session):
     from app.models.automation.license import LicenseActivation
     from app.services.automation.license import activate_license
 
@@ -98,6 +140,37 @@ def test_activate_license_same_hwid_is_idempotent(db_session: Session):
     # Then: the same activation is returned rather than creating duplicates.
     assert second.activation_id == first.activation_id
     assert db_session.query(LicenseActivation).count() == 1
+
+
+def test_activate_license_same_hwid_renews_after_expiry(db_session: Session):
+    from app.models.automation.license import LicenseActivation
+    from app.services.automation.license import activate_license
+
+    # Given: an activation exists but is already expired.
+    license_record = create_license(db_session, days_total=7)
+    first = activate_license(db_session, key=license_record.key, hwid=VALID_HWID)
+    expired_at = datetime.now(timezone.utc) - timedelta(days=1)
+    activation = db_session.query(LicenseActivation).filter_by(id=first.activation_id).one()
+    activation.activated_at = expired_at - timedelta(days=7)
+    activation.expires_at = expired_at
+    db_session.commit()
+
+    # When: activating again on the same HWID.
+    renewed = activate_license(db_session, key=license_record.key, hwid=VALID_HWID)
+
+    # Then: expiry is recomputed from now while preserving one activation row per license.
+    assert renewed.activation_id == first.activation_id
+    assert renewed.expires_at > datetime.now(timezone.utc) + timedelta(days=6)
+    assert db_session.query(LicenseActivation).count() == 1
+
+
+def test_service_rejects_invalid_days_total_before_creating_activation():
+    from app.services.automation.license import LicenseActivationError, _validate_days_total
+
+    # Given/When/Then: service rejects invalid duration before creating expired access.
+    with pytest.raises(LicenseActivationError) as exc_info:
+        _validate_days_total(0)
+    assert exc_info.value.code == "LICENSE_INVALID"
 
 
 def test_activate_license_hwid_mismatch_returns_domain_error(db_session: Session):
@@ -170,3 +243,30 @@ def test_activate_endpoint_returns_success_and_domain_errors(client: TestClient,
     )
     assert missing_response.status_code == 404
     assert missing_response.json()["error"]["code"] == "LICENSE_NOT_FOUND"
+
+
+def test_activate_endpoint_rate_limits_per_ip_and_key(client: TestClient, db_session: Session):
+    from app.api.automation import reset_activation_rate_limiter
+
+    reset_activation_rate_limiter()
+    license_record = create_license(db_session, key="LIC-RATE-LIMIT", days_total=7)
+
+    for _ in range(10):
+        response = client.post(
+            "/api/v1/automation/license/activate",
+            json={"key": license_record.key, "hwid": VALID_HWID},
+        )
+        assert response.status_code == 200
+
+    limited = client.post(
+        "/api/v1/automation/license/activate",
+        json={"key": license_record.key, "hwid": VALID_HWID},
+    )
+
+    assert limited.status_code == 429
+    assert limited.json()["error"] == {
+        "code": "RATE_LIMITED",
+        "message": "Bạn đã thử kích hoạt quá nhiều lần. Vui lòng chờ một lúc rồi thử lại.",
+        "retryable": True,
+    }
+    reset_activation_rate_limiter()

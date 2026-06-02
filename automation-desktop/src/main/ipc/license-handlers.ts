@@ -28,14 +28,6 @@ function normalizeError(error: unknown): IpcErrorResponse {
   if (error instanceof LicenseServiceError) {
     return toErrorResponse(error.code, error.message, error.retryable, error.details)
   }
-  if (error instanceof Error && error.message.includes('|')) {
-    const [code, message, retryable] = error.message.split('|')
-    return toErrorResponse(
-      code || 'LICENSE_ERROR',
-      message || 'Không thể xử lý license',
-      retryable === 'true'
-    )
-  }
   return toErrorResponse('LICENSE_ERROR', 'Không thể xử lý license.', true, error)
 }
 

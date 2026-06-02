@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { registerLicenseHandlers } from '../../src/main/ipc/license-handlers'
-import type { LicenseService } from '../../src/main/license/license-service'
+import { LicenseServiceError, type LicenseService } from '../../src/main/license/license-service'
 
 type IpcHandler = (_event: unknown, request: unknown) => Promise<unknown> | unknown
 
@@ -57,11 +57,15 @@ test('[P1] license IPC rejects invalid payload with ErrorEnvelope retryable=fals
   })
 })
 
-test('[P1] license IPC maps service domain errors to Vietnamese ErrorEnvelope', async () => {
+test('[P1] license IPC maps typed service domain errors to Vietnamese ErrorEnvelope', async () => {
   const fakeIpc = new FakeIpcMain()
   const service: LicenseService = {
     activate: async () => {
-      throw new Error('LICENSE_HWID_MISMATCH|License đã được kích hoạt trên máy khác.|false')
+      throw new LicenseServiceError(
+        'LICENSE_HWID_MISMATCH',
+        'License đã được kích hoạt trên máy khác.',
+        false
+      )
     },
     getStatus: async () => ({ active: false })
   }
