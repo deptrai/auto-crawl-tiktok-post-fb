@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import type { SecureStorage } from '../../adapters/secure-storage'
+import type { ProfileSummary } from '../../shared/ipc-schemas'
 import { brandSecret, revealSecret, type Secret } from '../../shared/types/secret'
 import type { ProfileRepository } from '../db/repositories/profile-repo'
 import { MAX_LINES, parseBulkProfiles } from './parser'
@@ -21,14 +22,6 @@ export interface ImportedProfile {
   uid: string
   displayName: string
   status: 'idle'
-}
-
-export interface ProfileSummary {
-  id: string
-  uid: string
-  displayName: string
-  status: string
-  createdAt: string
 }
 
 export interface SkippedEntry {

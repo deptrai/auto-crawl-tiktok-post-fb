@@ -23,24 +23,40 @@ export function ProfilesView(): React.JSX.Element {
   const [listError, setListError] = useState<string | null>(null)
   const listInFlightRef = useRef(false)
   const listCancelledRef = useRef(false)
+  const pendingRefreshRef = useRef(false)
 
   const refreshProfiles = useCallback(async (initialLoad = false): Promise<void> => {
-    if (listInFlightRef.current) return
-    listInFlightRef.current = true
-    if (initialLoad && !listCancelledRef.current) setListLoading(true)
-
-    try {
-      const nextProfiles = await listProfiles()
-      if (listCancelledRef.current) return
-      setProfiles(nextProfiles)
-      setListError(null)
-    } catch (err) {
-      if (listCancelledRef.current) return
-      setListError(err instanceof Error ? err.message : 'Không thể tải danh sách profile.')
-    } finally {
-      listInFlightRef.current = false
-      if (initialLoad && !listCancelledRef.current) setListLoading(false)
+    if (listInFlightRef.current) {
+      pendingRefreshRef.current = true
+      return
     }
+
+    listInFlightRef.current = true
+    let isInitialRun = initialLoad
+    let shouldRunAgain = true
+
+    while (shouldRunAgain && !listCancelledRef.current) {
+      pendingRefreshRef.current = false
+      if (isInitialRun && !listCancelledRef.current) setListLoading(true)
+
+      try {
+        const nextProfiles = await listProfiles()
+        if (!listCancelledRef.current) {
+          setProfiles(nextProfiles)
+          setListError(null)
+        }
+      } catch (err) {
+        if (!listCancelledRef.current) {
+          setListError(err instanceof Error ? err.message : 'Không thể tải danh sách profile.')
+        }
+      } finally {
+        if (isInitialRun && !listCancelledRef.current) setListLoading(false)
+        isInitialRun = false
+        shouldRunAgain = pendingRefreshRef.current && !listCancelledRef.current
+      }
+    }
+
+    listInFlightRef.current = false
   }, [])
 
   useEffect(() => {
@@ -205,7 +221,7 @@ export function ProfilesView(): React.JSX.Element {
           </p>
         ) : null}
 
-        {!listLoading && profiles.length === 0 ? (
+        {!listLoading && !listError && profiles.length === 0 ? (
           <p className="profiles-empty" data-testid="profiles-list-empty">
             Chưa có profile nào.
           </p>

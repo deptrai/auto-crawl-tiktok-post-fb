@@ -1,0 +1,1038 @@
+diff --git a/automation-desktop/src/main/ipc/profile-handlers.ts b/automation-desktop/src/main/ipc/profile-handlers.ts
+index 8b8dde8..9bab2fb 100644
+--- a/automation-desktop/src/main/ipc/profile-handlers.ts
++++ b/automation-desktop/src/main/ipc/profile-handlers.ts
+@@ -1,8 +1,11 @@
+ import {
+   ProfileImportBulkRequestSchema,
+   ProfileImportBulkResponseSchema,
++  ProfileListRequestSchema,
++  ProfileListResponseSchema,
+   type IpcErrorResponse,
+-  type ProfileImportBulkResponse
++  type ProfileImportBulkResponse,
++  type ProfileListResponse
+ } from '../../shared/ipc-schemas'
+ import type { ProfileService } from '../profile/profile-service'
+ import { ProfileServiceError } from '../profile/profile-service'
+@@ -44,4 +47,16 @@ export function registerProfileHandlers(ipcMain: IpcMainLike, service: ProfileSe
+       }
+     }
+   )
++
++  ipcMain.handle('phase3:profile:list', async (_event, request): Promise<ProfileListResponse> => {
++    const parsedRequest = ProfileListRequestSchema.safeParse(request)
++    if (!parsedRequest.success)
++      return ProfileListResponseSchema.parse(parseError(parsedRequest.error.flatten()))
++
++    try {
++      return ProfileListResponseSchema.parse({ ok: true, profiles: service.listProfiles() })
++    } catch (error) {
++      return ProfileListResponseSchema.parse(normalizeError(error))
++    }
++  })
+ }
+diff --git a/automation-desktop/src/main/profile/profile-service.ts b/automation-desktop/src/main/profile/profile-service.ts
+index eef4027..14f3451 100644
+--- a/automation-desktop/src/main/profile/profile-service.ts
++++ b/automation-desktop/src/main/profile/profile-service.ts
+@@ -23,6 +23,14 @@ export interface ImportedProfile {
+   status: 'idle'
+ }
+ 
++export interface ProfileSummary {
++  id: string
++  uid: string
++  displayName: string
++  status: string
++  createdAt: string
++}
++
+ export interface SkippedEntry {
+   line: number
+   uid: string
+@@ -45,6 +53,7 @@ export interface ImportResult {
+ 
+ export interface ProfileService {
+   importBulk(text: string): Promise<ImportResult>
++  listProfiles(): ProfileSummary[]
+ }
+ 
+ export interface ProfileServiceDeps {
+@@ -65,6 +74,16 @@ export function createProfileService(deps: ProfileServiceDeps): ProfileService {
+   const { storage, repo } = deps
+ 
+   return {
++    listProfiles() {
++      return repo.listProfiles().map((row) => ({
++        id: row.id,
++        uid: row.uid,
++        displayName: row.displayName,
++        status: row.status,
++        createdAt: row.createdAt
++      }))
++    },
++
+     async importBulk(text) {
+       const {
+         parsed,
+diff --git a/automation-desktop/src/renderer/src/api/profile-api.ts b/automation-desktop/src/renderer/src/api/profile-api.ts
+index 33ea16f..ed651e7 100644
+--- a/automation-desktop/src/renderer/src/api/profile-api.ts
++++ b/automation-desktop/src/renderer/src/api/profile-api.ts
+@@ -1,4 +1,9 @@
+-import type { ImportResult, ProfileImportBulkResponse } from '../../../shared/ipc-schemas'
++import type {
++  ImportResult,
++  ProfileImportBulkResponse,
++  ProfileListResponse,
++  ProfileSummary
++} from '../../../shared/ipc-schemas'
+ 
+ function assertOk<T extends { ok: boolean; error?: { message: string } }>(
+   response: T
+@@ -15,3 +20,13 @@ export async function importBulkProfiles(text: string): Promise<ImportResult> {
+   assertOk(response)
+   return response.result
+ }
++
++export async function listProfiles(): Promise<ProfileSummary[]> {
++  const response = await window.api.ipc.call<
++    'phase3:profile:list',
++    Record<string, never>,
++    ProfileListResponse
++  >('phase3:profile:list', {})
++  assertOk(response)
++  return response.profiles
++}
+diff --git a/automation-desktop/src/renderer/src/assets/main.css b/automation-desktop/src/renderer/src/assets/main.css
+index ad3022b..8d22f60 100644
+--- a/automation-desktop/src/renderer/src/assets/main.css
++++ b/automation-desktop/src/renderer/src/assets/main.css
+@@ -17,6 +17,10 @@ input {
+   font: inherit;
+ }
+ 
++textarea {
++  font: inherit;
++}
++
+ #root {
+   min-height: 100vh;
+   display: grid;
+@@ -181,6 +185,183 @@ h1 {
+   font-weight: 700;
+ }
+ 
++.profiles-view {
++  display: grid;
++  gap: 22px;
++}
++
++.import-form {
++  display: grid;
++  gap: 14px;
++  margin-top: 24px;
++}
++
++.import-textarea {
++  width: 100%;
++  box-sizing: border-box;
++  border: 1px solid rgba(255, 255, 255, 0.22);
++  border-radius: 18px;
++  padding: 16px;
++  color: #fff7e9;
++  background: rgba(255, 255, 255, 0.08);
++  outline: none;
++  resize: vertical;
++}
++
++.import-textarea:focus {
++  border-color: #ffcc7a;
++  box-shadow: 0 0 0 4px rgba(255, 204, 122, 0.12);
++}
++
++.import-button {
++  border: 0;
++  border-radius: 18px;
++  padding: 16px 20px;
++  color: #21150a;
++  background: linear-gradient(135deg, #ffcc7a, #ff8d42);
++  cursor: pointer;
++  font-weight: 900;
++  box-shadow: 0 18px 42px rgba(255, 141, 66, 0.28);
++}
++
++.import-button:disabled {
++  cursor: not-allowed;
++  filter: grayscale(0.75);
++  opacity: 0.52;
++  box-shadow: none;
++}
++
++.import-result,
++.profiles-list-section {
++  border: 1px solid rgba(255, 255, 255, 0.14);
++  border-radius: 22px;
++  padding: 20px;
++  background: rgba(255, 255, 255, 0.06);
++}
++
++.result-summary,
++.profiles-list-section h2 {
++  margin: 0;
++  font-size: 22px;
++}
++
++.failed-list,
++.imported-profiles {
++  margin-top: 16px;
++}
++
++.failed-title,
++.profiles-title {
++  margin: 0 0 8px;
++  color: #ffcc7a;
++  font-weight: 900;
++}
++
++.profile-item,
++.failed-item {
++  margin: 6px 0;
++}
++
++.profile-status {
++  margin-left: 10px;
++  color: #b9c9d9;
++}
++
++.profiles-list-header {
++  display: flex;
++  gap: 16px;
++  align-items: flex-start;
++  justify-content: space-between;
++}
++
++.profiles-list-loading {
++  border: 1px solid rgba(142, 203, 255, 0.28);
++  border-radius: 999px;
++  padding: 8px 12px;
++  color: #bfe0ff;
++  background: rgba(142, 203, 255, 0.1);
++  font-size: 13px;
++  font-weight: 800;
++}
++
++.list-error {
++  width: 100%;
++  margin-top: 14px;
++}
++
++.profiles-empty {
++  margin: 18px 0 0;
++  color: #d8d0c2;
++}
++
++.profiles-list {
++  display: grid;
++  gap: 10px;
++  padding: 0;
++  margin: 18px 0 0;
++  list-style: none;
++}
++
++.profile-list-row {
++  display: flex;
++  gap: 14px;
++  align-items: center;
++  justify-content: space-between;
++  border: 1px solid rgba(255, 255, 255, 0.1);
++  border-radius: 16px;
++  padding: 14px 16px;
++  background: rgba(0, 0, 0, 0.14);
++}
++
++.profile-list-identity {
++  display: grid;
++  gap: 4px;
++}
++
++.profile-list-uid {
++  color: #fff7e9;
++  font-weight: 900;
++}
++
++.profile-list-name {
++  color: #b9c9d9;
++  font-size: 13px;
++}
++
++.status-badge {
++  flex: 0 0 auto;
++  border: 1px solid rgba(255, 255, 255, 0.16);
++  border-radius: 999px;
++  padding: 8px 12px;
++  font-size: 13px;
++  font-weight: 900;
++}
++
++.status-idle {
++  color: #bfeec7;
++  background: rgba(76, 214, 119, 0.14);
++}
++
++.status-running {
++  color: #bfe0ff;
++  background: rgba(84, 168, 255, 0.16);
++}
++
++.status-checkpoint {
++  color: #ffe2ad;
++  background: rgba(255, 184, 77, 0.16);
++}
++
++.status-error {
++  color: #ffb0a8;
++  background: rgba(255, 102, 82, 0.16);
++}
++
++.status-unknown {
++  color: #d8d0c2;
++  background: rgba(255, 255, 255, 0.1);
++}
++
+ @media (max-width: 620px) {
+   #root {
+     padding: 16px;
+@@ -194,4 +375,10 @@ h1 {
+     padding: 24px;
+     border-radius: 22px;
+   }
++
++  .profiles-list-header,
++  .profile-list-row {
++    align-items: stretch;
++    flex-direction: column;
++  }
+ }
+diff --git a/automation-desktop/src/renderer/src/views/ProfilesView.tsx b/automation-desktop/src/renderer/src/views/ProfilesView.tsx
+index 75a9424..c45ee0d 100644
+--- a/automation-desktop/src/renderer/src/views/ProfilesView.tsx
++++ b/automation-desktop/src/renderer/src/views/ProfilesView.tsx
+@@ -1,12 +1,63 @@
+-import { useState } from 'react'
+-import type { ImportResult } from '../../../shared/ipc-schemas'
+-import { importBulkProfiles } from '../api/profile-api'
++import { useCallback, useEffect, useRef, useState } from 'react'
++import type { ImportResult, ProfileSummary } from '../../../shared/ipc-schemas'
++import { importBulkProfiles, listProfiles } from '../api/profile-api'
++
++const STATUS_LABELS: Record<string, { label: string; className: string }> = {
++  idle: { label: 'Nhàn rỗi', className: 'status-idle' },
++  running: { label: 'Đang chạy', className: 'status-running' },
++  checkpoint: { label: 'Checkpoint', className: 'status-checkpoint' },
++  error: { label: 'Lỗi', className: 'status-error' }
++}
++
++function getStatusBadge(status: string): { label: string; className: string } {
++  return STATUS_LABELS[status] ?? { label: 'Không xác định', className: 'status-unknown' }
++}
+ 
+ export function ProfilesView(): React.JSX.Element {
+   const [text, setText] = useState('')
+   const [importing, setImporting] = useState(false)
+   const [result, setResult] = useState<ImportResult | null>(null)
+   const [error, setError] = useState<string | null>(null)
++  const [profiles, setProfiles] = useState<ProfileSummary[]>([])
++  const [listLoading, setListLoading] = useState(true)
++  const [listError, setListError] = useState<string | null>(null)
++  const listInFlightRef = useRef(false)
++  const listCancelledRef = useRef(false)
++
++  const refreshProfiles = useCallback(async (initialLoad = false): Promise<void> => {
++    if (listInFlightRef.current) return
++    listInFlightRef.current = true
++    if (initialLoad && !listCancelledRef.current) setListLoading(true)
++
++    try {
++      const nextProfiles = await listProfiles()
++      if (listCancelledRef.current) return
++      setProfiles(nextProfiles)
++      setListError(null)
++    } catch (err) {
++      if (listCancelledRef.current) return
++      setListError(err instanceof Error ? err.message : 'Không thể tải danh sách profile.')
++    } finally {
++      listInFlightRef.current = false
++      if (initialLoad && !listCancelledRef.current) setListLoading(false)
++    }
++  }, [])
++
++  useEffect(() => {
++    listCancelledRef.current = false
++    const initialLoad = window.setTimeout(() => {
++      void refreshProfiles(true)
++    }, 0)
++    const interval = window.setInterval(() => {
++      void refreshProfiles(false)
++    }, 5000)
++
++    return () => {
++      listCancelledRef.current = true
++      window.clearTimeout(initialLoad)
++      window.clearInterval(interval)
++    }
++  }, [refreshProfiles])
+ 
+   async function handleImport(): Promise<void> {
+     if (!text.trim() || importing) return
+@@ -18,6 +69,7 @@ export function ProfilesView(): React.JSX.Element {
+       setResult(res)
+       // Clear textarea after import — do not keep secrets in DOM (rule #10, exception clause)
+       setText('')
++      await refreshProfiles(false)
+     } catch (err) {
+       setError(err instanceof Error ? err.message : 'Không thể import profile.')
+     } finally {
+@@ -27,88 +79,159 @@ export function ProfilesView(): React.JSX.Element {
+ 
+   return (
+     <div className="profiles-view" data-testid="profiles-view">
+-      <p className="eyebrow">Quản lý tài khoản</p>
+-      <h1>Import Profile</h1>
+-      <p className="lead">
+-        Dán danh sách tài khoản theo định dạng <code>uid|pass|2fa|cookie|hotmail|passmail</code>{' '}
+-        (mỗi dòng một tài khoản).
+-      </p>
+-
+-      <div className="import-form">
+-        <textarea
+-          data-testid="import-textarea"
+-          className="import-textarea"
+-          value={text}
+-          onChange={(e) => setText(e.target.value)}
+-          placeholder={
+-            'uid1|pass1|seed1|cookie1|email@mail.com|mailpass\n# dòng bắt đầu # là comment, bị bỏ qua'
+-          }
+-          rows={8}
+-          disabled={importing}
+-          aria-label="Danh sách profile để import"
+-        />
+-
+-        <button
+-          data-testid="import-button"
+-          className="import-button"
+-          disabled={importing || !text.trim()}
+-          onClick={(e) => {
+-            // Disable immediately to prevent double-click race (rule #17)
+-            ;(e.currentTarget as HTMLButtonElement).disabled = true
+-            void handleImport()
+-          }}
+-        >
+-          {importing ? (
+-            <span data-testid="import-loading" className="import-loading-indicator">
+-              Đang import...
+-            </span>
+-          ) : (
+-            'Import'
+-          )}
+-        </button>
+-      </div>
+-
+-      {error ? (
+-        <p className="error-message" data-testid="import-error">
+-          {error}
++      <section className="import-panel" aria-labelledby="profiles-import-title">
++        <p className="eyebrow">Quản lý tài khoản</p>
++        <h1 id="profiles-import-title">Import Profile</h1>
++        <p className="lead">
++          Dán định dạng <code>uid|pass|2fa|cookie|hotmail|passmail</code> hoặc paste JSON cookie
++          export Facebook. App tự lấy UID từ <code>c_user</code> và không hiển thị lại secret.
+         </p>
+-      ) : null}
+-
+-      {result ? (
+-        <div className="import-result" data-testid="import-result">
+-          <h2 className="result-summary">
+-            Kết quả: {result.imported} đã import · {result.skipped.length} bỏ qua ·{' '}
+-            {result.failed.length} lỗi
+-          </h2>
+-
+-          {result.failed.length > 0 ? (
+-            <div className="failed-list">
+-              <p className="failed-title">Dòng lỗi:</p>
+-              <ul>
+-                {result.failed.map((f, i) => (
+-                  <li key={i} className="failed-item">
+-                    Dòng {f.line}: {f.reason}
+-                  </li>
+-                ))}
+-              </ul>
+-            </div>
+-          ) : null}
+ 
+-          {result.profiles.length > 0 ? (
+-            <div className="imported-profiles" data-testid="imported-profiles-list">
+-              <p className="profiles-title">Profile vừa import:</p>
+-              <ul>
+-                {result.profiles.map((p) => (
+-                  <li key={p.id} className="profile-item" data-testid={`profile-${p.uid}`}>
+-                    <span className="profile-uid">{p.uid}</span>
+-                    <span className="profile-status">{p.status}</span>
+-                  </li>
+-                ))}
+-              </ul>
+-            </div>
++        <div className="format-card">
++          <span>Nhận 2 format</span>
++          <strong>Bulk text</strong>
++          <strong>JSON cookie export</strong>
++        </div>
++
++        <div className="import-form">
++          <textarea
++            data-testid="import-textarea"
++            className="import-textarea"
++            value={text}
++            onChange={(e) => setText(e.target.value)}
++            placeholder={
++              'uid1|pass1|seed1|cookie1|email@mail.com|mailpass\n# hoặc paste JSON cookie export Facebook trực tiếp'
++            }
++            rows={8}
++            disabled={importing}
++            aria-label="Danh sách profile để import"
++          />
++
++          <button
++            data-testid="import-button"
++            className="import-button"
++            disabled={importing || !text.trim()}
++            onClick={(e) => {
++              // Disable immediately to prevent double-click race (rule #17)
++              ;(e.currentTarget as HTMLButtonElement).disabled = true
++              void handleImport()
++            }}
++          >
++            {importing ? (
++              <span data-testid="import-loading" className="import-loading-indicator">
++                Đang import...
++              </span>
++            ) : (
++              'Import profile'
++            )}
++          </button>
++        </div>
++
++        {error ? (
++          <p className="error-message" data-testid="import-error">
++            {error}
++          </p>
++        ) : null}
++
++        {result ? (
++          <div className="import-result" data-testid="import-result">
++            <h2 className="result-summary">
++              Kết quả: {result.imported} đã import · {result.skipped.length} bỏ qua ·{' '}
++              {result.failed.length} lỗi
++            </h2>
++
++            {result.skipped.length > 0 ? (
++              <div className="skipped-list" data-testid="skipped-profiles-list">
++                <p className="skipped-title">Bỏ qua:</p>
++                <ul>
++                  {result.skipped.map((s, i) => (
++                    <li key={i} className="skipped-item">
++                      Dòng {s.line} · {s.uid}: {s.reason}
++                    </li>
++                  ))}
++                </ul>
++              </div>
++            ) : null}
++
++            {result.failed.length > 0 ? (
++              <div className="failed-list">
++                <p className="failed-title">Dòng lỗi:</p>
++                <ul>
++                  {result.failed.map((f, i) => (
++                    <li key={i} className="failed-item">
++                      Dòng {f.line}: {f.reason}
++                    </li>
++                  ))}
++                </ul>
++              </div>
++            ) : null}
++
++            {result.profiles.length > 0 ? (
++              <div className="imported-profiles" data-testid="imported-profiles-list">
++                <p className="profiles-title">Profile vừa import:</p>
++                <ul>
++                  {result.profiles.map((p) => (
++                    <li key={p.id} className="profile-item" data-testid={`profile-${p.uid}`}>
++                      <span className="profile-uid">{p.uid}</span>
++                      <span className="profile-status">{p.status}</span>
++                    </li>
++                  ))}
++                </ul>
++              </div>
++            ) : null}
++          </div>
++        ) : null}
++      </section>
++
++      <section className="profiles-list-section" data-testid="profiles-list-section">
++        <div className="profiles-list-header">
++          <div>
++            <p className="eyebrow">Real-time</p>
++            <h2>Danh sách profile</h2>
++            <p className="profiles-list-subtitle">
++              {profiles.length > 0 ? `${profiles.length} profile trong máy này` : 'Chưa có dữ liệu'}
++            </p>
++          </div>
++          {listLoading ? (
++            <span data-testid="profiles-list-loading" className="profiles-list-loading">
++              Đang tải danh sách...
++            </span>
+           ) : null}
+         </div>
+-      ) : null}
++
++        {listError ? (
++          <p className="error-message list-error" data-testid="profiles-list-error">
++            {listError}
++          </p>
++        ) : null}
++
++        {!listLoading && profiles.length === 0 ? (
++          <p className="profiles-empty" data-testid="profiles-list-empty">
++            Chưa có profile nào.
++          </p>
++        ) : null}
++
++        {profiles.length > 0 ? (
++          <ul className="profiles-list" data-testid="profiles-list">
++            {profiles.map((profile) => {
++              const badge = getStatusBadge(profile.status)
++              return (
++                <li
++                  key={profile.id}
++                  className="profile-list-row"
++                  data-testid={`profile-row-${profile.uid}`}
++                >
++                  <div className="profile-list-identity">
++                    <span className="profile-list-uid">{profile.uid}</span>
++                    <span className="profile-list-name">Tên hiển thị: {profile.displayName}</span>
++                  </div>
++                  <span className={`status-badge ${badge.className}`}>{badge.label}</span>
++                </li>
++              )
++            })}
++          </ul>
++        ) : null}
++      </section>
+     </div>
+   )
+ }
+diff --git a/automation-desktop/src/shared/ipc-schemas/index.ts b/automation-desktop/src/shared/ipc-schemas/index.ts
+index e427375..4bc4823 100644
+--- a/automation-desktop/src/shared/ipc-schemas/index.ts
++++ b/automation-desktop/src/shared/ipc-schemas/index.ts
+@@ -32,8 +32,12 @@ import {
+ import {
+   ProfileImportBulkRequestSchema,
+   ProfileImportBulkResponseSchema,
++  ProfileListRequestSchema,
++  ProfileListResponseSchema,
+   type ProfileImportBulkRequest,
+-  type ProfileImportBulkResponse
++  type ProfileImportBulkResponse,
++  type ProfileListRequest,
++  type ProfileListResponse
+ } from './profile'
+ 
+ export type Phase3ChannelName = `phase3:${string}:${string}`
+@@ -83,7 +87,12 @@ export const channelRegistry = [
+     channel: 'phase3:profile:import-bulk',
+     requestSchema: ProfileImportBulkRequestSchema,
+     responseSchema: ProfileImportBulkResponseSchema
+-  } satisfies ChannelRegistryEntry<ProfileImportBulkRequest, ProfileImportBulkResponse>
++  } satisfies ChannelRegistryEntry<ProfileImportBulkRequest, ProfileImportBulkResponse>,
++  {
++    channel: 'phase3:profile:list',
++    requestSchema: ProfileListRequestSchema,
++    responseSchema: ProfileListResponseSchema
++  } satisfies ChannelRegistryEntry<ProfileListRequest, ProfileListResponse>
+ ] as const satisfies ReadonlyArray<ChannelRegistryEntry>
+ 
+ export * from './common'
+diff --git a/automation-desktop/src/shared/ipc-schemas/profile.ts b/automation-desktop/src/shared/ipc-schemas/profile.ts
+index fd6ae9a..7cd4973 100644
+--- a/automation-desktop/src/shared/ipc-schemas/profile.ts
++++ b/automation-desktop/src/shared/ipc-schemas/profile.ts
+@@ -7,6 +7,8 @@ export const ProfileImportBulkRequestSchema = z.object({
+   text: z.string().min(1).max(1_000_000)
+ })
+ 
++export const ProfileListRequestSchema = z.object({}).strict()
++
+ // ---- Response payload ----
+ 
+ export const ImportedProfileSchema = z.object({
+@@ -46,9 +48,30 @@ export const ProfileImportBulkResponseSchema = z.union([
+   IpcErrorResponseSchema
+ ])
+ 
++export const ProfileSummarySchema = z.object({
++  id: z.string().min(1),
++  uid: z.string().min(1),
++  displayName: z.string().min(1),
++  status: z.string().min(1),
++  createdAt: z.string().min(1)
++})
++
++export const ProfileListSuccessResponseSchema = z.object({
++  ok: z.literal(true),
++  profiles: z.array(ProfileSummarySchema)
++})
++
++export const ProfileListResponseSchema = z.union([
++  ProfileListSuccessResponseSchema,
++  IpcErrorResponseSchema
++])
++
+ // ---- Types ----
+ 
+ export type ProfileImportBulkRequest = z.infer<typeof ProfileImportBulkRequestSchema>
+ export type ImportedProfile = z.infer<typeof ImportedProfileSchema>
+ export type ImportResult = z.infer<typeof ImportResultSchema>
+ export type ProfileImportBulkResponse = z.infer<typeof ProfileImportBulkResponseSchema>
++export type ProfileListRequest = z.infer<typeof ProfileListRequestSchema>
++export type ProfileSummary = z.infer<typeof ProfileSummarySchema>
++export type ProfileListResponse = z.infer<typeof ProfileListResponseSchema>
+diff --git a/automation-desktop/tests/e2e/profiles.spec.ts b/automation-desktop/tests/e2e/profiles.spec.ts
+index 8bdcb88..745da3c 100644
+--- a/automation-desktop/tests/e2e/profiles.spec.ts
++++ b/automation-desktop/tests/e2e/profiles.spec.ts
+@@ -109,6 +109,26 @@ test('[P0] profiles view renders and import button is present when license is ac
+   }
+ })
+ 
++test('[P0] profiles list shows empty state when no profile exists', async () => {
++  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-empty-'))
++  let app: ElectronApplication | null = null
++  let server: Server | null = null
++
++  try {
++    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'))
++    app = launched.app
++    server = launched.server
++    const window = launched.window
++
++    await expect(window.getByTestId('profiles-list-section')).toBeVisible({ timeout: 10_000 })
++    await expect(window.getByTestId('profiles-list-empty')).toContainText('Chưa có profile nào.')
++  } finally {
++    if (app) await app.close()
++    await closeServer(server)
++    rmSync(dir, { recursive: true, force: true })
++  }
++})
++
+ test('[P0] import two profiles shows summary with 2 imported and clears textarea', async () => {
+   const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-import-'))
+   let app: ElectronApplication | null = null
+@@ -142,10 +162,15 @@ test('[P0] import two profiles shows summary with 2 imported and clears textarea
+     // Textarea should be cleared after successful import
+     await expect(textarea).toHaveValue('')
+ 
+-    // Profiles list should show the 2 uids
++    // Import result should show the 2 uids and the real-time list refreshes immediately.
+     await expect(window.getByTestId('imported-profiles-list')).toBeVisible()
+-    await expect(window.getByText('uid_alpha')).toBeVisible()
+-    await expect(window.getByText('uid_beta')).toBeVisible()
++    await expect(window.getByTestId('profile-row-uid_alpha')).toBeVisible({ timeout: 10_000 })
++    await expect(window.getByTestId('profile-row-uid_beta')).toBeVisible()
++    await expect(window.getByTestId('profile-row-uid_alpha')).toContainText('Nhàn rỗi')
++    await expect(window.getByTestId('profile-row-uid_beta')).toContainText('Nhàn rỗi')
++    await expect(window.getByTestId('profiles-list-section')).not.toContainText('cookieALPHA')
++    await expect(window.getByTestId('profiles-list-section')).not.toContainText('pass1')
++    await expect(window.getByTestId('profiles-list-section')).not.toContainText('seed1')
+   } finally {
+     if (app) await app.close()
+     await closeServer(server)
+diff --git a/automation-desktop/tests/integration/profile-ipc-handlers.spec.ts b/automation-desktop/tests/integration/profile-ipc-handlers.spec.ts
+index 32effab..91e5dc1 100644
+--- a/automation-desktop/tests/integration/profile-ipc-handlers.spec.ts
++++ b/automation-desktop/tests/integration/profile-ipc-handlers.spec.ts
+@@ -25,10 +25,28 @@ const successResult = {
+   profiles: [{ id: 'test-id', uid: 'uid1', displayName: 'uid1', status: 'idle' as const }]
+ }
+ 
++const profileList = [
++  {
++    id: 'profile-new',
++    uid: 'uid_new',
++    displayName: 'uid_new',
++    status: 'running',
++    createdAt: '2026-06-03T02:00:00.000Z'
++  },
++  {
++    id: 'profile-old',
++    uid: 'uid_old',
++    displayName: 'uid_old',
++    status: 'idle',
++    createdAt: '2026-06-03T01:00:00.000Z'
++  }
++]
++
+ test('[P0] profile IPC import-bulk returns result without secrets', async () => {
+   const fakeIpc = new FakeIpcMain()
+   const service: ProfileService = {
+-    importBulk: async () => successResult
++    importBulk: async () => successResult,
++    listProfiles: () => []
+   }
+   registerProfileHandlers(fakeIpc, service)
+ 
+@@ -46,7 +64,8 @@ test('[P0] profile IPC import-bulk returns result without secrets', async () =>
+ test('[P1] profile IPC rejects invalid payload with ErrorEnvelope retryable=false', async () => {
+   const fakeIpc = new FakeIpcMain()
+   const service: ProfileService = {
+-    importBulk: async () => successResult
++    importBulk: async () => successResult,
++    listProfiles: () => []
+   }
+   registerProfileHandlers(fakeIpc, service)
+ 
+@@ -64,7 +83,8 @@ test('[P1] profile IPC propagates service error as retryable ErrorEnvelope', asy
+   const service: ProfileService = {
+     importBulk: async () => {
+       throw new ProfileServiceError('PROFILE_ERROR', 'Lỗi xử lý profile', true)
+-    }
++    },
++    listProfiles: () => []
+   }
+   registerProfileHandlers(fakeIpc, service)
+ 
+@@ -80,7 +100,8 @@ test('[P1] profile IPC maps unknown service errors to non-retryable ErrorEnvelop
+   const service: ProfileService = {
+     importBulk: async () => {
+       throw new Error('programmer bug')
+-    }
++    },
++    listProfiles: () => []
+   }
+   registerProfileHandlers(fakeIpc, service)
+ 
+@@ -123,7 +144,8 @@ test('[P0] profile IPC returns ErrorEnvelope when line cap is exceeded', async (
+ test('[P1] profile IPC rejects text larger than 1MB with validation ErrorEnvelope', async () => {
+   const fakeIpc = new FakeIpcMain()
+   const service: ProfileService = {
+-    importBulk: async () => successResult
++    importBulk: async () => successResult,
++    listProfiles: () => []
+   }
+   registerProfileHandlers(fakeIpc, service)
+ 
+@@ -136,3 +158,54 @@ test('[P1] profile IPC rejects text larger than 1MB with validation ErrorEnvelop
+   expect(err.code).toBe('VALIDATION_ERROR')
+   expect(err.retryable).toBe(false)
+ })
++
++test('[P0] profile IPC list returns profile summaries without secrets', async () => {
++  const fakeIpc = new FakeIpcMain()
++  const service: ProfileService = {
++    importBulk: async () => successResult,
++    listProfiles: () => profileList
++  }
++  registerProfileHandlers(fakeIpc, service)
++
++  const response = await fakeIpc.invoke('phase3:profile:list', {})
++
++  expect(response).toEqual({ ok: true, profiles: profileList })
++  const json = JSON.stringify(response)
++  expect(json).not.toMatch(/cookie|password|twofa|email|secret/i)
++})
++
++test('[P0] profile IPC list rejects non-empty payload with ErrorEnvelope', async () => {
++  const fakeIpc = new FakeIpcMain()
++  const service: ProfileService = {
++    importBulk: async () => successResult,
++    listProfiles: () => profileList
++  }
++  registerProfileHandlers(fakeIpc, service)
++
++  const response = await fakeIpc.invoke('phase3:profile:list', { unexpected: true })
++
++  expect((response as { ok: boolean }).ok).toBe(false)
++  const err = (response as { error: { code: string; retryable: boolean; message: string } }).error
++  expect(err.code).toBe('VALIDATION_ERROR')
++  expect(err.retryable).toBe(false)
++  expect(err.message).toBe('Dữ liệu yêu cầu không hợp lệ')
++})
++
++test('[P1] profile IPC list maps unknown service errors to non-retryable ErrorEnvelope', async () => {
++  const fakeIpc = new FakeIpcMain()
++  const service: ProfileService = {
++    importBulk: async () => successResult,
++    listProfiles: () => {
++      throw new Error('internal details')
++    }
++  }
++  registerProfileHandlers(fakeIpc, service)
++
++  const response = await fakeIpc.invoke('phase3:profile:list', {})
++
++  expect((response as { ok: boolean }).ok).toBe(false)
++  const err = (response as { error: { code: string; retryable: boolean; message: string } }).error
++  expect(err.code).toBe('PROFILE_ERROR')
++  expect(err.retryable).toBe(false)
++  expect(err.message).toBe('Không thể xử lý profile.')
++})
+diff --git a/automation-desktop/tests/unit/profile-parser.spec.ts b/automation-desktop/tests/unit/profile-parser.spec.ts
+index 84bd2d8..4cc2711 100644
+--- a/automation-desktop/tests/unit/profile-parser.spec.ts
++++ b/automation-desktop/tests/unit/profile-parser.spec.ts
+@@ -78,6 +78,46 @@ test('[P1] parser handles line with only uid and cookie (minimal)', () => {
+   expect(parsed[0].twofa).toBe('')
+ })
+ 
++test('[P1] parser accepts Facebook JSON cookie export and derives uid from c_user', () => {
++  const jsonCookieExport = JSON.stringify(
++    [
++      { domain: '.facebook.com', name: 'datr', value: 'datr-value' },
++      { domain: '.facebook.com', name: 'c_user', value: '61554949615037' },
++      { domain: '.facebook.com', name: 'xs', value: 'xs-value' }
++    ],
++    null,
++    2
++  )
++
++  const { parsed, errors, dataLineCount } = parseBulkProfiles(jsonCookieExport)
++
++  expect(errors).toHaveLength(0)
++  expect(parsed).toHaveLength(1)
++  expect(dataLineCount).toBe(1)
++  expect(parsed[0].uid).toBe('61554949615037')
++  expect(parsed[0].cookie).toBe('datr=datr-value; c_user=61554949615037; xs=xs-value')
++  expect(parsed[0].pass).toBe('')
++  expect(parsed[0].twofa).toBe('')
++})
++
++test('[P1] parser reports invalid JSON cookie export clearly', () => {
++  const { parsed, errors } = parseBulkProfiles('[{"name":"c_user","value":"123"}')
++
++  expect(parsed).toHaveLength(0)
++  expect(errors).toEqual([{ line: 1, reason: 'JSON cookie export không hợp lệ.' }])
++})
++
++test('[P1] parser reports JSON cookie export missing c_user', () => {
++  const { parsed, errors } = parseBulkProfiles(
++    JSON.stringify([{ domain: '.facebook.com', name: 'xs', value: 'xs-value' }])
++  )
++
++  expect(parsed).toHaveLength(0)
++  expect(errors).toEqual([
++    { line: 1, reason: 'JSON cookie export thiếu cookie c_user để lấy uid.' }
++  ])
++})
++
+ test('[P1] parser returns errors per line, does not abort batch', () => {
+   const text = ['|pass|2fa|cookie', 'uid2|p|2fa|cookie2', 'uid3|p|2fa|'].join('\n')
+   const { parsed, errors } = parseBulkProfiles(text)
+diff --git a/automation-desktop/tests/unit/profile-service.spec.ts b/automation-desktop/tests/unit/profile-service.spec.ts
+index 48d4b0c..b74fb34 100644
+--- a/automation-desktop/tests/unit/profile-service.spec.ts
++++ b/automation-desktop/tests/unit/profile-service.spec.ts
+@@ -102,6 +102,28 @@ test('[P0] importBulk response NEVER contains cookie/2fa/password', async () =>
+   expect(json).not.toContain('mailpass1')
+ })
+ 
++test('[P1] importBulk accepts JSON cookie export and stores converted cookie string', async () => {
++  const storage = createMemoryStorage()
++  const repo = createMemoryRepo()
++  const service = createProfileService({ storage, repo })
++  const jsonCookieExport = JSON.stringify([
++    { domain: '.facebook.com', name: 'datr', value: 'datr-value' },
++    { domain: '.facebook.com', name: 'c_user', value: '61554949615037' },
++    { domain: '.facebook.com', name: 'xs', value: 'xs-value' }
++  ])
++
++  const result = await service.importBulk(jsonCookieExport)
++
++  expect(result.imported).toBe(1)
++  expect(result.failed).toHaveLength(0)
++  expect(result.profiles[0].uid).toBe('61554949615037')
++  const id = result.profiles[0].id
++  expect(await storage.get(`profile.${id}.cookie`)).toBe(
++    'datr=datr-value; c_user=61554949615037; xs=xs-value'
++  )
++  expect(JSON.stringify(result)).not.toContain('xs-value')
++})
++
+ test('[P1] importBulk skips duplicate uid in same batch', async () => {
+   const storage = createMemoryStorage()
+   const repo = createMemoryRepo()
+@@ -231,3 +253,64 @@ test('[P1] importBulk sanitizes non-unique storage/internal errors', async () =>
+   expect(result.failed[0].reason).toBe('Không thể lưu profile (lỗi lưu trữ nội bộ).')
+   expect(JSON.stringify(result)).not.toMatch(/no such table|profile_metadata/i)
+ })
++
++test('[P0] listProfiles maps repository rows without reading secure storage', () => {
++  const storageCalls: string[] = []
++  const storage: SecureStorage = {
++    get: async (key) => {
++      storageCalls.push(`get:${key}`)
++      throw new Error('listProfiles must not read secure storage')
++    },
++    set: async (key) => {
++      storageCalls.push(`set:${key}`)
++    },
++    delete: async (key) => {
++      storageCalls.push(`delete:${key}`)
++    }
++  }
++  const repo = createMemoryRepo()
++  repo.insertProfileAtomic(
++    {
++      id: 'profile-2',
++      uid: 'uid_new',
++      displayName: 'uid_new',
++      status: 'running',
++      createdAt: '2026-06-03T02:00:00.000Z'
++    },
++    [{ key: 'email', value: 'secret@example.com' }]
++  )
++  repo.insertProfileAtomic(
++    {
++      id: 'profile-1',
++      uid: 'uid_old',
++      displayName: 'uid_old',
++      status: 'idle',
++      createdAt: '2026-06-03T01:00:00.000Z'
++    },
++    []
++  )
++  const service = createProfileService({ storage, repo })
++
++  const profiles = service.listProfiles()
++
++  expect(profiles).toEqual([
++    {
++      id: 'profile-2',
++      uid: 'uid_new',
++      displayName: 'uid_new',
++      status: 'running',
++      createdAt: '2026-06-03T02:00:00.000Z'
++    },
++    {
++      id: 'profile-1',
++      uid: 'uid_old',
++      displayName: 'uid_old',
++      status: 'idle',
++      createdAt: '2026-06-03T01:00:00.000Z'
++    }
++  ])
++  expect(storageCalls).toEqual([])
++  const json = JSON.stringify(profiles)
++  expect(json).not.toContain('secret@example.com')
++  expect(json).not.toMatch(/cookie|password|twofa|email/i)
++})

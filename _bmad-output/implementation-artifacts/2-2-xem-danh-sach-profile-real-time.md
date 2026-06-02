@@ -1,6 +1,6 @@
 # Story 2.2: Xem danh sách profile với trạng thái real-time
 
-Status: review
+Status: done
 
 <!-- Phase 3 story (Epic 2 — Profile Management, story 2/3). Sources: epics-phase3.md#Story-2.2 (L282-294), prd-phase3.md#FR3 (L343), architecture.md (DB schema L1399-1401, automation FSM L1553-1554, poll status L1984). ⚠️ automation-desktop/ (Electron client) — 25 rules CLAUDE.md ÁP DỤNG. Previous: 2.1 done (re-review round2, 8 patch + cookie-export accepted). -->
 
@@ -43,6 +43,26 @@ so that tôi biết profile nào đang chạy, lỗi, hay checkpoint mà KHÔNG 
   - [x] Integration `tests/integration/profile-ipc-handlers.spec.ts` (thêm, FakeIpcMain): `phase3:profile:list` Zod 2-way; response không secret; ErrorEnvelope khi service throw (retryable đúng).
   - [x] E2E `tests/e2e/profiles.spec.ts` (thêm): import 2 profile → list hiển thị 2 uid + status badge "Nhàn rỗi" (idle); empty state khi DB rỗng; (tùy chọn) poll refresh. Tái dùng `launchWithActiveLicense`/`closeServer`/`setTextareaValue` của 2.1.
   - [x] `typecheck` PASS, `lint` 0 errors, toàn bộ test cũ (2.1) vẫn xanh.
+
+### Review Findings (2026-06-03 — bmad-code-review, 3 reviewers)
+
+> Diff: `0cbe0e8..HEAD` (baseline = 2.1 vetted). **Lint ✅ · Typecheck ✅ · 49 unit + 9 integration PASS.** E2E chưa exec (cần build). Scorecard: AC1✅ AC2✅ AC3⚠️ AC4⚠️ AC5✅ AC6⚠️ — **không có Critical/High thực** (impl chất lượng tốt; phần lớn finding "stuck/deadlock" của reviewer là false-positive).
+
+**Decision-needed:**
+
+- [x] [Review][Decision✓→Accept] Scope-creep UI 2.1 trong 2.2 — ✅ Luis chọn ACCEPT (mở rộng có chủ ý: skipped-list detail + nhãn nút rõ hơn, không phá luồng import). Gốc: `ProfilesView` sửa khu import-panel (2.1): thêm block `skipped-profiles-list` chi tiết, đổi nút `Import`→`Import profile`, viết lại lead + thêm `format-card` (nhắc cookie-export) [ProfilesView.tsx:85-94,125,143-154]. Vô hại + test 2.1 vẫn pass + UX tốt hơn, nhưng đụng vùng 2.1 (Task6 scope: "KHÔNG đụng khu import-result"). Accept vào 2.2 hay revert giữ attribution sạch?
+
+**Patch (Low — polish):**
+
+- [x] [Review][Patch] Empty-state hiển thị ĐỒNG THỜI với error khi initial-load lỗi — `profiles-list-empty` gate `!listLoading && profiles.length===0`; khi fetch đầu lỗi → listLoading=false + profiles=[] + listError set → cả "Chưa có profile nào." VÀ banner lỗi cùng hiện (mâu thuẫn). Fix: gate thêm `!listError` [ProfilesView.tsx:208]
+- [x] [Review][Patch] Refresh-after-import bị nuốt nếu poll đang in-flight — `handleImport` gọi `await refreshProfiles(false)` (L72) nhưng `if(listInFlightRef.current) return` (L28) bỏ qua → profile mới chỉ hiện ở tick kế (≤5s), nghịch AC4 "refresh ngay". Window nhỏ (~2%) nhưng nên fix: pending-refresh flag hoặc chờ in-flight xong rồi fetch [ProfilesView.tsx:28,72]
+- [x] [Review][Patch] `ProfileSummary` định nghĩa 2 chỗ — interface trong `profile-service.ts:26-32` + Zod-inferred trong `ipc-schemas/profile.ts:76` (không single source); thêm nữa KHÔNG export trong barrel `profile/index.ts` (rule #21). Fix: service import type từ shared + thêm vào barrel [profile-service.ts:26-32, profile/index.ts]
+
+**Defer:**
+
+- [x] [Review][Defer] List schema `displayName/status/createdAt: z.string().min(1)` — 1 row có field rỗng → `ResponseSchema.parse` throw ZodError → cả list trả error (ẩn TẤT CẢ profile). Hiện KHÔNG trigger được (displayName=uid non-empty, status='idle', createdAt luôn có). Thành rủi ro khi 2.3 cho sửa/clear displayName → relax schema hoặc per-row tolerance [profile.ts:51-57] — deferred sang 2.3
+
+**Dismissed (false-positive / theoretical / already-reviewed):** "listLoading stuck forever" (setTimeout(0) initial chạy TRƯỚC interval 5s + `finally` luôn reset → không xảy ra); "in-flight deadlock on remount" (`finally` always reset + remount = fresh useRef); out-of-order responses (in-flight guard chặn concurrency); StrictMode double-poll (dev-only, cleanup xử lý); `key={i}` skipped/failed (list tĩnh không reorder); e2e empty-state "flaky" (Playwright `toContainText` auto-retry); DB-locked `retryable:false` (nhất quán quyết định 2.1 P1); normalizeError "leak ZodError" (message generic, KHÔNG kèm details); subtitle "Chưa có dữ liệu" lúc loading (cosmetic); cookie-export tests trong diff (đã review 2.1 round-2, valid+pass — chỉ là commit timing); testid ký tự lạ / dup uid / null request (DB UNIQUE + theoretical); thiếu test ProfileServiceError-retryable cho list (đã phủ gián tiếp qua shared normalizeError + import-bulk test + "list unknown→non-retryable").
 
 ## Dev Notes
 
@@ -132,6 +152,7 @@ GPT-5 Codex
 - RED: `npx playwright test tests/unit/profile-service.spec.ts tests/integration/profile-ipc-handlers.spec.ts tests/e2e/profiles.spec.ts --reporter=line` -> 6 failed đúng kỳ vọng: thiếu `ProfileService.listProfiles`, thiếu handler `phase3:profile:list`, UI chưa có list section.
 - Targeted after build: `npm run typecheck && npx electron-vite build && npx playwright test tests/e2e/profiles.spec.ts --reporter=line` -> 5 passed.
 - Full validation: `npm run lint && npm run typecheck && npx playwright test tests/unit tests/integration --reporter=line && npx electron-vite build && npx playwright test tests/e2e --reporter=line` -> lint pass (chỉ warning MODULE_TYPELESS_PACKAGE_JSON hiện hữu), typecheck pass, 76 unit/integration passed, build pass, 13 E2E passed.
+- Review patch validation: `npm run lint && npm run typecheck && npx playwright test tests/unit tests/integration/profile-ipc-handlers.spec.ts --reporter=line && npx electron-vite build && npx playwright test tests/e2e --reporter=line` -> lint pass (existing MODULE_TYPELESS_PACKAGE_JSON warning only), typecheck pass, 58 unit/profile-integration passed, build pass, 13 E2E passed.
 
 ### Completion Notes List
 
@@ -141,12 +162,14 @@ GPT-5 Codex
 - Added renderer `listProfiles()` API and a read-only “Danh sách profile” section with initial load, 5s polling, interval cleanup, cancelled flag, in-flight guard, immediate refresh after import success, empty state, error state that preserves old list, and tolerant Vietnamese status badges.
 - Added unit/integration/E2E coverage for list contract, no-secret response, invalid request/error envelope, empty state, and import-success list refresh.
 - Business import logic, repository query, bootstrap wiring, backend, and web frontend were not changed.
+- Applied 3 low/polish review patches: empty-state no longer appears together with list error, refresh-after-import coalesces behind in-flight polls, and `ProfileSummary` now uses shared Zod-inferred type plus profile barrel re-export.
 
 ### File List
 
 - automation-desktop/src/shared/ipc-schemas/profile.ts
 - automation-desktop/src/shared/ipc-schemas/index.ts
 - automation-desktop/src/main/profile/profile-service.ts
+- automation-desktop/src/main/profile/index.ts
 - automation-desktop/src/main/ipc/profile-handlers.ts
 - automation-desktop/src/renderer/src/api/profile-api.ts
 - automation-desktop/src/renderer/src/views/ProfilesView.tsx
@@ -159,4 +182,5 @@ GPT-5 Codex
 
 ### Change Log
 
+- 2026-06-03: Apply 3 review patches (P1 empty-state gate !listError, P2 coalesced pending-refresh sau import, P3 dedup ProfileSummary về shared + barrel).
 - 2026-06-03: Implemented Story 2.2 profile list IPC/service/API/UI polling and tests; moved story to review.

@@ -9,3 +9,4 @@ export type {
   SkippedEntry,
   FailedEntry
 } from './profile-service'
+export type { ProfileSummary } from '../../shared/ipc-schemas'
