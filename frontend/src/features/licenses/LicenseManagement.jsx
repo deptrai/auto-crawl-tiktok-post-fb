@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { KeyRound, Plus, Ban, CheckCircle, Copy, RefreshCw } from 'lucide-react';
+import { KeyRound, Plus, Ban, CheckCircle, Clock, Copy, RefreshCw } from 'lucide-react';
 
 const BUTTON_PRIMARY = "flex items-center gap-2 rounded-2xl bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-black transition-all hover:scale-[1.02] hover:bg-cyan-300 disabled:opacity-50";
 const BUTTON_SECONDARY = "flex items-center gap-2 rounded-2xl border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition-all hover:bg-white/10 disabled:opacity-50";
@@ -209,11 +209,19 @@ export default function LicenseManagement({ requestJson, showNotice }) {
                   <td className="px-5 py-3.5">
                     {lic.revoked ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-rose-500/20 bg-rose-500/10 px-2.5 py-1 text-xs font-medium text-rose-300">
-                        <Ban className="h-3 w-3" /> Thu hồi
+                        <Ban className="h-3 w-3" /> Đã thu hồi
                       </span>
-                    ) : (
+                    ) : lic.activated && lic.expires_at && new Date(lic.expires_at) < new Date() ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 px-2.5 py-1 text-xs font-medium text-amber-300">
+                        <Clock className="h-3 w-3" /> Hết hạn
+                      </span>
+                    ) : lic.activated ? (
                       <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-2.5 py-1 text-xs font-medium text-emerald-300">
                         <CheckCircle className="h-3 w-3" /> Hoạt động
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-medium text-white/40">
+                        Chưa kích hoạt
                       </span>
                     )}
                   </td>

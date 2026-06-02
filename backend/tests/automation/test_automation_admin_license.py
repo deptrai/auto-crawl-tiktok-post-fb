@@ -98,19 +98,32 @@ def admin_client(postgres_session_factory: sessionmaker) -> Iterator[TestClient]
 
 
 # ---------------------------------------------------------------------------
-# Task 1 - schema validation
+# Task 1 - validation (service-layer, returns LICENSE_INVALID envelope)
 # ---------------------------------------------------------------------------
 
-def test_license_create_request_rejects_zero_days():
-    """Schema validator rejects days_total <= 0."""
-    from pydantic import ValidationError
-    from app.schemas.automation.license import LicenseCreateRequest
+def test_service_validate_days_total_rejects_zero_and_negative():
+    """_validate_days_total raises LicenseActivationError for days <= 0."""
+    from app.services.automation.license import LicenseActivationError, _validate_days_total
 
-    with pytest.raises(ValidationError):
-        LicenseCreateRequest(days_total=0)
+    with pytest.raises(LicenseActivationError) as exc:
+        _validate_days_total(0)
+    assert exc.value.code == "LICENSE_INVALID"
 
-    with pytest.raises(ValidationError):
-        LicenseCreateRequest(days_total=-5)
+    with pytest.raises(LicenseActivationError) as exc2:
+        _validate_days_total(-1)
+    assert exc2.value.code == "LICENSE_INVALID"
+
+
+def test_service_validate_days_total_rejects_exceeding_max():
+    """_validate_days_total raises LICENSE_INVALID for days > MAX_LICENSE_DAYS."""
+    from app.services.automation.license import LicenseActivationError, MAX_LICENSE_DAYS, _validate_days_total
+
+    with pytest.raises(LicenseActivationError) as exc:
+        _validate_days_total(MAX_LICENSE_DAYS + 1)
+    assert exc.value.code == "LICENSE_INVALID"
+
+    # Max value itself must be accepted (no error)
+    _validate_days_total(MAX_LICENSE_DAYS)
 
 
 def test_license_create_request_accepts_positive_days():
@@ -173,9 +186,10 @@ def test_create_license_key_format_and_uniqueness(
         assert len(parts[2]) == 8
 
 
-def test_create_license_days_total_zero_returns_422(
+def test_create_license_days_total_zero_returns_422_with_license_invalid_envelope(
     admin_client: TestClient, test_admin_user_id: uuid.UUID
 ):
+    """days_total=0 must return 422 with LICENSE_INVALID error envelope (not pydantic 422)."""
     from app.api.auth import require_authenticated_user
 
     def _admin():
@@ -185,6 +199,24 @@ def test_create_license_days_total_zero_returns_422(
     resp = admin_client.post("/api/v1/automation/admin/license", json={"days_total": 0})
     admin_client.app.dependency_overrides.pop(require_authenticated_user, None)
     assert resp.status_code == 422, resp.text
+    assert resp.json()["error"]["code"] == "LICENSE_INVALID"
+
+
+def test_create_license_days_total_exceeds_max_returns_422_with_license_invalid_envelope(
+    admin_client: TestClient, test_admin_user_id: uuid.UUID
+):
+    """days_total > MAX_LICENSE_DAYS must return 422 with LICENSE_INVALID envelope."""
+    from app.api.auth import require_authenticated_user
+    from app.services.automation.license import MAX_LICENSE_DAYS
+
+    def _admin():
+        return _make_mock_user("super_admin", test_admin_user_id)
+
+    admin_client.app.dependency_overrides[require_authenticated_user] = _admin
+    resp = admin_client.post("/api/v1/automation/admin/license", json={"days_total": MAX_LICENSE_DAYS + 1})
+    admin_client.app.dependency_overrides.pop(require_authenticated_user, None)
+    assert resp.status_code == 422, resp.text
+    assert resp.json()["error"]["code"] == "LICENSE_INVALID"
 
 
 def test_create_license_non_super_admin_returns_403(admin_client: TestClient):
@@ -205,6 +237,25 @@ def test_create_license_unauthenticated_returns_401(admin_client: TestClient):
     resp = admin_client.post(
         "/api/v1/automation/admin/license",
         json={"days_total": 30},
+        headers={"Authorization": "Bearer invalid_token"},
+    )
+    assert resp.status_code == 401, resp.text
+
+
+def test_list_licenses_unauthenticated_returns_401(admin_client: TestClient):
+    """G3: GET /admin/license without auth must return 401."""
+    resp = admin_client.get(
+        "/api/v1/automation/admin/license",
+        headers={"Authorization": "Bearer invalid_token"},
+    )
+    assert resp.status_code == 401, resp.text
+
+
+def test_revoke_license_unauthenticated_returns_401(admin_client: TestClient):
+    """G3: POST /admin/license/{id}/revoke without auth must return 401."""
+    fake_id = uuid.uuid4()
+    resp = admin_client.post(
+        f"/api/v1/automation/admin/license/{fake_id}/revoke",
         headers={"Authorization": "Bearer invalid_token"},
     )
     assert resp.status_code == 401, resp.text

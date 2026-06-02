@@ -138,10 +138,56 @@ claude-sonnet-4-6
 - `backend/app/schemas/automation/license.py` (UPDATE — thêm 3 admin schemas)
 - `backend/app/services/automation/license.py` (UPDATE — thêm 4 admin functions)
 - `backend/app/api/automation.py` (UPDATE — thêm 3 admin endpoints + imports + STATUS_BY_CODE)
-- `backend/tests/automation/test_automation_admin_license.py` (NEW — 16 tests)
+- `backend/tests/automation/test_automation_admin_license.py` (NEW — 16 tests → 20 tests sau review patches)
 - `frontend/src/features/licenses/LicenseManagement.jsx` (NEW)
 - `frontend/src/App.jsx` (UPDATE — import + NAV_ITEMS + switch case)
 
 ### Change Log
 
 - 2026-06-02: Implement story 1.5 — backend admin create/list/revoke endpoints với RBAC super_admin, key generator format LIC-XXXXXXXX-XXXXXXXX, frontend LicenseManagement.jsx wired vào nav. 31 backend tests PASS, frontend lint pass.
+- 2026-06-02 (review patches G1-G6): G1+G2 — xóa pydantic business validator, thêm `MAX_LICENSE_DAYS=36500` + `_validate_days_total` check upper bound → fix OverflowError + trả envelope `LICENSE_INVALID` đúng AC1. G3 — thêm 2 test 401 cho list+revoke. G4 — badge frontend 4 trạng thái (đã thu hồi / hết hạn / hoạt động / chưa kích hoạt). G5 — dọn inline import + xóa `LicenseRevokeResponse` dead import trong service. G6 — thêm `db.rollback()` trong `create_license_endpoint` SQLAlchemyError handler. 35 backend tests PASS, frontend lint không tăng error mới.
+
+## Review Findings (Code Review 2026-06-02 — 3-layer adversarial)
+
+> Review commit `f0ca5a3` (8 files, +1025). 3 reviewer độc lập (Blind/Edge/Auditor). Mọi finding ĐÃ verify trên code thật (automation.py admin endpoints, service create/revoke/list/keygen, schema, deps.py RoleChecker, test file). 7 AC cơ bản đạt; happy-path + regression (revoke→check/activate) đúng. Findings tập trung **input bound + error envelope consistency + minor cleanup**.
+
+### 🟠 MAJOR — fix trước `done` (2)
+
+**G1 — `days_total` không có upper bound → `OverflowError` lúc activate (un-activatable license + 500)**
+`schemas/automation/license.py:49-54` chỉ validate `<= 0`. `days_total` cực lớn (vd `1_000_000_000`) qua được → tạo license 201. Khi client activate: `activate_license` chạy `now + timedelta(days=days_total)` → Python `timedelta` max ~999,999,999 ngày → `OverflowError` (KHÔNG phải `SQLAlchemyError`/`LicenseActivationError` → không catch) → unhandled 500 + license vĩnh viễn không activate được. [hội tụ: Blind#4, Edge#1]
+
+**G2 — `days_total <= 0` trả 422 standard, KHÔNG phải envelope `LICENSE_INVALID` (sai AC1); `_validate_days_total` dead-code cho create**
+AC1 yêu cầu `422 LICENSE_INVALID` + message tiếng Việt + `retryable` theo envelope `{error:{code,message,retryable}}`. Thực tế pydantic `field_validator` raise TRƯỚC handler → FastAPI trả `{"detail":[{"type":"value_error",...}]}` (không có `error.code`). `_validate_days_total` ở service (`create_license_for_admin:194`) không bao giờ reach cho path này. Frontend `requestJson` parse `detail` array → có thể hiện message generic. [Auditor F1]
+
+> **Fix gộp G1+G2**: chuyển validation days_total về SERVICE. Bỏ pydantic `<=0` validator (giữ `days_total: int` cho type-check); mở rộng `_validate_days_total(days)` → `0 < days <= MAX_LICENSE_DAYS` (đề xuất `36500` = 100 năm, an toàn dưới ngưỡng overflow), raise `LICENSE_INVALID`. Vì `create_license_for_admin` đã gọi `_validate_days_total` → tự động trả envelope đúng. Cập nhật test schema (`test_license_create_request_rejects_zero_days`) sang test endpoint trả `error.code == LICENSE_INVALID` + thêm test `days_total` quá lớn.
+
+### ⚪ MINOR — fix cheap (batch cùng đợt)
+
+- **G3** — Thiếu test 401 cho `GET /admin/license` + `revoke` (chỉ create có). Guard giống nhau (RoleChecker) nên hành vi đã đúng, chỉ thiếu test. → thêm 2 test 401. [Auditor F2, Blind#7]
+- **G4** — Frontend badge: license đã activate + hết hạn (`expires_at < now`) vẫn hiện "Hoạt động" (chỉ check `revoked`). → thêm nhánh "Hết hạn" khi `expires_at < now && !revoked`. [Edge#4]
+- **G5** — Cleanup: `automation.py:165` inline import `_latest_activation, _admin_license_response` (+ `# noqa`) → đưa lên top-level. `services/automation/license.py:12` import `LicenseRevokeResponse` KHÔNG dùng → xóa. [Blind#11, Auditor F3, F4]
+- **G6** — `create_license_endpoint` `except SQLAlchemyError` không `db.rollback()` (non-IntegrityError trong flush để session dirty). → thêm `db.rollback()` cho nhất quán với check/activate-service. [Edge#3]
+
+### ⚪ MINOR — defer/accept (note)
+
+- N+1 query trong `list_licenses` (1 query activation/license). Admin endpoint, 1 user, ít key → accept; tối ưu join sau nếu cần. [Blind#2]
+- Revoke double-click không có loading state → backend idempotent, vô hại (chỉ 2 toast). [Edge#7, Blind#9]
+- `formatDate` không guard `Invalid Date` → backend luôn trả ISO hợp lệ. [Blind#10]
+- `IntegrityError` khác key-collision (vd FK `created_by_admin` nếu admin bị xóa giữa request) → misreport KEY_COLLISION sau 5 retry; near-impossible. [Edge#2]
+- Key entropy hex ~63 bits (alphabet `0-9A-F`) → đủ an toàn cho license key. [Blind#5,#6]
+
+### ❌ DISMISS — false positive (5)
+
+- "RBAC bypass do list/revoke thiếu `current_user` param" — `RoleChecker.__call__` depends `require_authenticated_user` (deps.py) → auth ĐƯỢC enforce (401/403) bất kể endpoint có khai báo `current_user` hay không. list/revoke không cần param vì không dùng. [Blind#1, Blind#7]
+- `X-Organization-Id` header gửi thừa tới license endpoint → backend bỏ qua (license không org-scoped), vô hại. [Edge#8]
+- Key hiển thị plaintext trong table/confirm → đúng thiết kế admin-only UI (guard super_admin). [Blind#8]
+- `super_admin` + `must_change_password` → 403: hành vi RoleChecker CÓ SẴN (Phase 1+2), không thuộc story này. [Edge#6]
+- Transaction commit-trong-service (revoke) vs flush+endpoint-commit (create) "bất nhất" → revoke khớp pattern `activate_license` có sẵn (commit trong service); create commit ngay sau ở endpoint → vô hại. [Blind#3, Blind#13]
+
+### Verdict (lần 1)
+
+7 AC đạt nhưng có 2 Major (G1 input overflow, G2 error envelope sai AC1) + 4 Minor cheap. Giữ `review` → apply G1-G6 → re-verify → `done`.
+
+### Verdict (lần 2 — sau G1-G6 patches)
+
+Tất cả 6 findings đã resolved. 35 backend tests PASS (35/35), frontend lint không tăng error mới. Story sẵn sàng → `review`.

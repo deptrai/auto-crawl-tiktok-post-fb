@@ -9,12 +9,14 @@ from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.models.automation.license import License, LicenseActivation
-from app.schemas.automation.license import AdminLicenseResponse, LicenseActivateResponse, LicenseCheckResponse, LicenseRevokeResponse
+from app.schemas.automation.license import AdminLicenseResponse, LicenseActivateResponse, LicenseCheckResponse
 from app.services.automation.hwid import validate_hwid
 
 _KEY_ALPHABET = string.digits + "ABCDEF"
 _KEY_SEGMENT_LEN = 8
 _KEY_COLLISION_RETRIES = 5
+
+MAX_LICENSE_DAYS = 36500  # 100 years — well below Python timedelta max (~2.7M days)
 
 
 class LicenseActivationError(Exception):
@@ -49,7 +51,12 @@ def _activation_response(activation: LicenseActivation) -> LicenseActivateRespon
 
 def _validate_days_total(days_total: int) -> None:
     if days_total <= 0:
-        raise _status_error("LICENSE_INVALID", "License key có số ngày sử dụng không hợp lệ.")
+        raise _status_error("LICENSE_INVALID", "Số ngày sử dụng phải lớn hơn 0.")
+    if days_total > MAX_LICENSE_DAYS:
+        raise _status_error(
+            "LICENSE_INVALID",
+            f"Số ngày sử dụng không được vượt quá {MAX_LICENSE_DAYS} ngày.",
+        )
 
 
 def _activate_existing_hwid(

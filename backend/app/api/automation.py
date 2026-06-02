@@ -24,6 +24,8 @@ from app.schemas.automation.license import (
 )
 from app.services.automation.license import (
     LicenseActivationError,
+    _admin_license_response,
+    _latest_activation,
     activate_license,
     check_license,
     create_license_for_admin,
@@ -162,12 +164,13 @@ def create_license_endpoint(
     try:
         license_record = create_license_for_admin(db, days_total=request_body.days_total, admin_id=current_user.id)
         db.commit()
-        from app.services.automation.license import _latest_activation, _admin_license_response  # noqa: PLC0415
         activation = _latest_activation(db, license_record.id)
         return _admin_license_response(license_record, activation)
     except LicenseActivationError as exc:
+        db.rollback()
         return _error_response(exc.code, exc.message, exc.retryable)
     except SQLAlchemyError:
+        db.rollback()
         return _error_response(
             "LICENSE_DB_ERROR",
             "Không thể tạo license do lỗi cơ sở dữ liệu.",

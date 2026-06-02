@@ -46,13 +46,6 @@ class LicenseCheckResponse(BaseModel):
 class LicenseCreateRequest(BaseModel):
     days_total: int
 
-    @field_validator("days_total")
-    @classmethod
-    def validate_days_total(cls, value: int) -> int:
-        if value <= 0:
-            raise ValueError("Số ngày sử dụng phải lớn hơn 0")
-        return value
-
 
 class AdminLicenseResponse(BaseModel):
     id: UUID
