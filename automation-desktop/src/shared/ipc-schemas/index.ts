@@ -29,6 +29,12 @@ import {
   type ShellOpenExternalRequest,
   type ShellOpenExternalResponse
 } from './shell'
+import {
+  ProfileImportBulkRequestSchema,
+  ProfileImportBulkResponseSchema,
+  type ProfileImportBulkRequest,
+  type ProfileImportBulkResponse
+} from './profile'
 
 export type Phase3ChannelName = `phase3:${string}:${string}`
 
@@ -72,10 +78,16 @@ export const channelRegistry = [
     channel: 'phase3:license:check',
     requestSchema: LicenseCheckRequestSchema,
     responseSchema: LicenseCheckResponseSchema
-  } satisfies ChannelRegistryEntry<LicenseCheckRequest, LicenseCheckResponse>
+  } satisfies ChannelRegistryEntry<LicenseCheckRequest, LicenseCheckResponse>,
+  {
+    channel: 'phase3:profile:import-bulk',
+    requestSchema: ProfileImportBulkRequestSchema,
+    responseSchema: ProfileImportBulkResponseSchema
+  } satisfies ChannelRegistryEntry<ProfileImportBulkRequest, ProfileImportBulkResponse>
 ] as const satisfies ReadonlyArray<ChannelRegistryEntry>
 
 export * from './common'
 export * from './settings'
 export * from './shell'
 export * from './license'
+export * from './profile'

@@ -3,13 +3,20 @@ import { join } from 'node:path'
 import icon from '../../../resources/icon.png?asset'
 import { openEncryptedDatabase } from '../db/client'
 import { createSettingsRepository, type SettingsRepository } from '../db/repositories/settings-repo'
+import { createProfileRepository, type ProfileRepository } from '../db/repositories/profile-repo'
 import {
   createFetchLicenseBackendClient,
   createLicenseService,
   type LicenseService,
   type LicenseStatus
 } from '../license/license-service'
-import { registerLicenseHandlers, registerSettingsHandlers, registerShellHandlers } from '../ipc'
+import { createProfileService, type ProfileService } from '../profile/profile-service'
+import {
+  registerLicenseHandlers,
+  registerProfileHandlers,
+  registerSettingsHandlers,
+  registerShellHandlers
+} from '../ipc'
 import { createLicenseChecker, type LicenseChecker } from '../license/license-checker'
 import { LICENSE_CHANGED_CHANNEL } from '../../shared/ipc-schemas'
 import { ElectronAutoUpdater } from './electron-auto-updater'
@@ -22,6 +29,10 @@ interface BootstrapDeps {
   services: {
     settings: SettingsRepository
     license: LicenseService
+    profile: ProfileService
+  }
+  repos: {
+    profile: ProfileRepository
   }
   workers: {
     licenseChecker: LicenseChecker
@@ -64,6 +75,7 @@ function initializeDeps(): BootstrapDeps {
   }
 
   const settings = createSettingsRepository(db)
+  const profileRepo = createProfileRepository(db)
   const smokeHwid = app.isPackaged ? undefined : process.env['PHASE3_HWID_SMOKE_VALUE']
   const services = {
     settings,
@@ -74,13 +86,17 @@ function initializeDeps(): BootstrapDeps {
         process.env['PHASE3_AUTOMATION_API_BASE_URL'] ?? 'http://localhost:8000'
       ),
       generateHwid: smokeHwid ? async () => smokeHwid : undefined
-    })
+    }),
+    profile: createProfileService({ repo: profileRepo, storage: adapters.storage })
+  }
+  const repos = {
+    profile: profileRepo
   }
   const workers = {
     licenseChecker: createLicenseChecker(services.license, { onStatus: publishLicenseStatus })
   }
 
-  return { db, services, adapters, workers }
+  return { db, services, repos, adapters, workers }
 }
 
 function configureUserDataPath(): void {
@@ -173,6 +189,7 @@ export async function bootstrapApplication(): Promise<void> {
   void deps.services
   registerSettingsHandlers(ipcMain, deps.services.settings)
   registerLicenseHandlers(ipcMain, deps.services.license)
+  registerProfileHandlers(ipcMain, deps.services.profile)
   registerShellHandlers(ipcMain, async (url) => {
     if (!app.isPackaged && process.env['PHASE3_EXTERNAL_OPEN_SMOKE']) {
       ;(globalThis as DbSmokeGlobal).__PHASE3_EXTERNAL_OPEN_URL__ = url

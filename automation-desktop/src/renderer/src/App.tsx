@@ -5,6 +5,7 @@ import { activateLicense, getLicenseStatus, subscribeLicenseChanges } from './ap
 import { getSetting, openPrivacyPolicy, setSetting } from './api/settings-api'
 import { EulaAcceptanceView } from './views/EulaAcceptanceView'
 import { LicenseView } from './views/LicenseView'
+import { ProfilesView } from './views/ProfilesView'
 
 type GateState =
   | 'loading'
@@ -29,13 +30,12 @@ function MainShell({
           lần kiểm tra thành công gần nhất.
         </p>
       ) : null}
-      <p className="eyebrow">Phase 3 desktop automation</p>
-      <h1>Automation Desktop</h1>
-      <p className="lead">
+      <p className="lead license-status">
         {licenseStatus?.active
           ? `License active: còn ${licenseStatus.daysRemaining ?? 0} ngày.`
           : 'License active.'}
       </p>
+      <ProfilesView />
     </main>
   )
 }
