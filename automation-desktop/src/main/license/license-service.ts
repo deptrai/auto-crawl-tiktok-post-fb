@@ -14,6 +14,7 @@ const ACTIVATION_ID_KEY = 'license.activation_id'
 const EXPIRES_AT_KEY = 'license.expires_at'
 const LAST_SUCCESS_CHECK_KEY = 'license.last_success_check'
 const REBIND_COUNT_KEY = 'license.rebind_count'
+const REVOKED_KEY = 'license.revoked'
 const OFFLINE_GRACE_MS = 24 * 60 * 60 * 1000
 const EXPIRED_READONLY_GRACE_MS = 7 * 24 * 60 * 60 * 1000
 
@@ -83,20 +84,33 @@ function localStatus(options: {
   now: Date
   offlineFallback?: boolean
   revoked?: boolean
+  /**
+   * Server's authoritative `active` verdict from an online `/license/check`.
+   * Only set when we have a fresh server response. When the server says
+   * `false`, we never grant an active gate regardless of the client clock
+   * (defends against clock manipulation — see Architecture R-D1).
+   */
+  serverActive?: boolean
 }): LicenseStatus {
   if (!options.activationId || !options.expiresAt) return { active: false, gate: 'locked' }
 
   const expiry = strictDate(options.expiresAt)
   if (!expiry) return { active: false, gate: 'locked', expiresAt: options.expiresAt }
 
+  // Revocation is an admin security action (fraud / refund / chargeback), not a
+  // natural expiry — lock immediately, do NOT grant the 7-day read-only grace.
+  if (options.revoked) {
+    return { active: false, gate: 'locked', expiresAt: options.expiresAt, daysRemaining: 0 }
+  }
+
   const lastSuccess = strictDate(options.lastSuccessCheck)
   const offlineGraceValid = isWithin(lastSuccess, options.now, OFFLINE_GRACE_MS)
-  const expiredReadonlyValid = options.revoked
-    ? true
-    : expiry.getTime() <= options.now.getTime() &&
-      options.now.getTime() - expiry.getTime() < EXPIRED_READONLY_GRACE_MS
+  const serverDenied = options.serverActive === false
+  const expiredReadonlyValid =
+    expiry.getTime() <= options.now.getTime() &&
+    options.now.getTime() - expiry.getTime() < EXPIRED_READONLY_GRACE_MS
 
-  if (!options.revoked && expiry.getTime() > options.now.getTime() && offlineGraceValid) {
+  if (!serverDenied && expiry.getTime() > options.now.getTime() && offlineGraceValid) {
     return {
       active: true,
       gate: options.offlineFallback ? 'offline-grace' : 'active',
@@ -106,7 +120,7 @@ function localStatus(options: {
     }
   }
 
-  if (options.revoked || expiredReadonlyValid) {
+  if (expiredReadonlyValid) {
     return {
       active: false,
       gate: 'expired-readonly',
@@ -183,8 +197,12 @@ export function createLicenseService(deps: {
         await deps.storage.set(ACTIVATION_ID_KEY, result.activation_id)
         try {
           await deps.settings.setSetting(EXPIRES_AT_KEY, result.expires_at)
-          await deps.settings.setSetting(LAST_SUCCESS_CHECK_KEY, getNow().toISOString())
           await deps.settings.setSetting(REBIND_COUNT_KEY, String(result.rebind_count))
+          // Backend rejects revoked keys at /activate, so a successful activation
+          // clears any stale revoked flag from a previous activation on this device.
+          await deps.settings.setSetting(REVOKED_KEY, 'false')
+          // last_success_check unlocks offline grace — set it last (gating key).
+          await deps.settings.setSetting(LAST_SUCCESS_CHECK_KEY, getNow().toISOString())
         } catch (settingsError) {
           await deps.storage.delete(ACTIVATION_ID_KEY)
           throw new LicenseServiceError(
@@ -209,13 +227,17 @@ export function createLicenseService(deps: {
         const result = await deps.backendClient.check(activationId)
         await deps.settings.setSetting(EXPIRES_AT_KEY, result.expires_at)
         await deps.settings.setSetting(REBIND_COUNT_KEY, String(result.rebind_count))
+        // Persist revocation so getStatus()/offline-fallback stay aware of it even
+        // after a restart while offline (otherwise a revoked user could re-enter).
+        await deps.settings.setSetting(REVOKED_KEY, String(result.revoked))
         await deps.settings.setSetting(LAST_SUCCESS_CHECK_KEY, getNow().toISOString())
         return localStatus({
           activationId,
           expiresAt: result.expires_at,
           lastSuccessCheck: deps.settings.getSetting(LAST_SUCCESS_CHECK_KEY),
           now: getNow(),
-          revoked: result.revoked
+          revoked: result.revoked,
+          serverActive: result.active
         })
       } catch (error) {
         const normalized = normalizeServiceError(error)
@@ -225,7 +247,8 @@ export function createLicenseService(deps: {
           expiresAt: deps.settings.getSetting(EXPIRES_AT_KEY),
           lastSuccessCheck: deps.settings.getSetting(LAST_SUCCESS_CHECK_KEY),
           now: getNow(),
-          offlineFallback: true
+          offlineFallback: true,
+          revoked: deps.settings.getSetting(REVOKED_KEY) === 'true'
         })
       }
     },
@@ -237,7 +260,8 @@ export function createLicenseService(deps: {
         activationId,
         expiresAt,
         lastSuccessCheck: deps.settings.getSetting(LAST_SUCCESS_CHECK_KEY),
-        now: getNow()
+        now: getNow(),
+        revoked: deps.settings.getSetting(REVOKED_KEY) === 'true'
       })
     }
   }

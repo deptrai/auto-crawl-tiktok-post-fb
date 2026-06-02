@@ -1,4 +1,4 @@
-import type { LicenseService } from './license-service'
+import type { LicenseService, LicenseStatus } from './license-service'
 
 const DEFAULT_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000
 
@@ -8,6 +8,12 @@ export interface LicenseCheckerOptions {
   intervalMs?: number
   setIntervalFn?: (callback: () => void, intervalMs: number) => TimerHandle
   clearIntervalFn?: (handle: TimerHandle) => void
+  /**
+   * Invoked with the fresh status after each successful background check.
+   * Used to push `phase3:license:changed` to the renderer so the UI gate
+   * reacts to expiry/revocation in real time.
+   */
+  onStatus?: (status: LicenseStatus) => void
 }
 
 export interface LicenseChecker {
@@ -29,7 +35,8 @@ export function createLicenseChecker(
     if (checking) return
     checking = true
     try {
-      await service.check()
+      const status = await service.check()
+      options.onStatus?.(status)
     } catch {
       // Offline grace is evaluated by the license service; background checks must never crash the app.
     } finally {

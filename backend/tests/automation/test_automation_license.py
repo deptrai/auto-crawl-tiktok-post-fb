@@ -330,3 +330,34 @@ def test_check_license_endpoint_reports_active_expired_revoked_and_missing(
         "message": "Không tìm thấy lượt kích hoạt license.",
         "retryable": False,
     }
+
+
+def test_check_endpoint_rate_limits_per_ip(client: TestClient, db_session: Session):
+    from app.api.automation import reset_activation_rate_limiter
+    from app.services.automation.license import activate_license
+
+    license_record = create_license(db_session, key="LIC-CHECK-RATE", days_total=7)
+    activation = activate_license(db_session, key=license_record.key, hwid=VALID_HWID)
+
+    # Reset AFTER activation so the per-IP bucket starts clean for the check loop.
+    reset_activation_rate_limiter()
+
+    for _ in range(10):
+        response = client.post(
+            "/api/v1/automation/license/check",
+            json={"activation_id": str(activation.activation_id)},
+        )
+        assert response.status_code == 200
+
+    limited = client.post(
+        "/api/v1/automation/license/check",
+        json={"activation_id": str(activation.activation_id)},
+    )
+
+    assert limited.status_code == 429
+    assert limited.json()["error"] == {
+        "code": "RATE_LIMITED",
+        "message": "Bạn đã kiểm tra license quá nhiều lần. Vui lòng chờ một lúc rồi thử lại.",
+        "retryable": True,
+    }
+    reset_activation_rate_limiter()

@@ -1,8 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
+import type { IpcRendererEvent } from 'electron'
 import type { IpcBridge } from '../adapters/ipc'
 import {
   channelRegistry,
+  LICENSE_CHANGED_CHANNEL,
+  LicenseChangedEventSchema,
   type ChannelRegistryEntry,
+  type LicensePublicStatus,
   type Phase3ChannelName
 } from '../shared/ipc-schemas'
 
@@ -15,8 +19,13 @@ export type DesktopElectronApi = {
   }
 }
 
-type DesktopApi = {
+export type LicensePushApi = {
+  onChanged(callback: (status: LicensePublicStatus) => void): () => void
+}
+
+export type DesktopApi = {
   ipc: IpcBridge
+  license: LicensePushApi
 }
 
 const electronApi: DesktopElectronApi = {
@@ -56,6 +65,20 @@ const api: DesktopApi = {
       }
 
       return parsedResponse.data as Res
+    }
+  },
+  license: {
+    onChanged(callback) {
+      const listener = (_event: IpcRendererEvent, payload: unknown): void => {
+        // Validate the pushed payload before handing it to the renderer — a
+        // malformed push must never reach React state.
+        const parsed = LicenseChangedEventSchema.safeParse(payload)
+        if (parsed.success) callback(parsed.data)
+      }
+      ipcRenderer.on(LICENSE_CHANGED_CHANNEL, listener)
+      return () => {
+        ipcRenderer.removeListener(LICENSE_CHANGED_CHANNEL, listener)
+      }
     }
   }
 }

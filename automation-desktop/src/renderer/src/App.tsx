@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { EULA_VERSION, needsEulaAcceptance } from '../../shared/eula-version'
 import type { LicensePublicStatus } from '../../shared/ipc-schemas'
-import { activateLicense, getLicenseStatus } from './api/license-api'
+import { activateLicense, getLicenseStatus, subscribeLicenseChanges } from './api/license-api'
 import { getSetting, openPrivacyPolicy, setSetting } from './api/settings-api'
 import { EulaAcceptanceView } from './views/EulaAcceptanceView'
 import { LicenseView } from './views/LicenseView'
@@ -108,8 +108,17 @@ function App(): React.JSX.Element {
 
     void loadGate()
 
+    // React in real time to background license checks (expiry/revocation)
+    // without waiting for an app restart (phase3:license:changed push).
+    const unsubscribe = subscribeLicenseChanges((status) => {
+      if (cancelled) return
+      setLicenseStatus(status)
+      setGateState(gateFromStatus(status))
+    })
+
     return () => {
       cancelled = true
+      unsubscribe()
     }
   }, [])
 
@@ -164,12 +173,23 @@ function App(): React.JSX.Element {
     )
   }
 
-  if (gateState === 'needs-license' || gateState === 'license-locked') {
+  if (gateState === 'license-locked') {
+    // Distinct marker so E2E can tell "expired/revoked → locked" apart from
+    // "never activated" — both render LicenseView but mean different gates.
     return (
-      <>
+      <div data-testid="license-locked">
         {error ? <p className="error-message">{error}</p> : null}
         <LicenseView activating={activating} onActivate={handleActivate} />
-      </>
+      </div>
+    )
+  }
+
+  if (gateState === 'needs-license') {
+    return (
+      <div data-testid="needs-license">
+        {error ? <p className="error-message">{error}</p> : null}
+        <LicenseView activating={activating} onActivate={handleActivate} />
+      </div>
     )
   }
 

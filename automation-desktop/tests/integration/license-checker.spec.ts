@@ -35,6 +35,52 @@ test('[P1] license checker runs check on interval and stops cleanly', async () =
   expect(timers.size).toBe(0)
 })
 
+test('[P1] license checker pushes status to onStatus after each successful check', async () => {
+  const statuses: string[] = []
+  const service: LicenseService = {
+    activate: async () => ({ active: true, gate: 'active' }),
+    getStatus: async () => ({ active: true, gate: 'active' }),
+    check: async () => ({ active: false, gate: 'locked' })
+  }
+
+  const checker = createLicenseChecker(service, {
+    intervalMs: 10,
+    onStatus: (status) => statuses.push(status.gate),
+    setIntervalFn: (callback) => callback,
+    clearIntervalFn: () => undefined
+  })
+
+  checker.start()
+  await expect.poll(() => statuses.length).toBe(1)
+  expect(statuses[0]).toBe('locked')
+  checker.stop()
+})
+
+test('[P1] license checker does not push when the check throws', async () => {
+  let pushed = 0
+  const service: LicenseService = {
+    activate: async () => ({ active: true, gate: 'active' }),
+    getStatus: async () => ({ active: true, gate: 'active' }),
+    check: async () => {
+      throw new Error('offline')
+    }
+  }
+
+  const checker = createLicenseChecker(service, {
+    intervalMs: 10,
+    onStatus: () => {
+      pushed += 1
+    },
+    setIntervalFn: (callback) => callback,
+    clearIntervalFn: () => undefined
+  })
+
+  checker.start()
+  await new Promise((resolve) => setTimeout(resolve, 20))
+  expect(pushed).toBe(0)
+  checker.stop()
+})
+
 test('[P1] license checker does not run overlapping checks', async () => {
   let checks = 0
   let intervalCallback: (() => void) | undefined

@@ -170,8 +170,12 @@ test('[P0] license after 7 day read-only grace is locked to LicenseView', async 
     await window.getByRole('textbox', { name: /license key/i }).fill('LIC-LOCKED')
     await window.getByRole('button', { name: /kích hoạt/i }).click()
 
-    await expect(window.getByTestId('license-view')).toBeVisible()
+    // Locked gate must be distinguishable from main/read-only shells (F5):
+    // assert the dedicated marker AND that neither shell is shown.
+    await expect(window.getByTestId('license-locked')).toBeVisible()
     await expect(window.getByText(/License chưa hoạt động hoặc đã hết hạn/i)).toBeVisible()
+    await expect(window.getByTestId('main-shell')).toHaveCount(0)
+    await expect(window.getByTestId('readonly-shell')).toHaveCount(0)
     await app.close()
   } finally {
     server.close()

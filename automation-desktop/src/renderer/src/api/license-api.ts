@@ -40,3 +40,16 @@ export async function checkLicense(): Promise<LicensePublicStatus> {
   assertOk(response)
   return response.status
 }
+
+/**
+ * Subscribe to background license status pushes (phase3:license:changed).
+ * Returns an unsubscribe function. No-op (returns a noop unsubscribe) if the
+ * push API is unavailable (e.g. non-Electron test contexts).
+ */
+export function subscribeLicenseChanges(
+  callback: (status: LicensePublicStatus) => void
+): () => void {
+  const push = window.api?.license
+  if (!push) return () => undefined
+  return push.onChanged(callback)
+}

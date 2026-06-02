@@ -6,10 +6,12 @@ import { createSettingsRepository, type SettingsRepository } from '../db/reposit
 import {
   createFetchLicenseBackendClient,
   createLicenseService,
-  type LicenseService
+  type LicenseService,
+  type LicenseStatus
 } from '../license/license-service'
 import { registerLicenseHandlers, registerSettingsHandlers, registerShellHandlers } from '../ipc'
 import { createLicenseChecker, type LicenseChecker } from '../license/license-checker'
+import { LICENSE_CHANGED_CHANNEL } from '../../shared/ipc-schemas'
 import { ElectronAutoUpdater } from './electron-auto-updater'
 import { ElectronIpcBridge } from './electron-ipc-bridge'
 import { ElectronSafeStorage } from './electron-safe-storage'
@@ -34,6 +36,16 @@ interface BootstrapDeps {
 type DbSmokeGlobal = typeof globalThis & {
   __PHASE3_DB_SMOKE_RESULT__?: string
   __PHASE3_EXTERNAL_OPEN_URL__?: string
+}
+
+// Mutable ref so the license checker (created before the window) can push
+// status updates to whichever window is currently active.
+let activeMainWindow: BrowserWindow | null = null
+
+function publishLicenseStatus(status: LicenseStatus): void {
+  if (activeMainWindow && !activeMainWindow.isDestroyed()) {
+    activeMainWindow.webContents.send(LICENSE_CHANGED_CHANNEL, status)
+  }
 }
 
 function initializeDeps(): BootstrapDeps {
@@ -65,7 +77,7 @@ function initializeDeps(): BootstrapDeps {
     })
   }
   const workers = {
-    licenseChecker: createLicenseChecker(services.license)
+    licenseChecker: createLicenseChecker(services.license, { onStatus: publishLicenseStatus })
   }
 
   return { db, services, adapters, workers }
@@ -122,6 +134,11 @@ function createWindow(): BrowserWindow {
     ...(process.platform === 'linux' ? { icon } : {})
   })
 
+  activeMainWindow = mainWindow
+  mainWindow.on('closed', () => {
+    if (activeMainWindow === mainWindow) activeMainWindow = null
+  })
+
   mainWindow.on('ready-to-show', () => mainWindow.show())
   mainWindow.webContents.setWindowOpenHandler((details) => {
     const url = details.url
@@ -150,12 +167,10 @@ export async function bootstrapApplication(): Promise<void> {
   runSettingsSmoke(deps.services.settings)
   await runSafeStorageSmoke(deps.adapters.storage)
 
-  // Init order: db -> adapters -> services -> ipc -> window
+  // Init order: db -> adapters -> services -> ipc -> window -> background workers
   void deps.db
   void deps.adapters
   void deps.services
-  deps.workers.licenseChecker.start()
-  app.once('before-quit', () => deps.workers.licenseChecker.stop())
   registerSettingsHandlers(ipcMain, deps.services.settings)
   registerLicenseHandlers(ipcMain, deps.services.license)
   registerShellHandlers(ipcMain, async (url) => {
@@ -168,6 +183,11 @@ export async function bootstrapApplication(): Promise<void> {
     await shell.openExternal(url)
   })
   createWindow()
+
+  // Start the periodic license checker only after the window exists so the
+  // first push (phase3:license:changed) has a renderer target.
+  deps.workers.licenseChecker.start()
+  app.once('before-quit', () => deps.workers.licenseChecker.stop())
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()

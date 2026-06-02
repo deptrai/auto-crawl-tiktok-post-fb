@@ -48,6 +48,15 @@ export const LicenseCheckResponseSchema = z.union([
   IpcErrorResponseSchema
 ])
 
+/**
+ * Push channel: main → renderer. Emitted by the background license checker
+ * after every successful periodic check so the UI gate reacts in real time to
+ * expiry/revocation without waiting for an app restart. Payload is validated
+ * with LicensePublicStatusSchema on the renderer side.
+ */
+export const LICENSE_CHANGED_CHANNEL = 'phase3:license:changed' as const
+export const LicenseChangedEventSchema = LicensePublicStatusSchema
+
 export type LicensePublicStatus = z.infer<typeof LicensePublicStatusSchema>
 export type LicenseActivateRequest = z.infer<typeof LicenseActivateRequestSchema>
 export type LicenseActivateResponse = z.infer<typeof LicenseActivateResponseSchema>
