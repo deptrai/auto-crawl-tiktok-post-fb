@@ -47,7 +47,7 @@ project: auto-crawl-tiktok-post-fb-phase3
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
-last_updated: 2026-06-03 (Epic 4 in-progress — 4.3 review: playwright stealth login cookie + 2FA/checkpoint)
+last_updated: 2026-06-03 (Epic 4 in-progress — 4.1+4.2+4.3 done; 4.4 ready-for-dev: token-extractor fb_dtsg/lsd/jazoest)
 
 development_status:
   # ===== Phase 3.0 MVP =====
@@ -79,8 +79,8 @@ development_status:
   epic-4: in-progress
   4-1-sinh-fingerprint-diversified-per-profile: done
   4-2-state-machine-cho-automation-job: done
-  4-3-login-cookie-xu-ly-2fa-checkpoint: review
-  4-4-trich-xuat-csrf-token-qua-http: backlog
+  4-3-login-cookie-xu-ly-2fa-checkpoint: done
+  4-4-trich-xuat-csrf-token-qua-http: ready-for-dev
   4-5-lay-per-action-server-token: backlog
   4-6-thuc-thi-self-comment-end-to-end: backlog
   epic-4-retrospective: optional

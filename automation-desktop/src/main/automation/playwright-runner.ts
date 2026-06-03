@@ -37,6 +37,11 @@ export interface PlaywrightRunnerDeps {
   launchBrowser?: LaunchBrowser
 }
 
+function reconcileUserAgentWithBrowser(userAgent: string, browser: Browser): string {
+  const realMajor = browser.version().match(/^(\d+)\./)?.[1]
+  return realMajor ? userAgent.replace(/Chrome\/\d+/, `Chrome/${realMajor}`) : userAgent
+}
+
 function applyStealth(): void {
   if (stealthApplied) return
   chromium.use(StealthPlugin())
@@ -61,8 +66,9 @@ export function createPlaywrightRunner(deps: PlaywrightRunnerDeps = {}): Playwri
       })
       let context: BrowserContext | undefined
       try {
+        const userAgent = reconcileUserAgentWithBrowser(input.fingerprint.userAgent, browser)
         context = await browser.newContext({
-          userAgent: input.fingerprint.userAgent,
+          userAgent,
           viewport: input.fingerprint.viewport,
           timezoneId: input.fingerprint.timezone
         })
@@ -75,8 +81,11 @@ export function createPlaywrightRunner(deps: PlaywrightRunnerDeps = {}): Playwri
         return {
           page,
           async close() {
-            await context?.close()
-            await browser.close()
+            try {
+              await context?.close()
+            } finally {
+              await browser.close()
+            }
           }
         }
       } catch (error) {

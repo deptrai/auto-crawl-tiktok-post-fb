@@ -1,6 +1,6 @@
 # Story 4.3: Login cookie + xử lý 2FA/checkpoint
 
-Status: review
+Status: done
 
 Epic: 4 — Lõi Automation Facebook (Self-Comment MVP) · Story: 4.3 · ID: 4.3
 
@@ -39,6 +39,27 @@ So that automation truy cập được tài khoản mà không cần nhập mậ
 - [x] **T9** — Verify: `npm run lint` + `npm run typecheck` + test mới PASS + full suite không giảm (baseline 153). Grep tự kiểm KHÔNG có `Date.now` trong totp logic + KHÔNG log secret.
 
 > **D1 (defer):** KHÔNG implement self-comment action (4.6), CSRF token (4.4), per-action token (4.5), warmup behavior (state `WARMING_UP` chỉ là đích transition, logic warmup = Epic 5/4.x sau). KHÔNG IPC `automation:start`/UI (4.6). KHÔNG telemetry transport (Epic 6 — chỉ gọi `onCheckpoint` hook). 4.3 dừng ở: "đăng nhập thành công, verify DOM, sẵn sàng" HOẶC "CHECKPOINT_BLOCKED".
+
+## Review Findings (2026-06-03 — bmad-code-review, 3-lens adversarial)
+
+> Diff: commit `89dc7f0` (thuần 4.3). **Lint ✅ · Typecheck ✅ · 167 tests PASS** (153 + 14 mới, gồm integration smoke launch Chromium THẬT vs 3 fb-mock variant). totp PURE (no Date.now). Verdict: **APPROVE — 1 finding Medium nên fix trước done (leak browser), còn lại Low/info.**
+
+**AC1–AC7 + guardrail trọng tâm — đạt:**
+- ✅ **R-D3 (GUARDRAIL #1)** XUẤT SẮC: cookie/2FA lấy từ safeStorage tại exec, `brandSecret`, `revealSecret` CHỈ tại 2 boundary (`parseCookieHeader` + `generateTotp`). KHÔNG log statement nào trong 3 module. Unit assert `not.toContain('xs=secret')` + error msg không chứa `'proxy password secret'`. KHÔNG IPC/result/telemetry leak.
+- ✅ **AC1** stealth (`chromium.use(StealthPlugin())` 1 lần) + proxy + context options (UA/viewport/timezoneId) + addCookies + goto timeout.
+- ✅ **AC2/AC3** detectLoginState DOM (checkpoint→2FA→login-failed→logged-in→default) + submitTwoFa; TOTP RFC 6238 đúng (test vector + e2e code `287082`).
+- ✅ **AC4** CHECKPOINT/2FA-no-seed/2FA-failed → CHECKPOINT_BLOCKED + onCheckpoint(kind); KHÔNG crash.
+- ✅ **AC6** `finally session?.close()` mọi nhánh; launch-error path đóng context+browser (.catch); cookie thiếu → FAILED KHÔNG launch.
+- ✅ **AC7** unit (totp RFC, cookie, login-service branch+no-leak+cleanup) + 1 integration smoke real-Chromium-vs-mock; **D1** không IPC/UI/bootstrap. Deps `Pick<>`, `nowMs` inject.
+
+**Findings:**
+
+- [x] [Review][Patch][Med] 🔴 **`SessionHandle.close()` leak browser nếu `context.close()` throw** (`playwright-runner.ts:77-80`). `await context?.close()` throw → `await browser.close()` KHÔNG chạy → **leak Chromium process**. login-service nuốt lỗi (`.catch(()=>undefined)`) nên leak âm thầm — đúng cái AC6 (GUARDRAIL #2) muốn chống. Fix: `try { await context?.close() } finally { await browser.close() }`. (Launch-error path đã guard đúng cả 2; chỉ success-path `close()` thiếu.)
+- [x] [Review][Low] **login-service bỏ qua kết quả `transition()`** — mọi `stateMachine.transition(...)` (4.2 trả typed `{ok:false,code}` nếu invalid) bị discard. Job không ở LOGGING_IN → transition no-op âm thầm nhưng login vẫn return ok → state-machine ↔ login lệch. 4.3 OK vì caller đảm bảo LOGGING_IN, nhưng nên log (non-secret) hoặc surface khi `!ok`.
+- [x] [Review][Low][stealth] **UA chưa reconcile với Chromium thật** — runner dùng `fingerprint.userAgent` (pool Chrome/120-127) làm context UA, nhưng Chromium Playwright bundle có thể version khác → UA major lệch = stealth red flag. 4.1 review + story 4.3 đều flag chỗ này. MVP chấp nhận (stealth plugin che phần lớn); fix: patch UA major theo `browser.version()` lúc launch.
+- [ ] [Review][Info] webglNoise + fonts CHƯA apply vào context (chỉ UA/viewport/timezone) — story cho phép defer best-effort. Note Epic 5/follow-up cho stealth đầy đủ (addInitScript override WebGL/fonts).
+
+**Dismissed:** module-global `stealthApplied` (idempotent, cần thiết cho `chromium.use` 1 lần); cookie `secure:true`+`sameSite:'None'` (đúng cho facebook.com HTTPS); fixture key/isPackaged (test tmpdir/tests-only); cookie injection (structured objects, không build string).
 
 ## Dev Notes
 
@@ -199,6 +220,11 @@ GPT-5 Codex
 - `rg -n "Date\.now|console\.|logger\.|cookie|twofa|seed" src/main/automation tests/unit/login-service.spec.ts` — verified no `Date.now` in TOTP and no automation logging; hits are boundary/test references only
 - `npx playwright test tests/unit tests/integration --reporter=line` — `165 passed (15.6s)`
 - `npx playwright test --reporter=line` — `186 passed (25.7s)`
+- Review patch validation: `npx playwright test tests/unit/login-service.spec.ts --reporter=line` — `6 passed (838ms)`
+- Review patch validation: `rg -n "try \{|finally \{|browser.close|reconcileUserAgentWithBrowser|onTransitionError|transitionJob" automation-desktop/src/main/automation/playwright-runner.ts automation-desktop/src/main/automation/login-service.ts` — confirmed F1 try/finally, F2 transition hook, F3 UA reconcile points
+- Review patch validation: `npm run lint` — pass, 0 errors (existing MODULE_TYPELESS_PACKAGE_JSON warning only)
+- Review patch validation: `npm run typecheck` — pass
+- Review patch validation: `npx playwright test tests/unit tests/integration --reporter=line` — `167 passed (5.7s)`
 
 ### Completion Notes List
 
@@ -210,6 +236,10 @@ GPT-5 Codex
 - Implemented login service orchestration: safeStorage exec-time secret fetch, Secret<> wrapping/reveal only at addCookies/TOTP boundaries, fingerprint ensure, branch handling for LOGGED_IN/TWO_FA_REQUIRED/CHECKPOINT/LOGIN_FAILED, state-machine transitions, onCheckpoint hook, and finally cleanup.
 - Added unit tests for TOTP, cookie parsing, login orchestration/cleanup/secret hygiene, plus real Chromium integration smoke against local FB mock fixtures.
 - Scope respected: no self-comment, CSRF/per-action token, warmup behavior, IPC/UI, telemetry transport, or mandatory proxy-pool wiring.
+- Applied review F1: hardened `SessionHandle.close()` with `try/finally` so `browser.close()` still runs when `context.close()` rejects.
+- Applied review F2: added non-secret `onTransitionError` hook and routed login-service state transitions through a wrapper that surfaces invalid transition results without changing behavior or throwing.
+- Applied review F3: reconciled fingerprint UA Chrome major with real launched Chromium `browser.version()` before creating the context.
+- Updated login-service unit coverage in the existing missing-cookie test to verify invalid transition surfacing without adding test count.
 
 ### File List
 
@@ -237,3 +267,4 @@ GPT-5 Codex
 |---|---|---|---|
 | 2026-06-03 | 0.1 | Story created (bmad-create-story) — playwright stealth login cookie + 2FA/checkpoint | Luisphan |
 | 2026-06-03 | 1.0 | Implemented Playwright stealth login skeleton, TOTP/cookie/checkpoint handling, secret-safe orchestration, and test coverage | GPT-5 Codex |
+| 2026-06-03 | 1.1 | Applied review findings F1/F2/F3: close try/finally, transition result observability, UA major reconciliation | GPT-5 Codex |

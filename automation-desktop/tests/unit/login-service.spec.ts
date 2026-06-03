@@ -3,6 +3,7 @@ import type { SecureStorage } from '../../src/adapters/secure-storage'
 import {
   createLoginService,
   type AutomationStateMachine,
+  type AutomationTransitionErrorCode,
   type Fingerprint,
   type FingerprintService,
   type LoginService,
@@ -85,6 +86,8 @@ function createService(options: {
   session?: SessionHandle & { submittedCodes?: string[]; closed?: boolean }
   states?: LoginState[]
   checkpoints?: Array<{ profileId: string; kind: string }>
+  transitionResult?: ReturnType<AutomationStateMachine['transition']>
+  transitionErrors?: Array<{ jobId: string; to: string; code: AutomationTransitionErrorCode }>
 }): {
   service: LoginService
   session: SessionHandle & { submittedCodes?: string[]; closed?: boolean }
@@ -94,7 +97,14 @@ function createService(options: {
 } {
   const session = options.session ?? createSession(options.states ?? ['LOGGED_IN'])
   const stateMachine = createStateMachineRecorder()
+  if (options.transitionResult) {
+    stateMachine.transition = (jobId, to) => {
+      stateMachine.transitions.push({ jobId, to })
+      return options.transitionResult!
+    }
+  }
   const checkpoints = options.checkpoints ?? []
+  const transitionErrors = options.transitionErrors ?? []
   const launched: unknown[] = []
   const service = createLoginService({
     secureStorage:
@@ -112,7 +122,8 @@ function createService(options: {
     stateMachine,
     fingerprintService: createFingerprintService(),
     nowMs: () => 59_000,
-    onCheckpoint: (profileId, kind) => checkpoints.push({ profileId, kind })
+    onCheckpoint: (profileId, kind) => checkpoints.push({ profileId, kind }),
+    onTransitionError: (jobId, to, code) => transitionErrors.push({ jobId, to, code })
   })
   return { service, session, stateMachine, checkpoints, launched }
 }
@@ -176,8 +187,15 @@ test('[P0] 2FA required without seed blocks checkpoint without leaking cookie or
 })
 
 test('[P0] missing cookie fails without launching browser', async () => {
+  const transitionErrors: Array<{
+    jobId: string
+    to: string
+    code: AutomationTransitionErrorCode
+  }> = []
   const { service, stateMachine, launched } = createService({
-    storage: createStorage({ 'profile.profile-1.cookie': null })
+    storage: createStorage({ 'profile.profile-1.cookie': null }),
+    transitionResult: { ok: false, code: 'JOB_NOT_FOUND' },
+    transitionErrors
   })
 
   await expect(service.login('job-1', 'profile-1')).resolves.toEqual({
@@ -187,6 +205,7 @@ test('[P0] missing cookie fails without launching browser', async () => {
 
   expect(launched).toEqual([])
   expect(stateMachine.transitions).toEqual([{ jobId: 'job-1', to: 'FAILED' }])
+  expect(transitionErrors).toEqual([{ jobId: 'job-1', to: 'FAILED', code: 'JOB_NOT_FOUND' }])
 })
 
 test('[P0] launch errors transition to FAILED and close session when allocated', async () => {

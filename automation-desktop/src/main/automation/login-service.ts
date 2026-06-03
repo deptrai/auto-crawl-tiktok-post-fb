@@ -1,6 +1,7 @@
 import type { SecureStorage } from '../../adapters/secure-storage'
+import type { AutomationJobState } from '../../shared/types/automation-job'
 import { brandSecret, revealSecret } from '../../shared/types/secret'
-import type { AutomationStateMachine } from './state-machine'
+import type { AutomationStateMachine, AutomationTransitionErrorCode } from './state-machine'
 import type { FingerprintService } from './fingerprint-service'
 import { parseCookieHeader } from './cookie'
 import { detectLoginState, submitTwoFa, type LoginState } from './checkpoint-handler'
@@ -22,6 +23,11 @@ export interface LoginServiceDeps {
   fingerprintService: Pick<FingerprintService, 'ensureFingerprint'>
   nowMs: () => number
   onCheckpoint: (profileId: string, kind: LoginCheckpointKind) => void
+  onTransitionError?: (
+    jobId: string,
+    to: AutomationJobState,
+    code: AutomationTransitionErrorCode
+  ) => void
   proxy?: PlaywrightProxyConfig
 }
 
@@ -29,8 +35,13 @@ function secretKey(profileId: string, field: 'cookie' | 'twofa'): string {
   return `profile.${profileId}.${field}`
 }
 
+function transitionJob(deps: LoginServiceDeps, jobId: string, to: AutomationJobState): void {
+  const result = deps.stateMachine.transition(jobId, to)
+  if (!result.ok) deps.onTransitionError?.(jobId, to, result.code)
+}
+
 function transitionToFailed(deps: LoginServiceDeps, jobId: string): void {
-  deps.stateMachine.transition(jobId, 'FAILED')
+  transitionJob(deps, jobId, 'FAILED')
 }
 
 function transitionToCheckpointBlocked(
@@ -39,7 +50,7 @@ function transitionToCheckpointBlocked(
   profileId: string,
   kind: LoginCheckpointKind
 ): void {
-  deps.stateMachine.transition(jobId, 'CHECKPOINT_BLOCKED')
+  transitionJob(deps, jobId, 'CHECKPOINT_BLOCKED')
   deps.onCheckpoint(profileId, kind)
 }
 
@@ -84,7 +95,7 @@ export function createLoginService(deps: LoginServiceDeps): LoginService {
         }
 
         if (state === 'LOGGED_IN') {
-          deps.stateMachine.transition(jobId, 'WARMING_UP')
+          transitionJob(deps, jobId, 'WARMING_UP')
           return { ok: true, state }
         }
 
