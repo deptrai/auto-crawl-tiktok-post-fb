@@ -1,6 +1,6 @@
 # Story 4.2: State machine cho automation job
 
-Status: ready-for-dev
+Status: review
 
 Epic: 4 — Lõi Automation Facebook (Self-Comment MVP) · Story: 4.2 · ID: 4.2
 
@@ -21,14 +21,14 @@ So that các story sau (4.3 login, 4.6 self-comment) có khung orchestration chu
 
 ## Tasks / Subtasks
 
-- [ ] **T1** — `src/main/db/client.ts`: thêm migration `CREATE TABLE IF NOT EXISTS automation_jobs(...)` (sau `proxy_configs`). Cột theo architecture: `id, profile_id, type, state, started_at, completed_at, result`. FK `profile_id REFERENCES profiles(id) ON DELETE CASCADE` (foreign_keys đã ON). (AC3)
-- [ ] **T1b** — 🟠 `tests/integration/db-schema.spec.ts`: thêm 1 test mirror pattern `proxy_configs` — regex match `CREATE TABLE ... automation_jobs` + assert các cột bắt buộc. (nếu không, schema mới không được cover) (AC6)
-- [ ] **T2** — `src/shared/types/automation-job.ts`: `AutomationJobState` union literal (10 state) + `AutomationJob` interface + `TERMINAL_STATES` set + (tùy chọn) zod schema nếu cần validate `result`. (AC1)
-- [ ] **T3** — `src/main/automation/state-machine.ts`: `TRANSITIONS: Record<AutomationJobState, readonly AutomationJobState[]>` + `canTransition(from, to)` + `isTerminal(state)` (pure) + `createStateMachine({ repo, now })` → `transition(jobId, to)` (guard → persist) + `createJob(input)`. (AC2, AC3, AC4)
-- [ ] **T4** — `src/main/db/repositories/automation-job-repo.ts`: `createAutomationJobRepository(db)` → `createJob`, `updateState(id, state, { completedAt?, result? })`, `getJob(id)`, `listResumable()` (state NOT IN terminal). Pattern y hệt `proxy-repo.ts`/`profile-repo.ts`. (AC3, AC5)
-- [ ] **T5** — `src/main/automation/index.ts`: barrel export state-machine + types (đã export fingerprint từ 4.1 — APPEND, không xóa). (rule #21)
-- [ ] **T6** — Tests: `tests/unit/state-machine.spec.ts` (AC2/AC4 — transition table, guard reject invalid edge, terminal guard) + `tests/integration/automation-job-repo.spec.ts` hoặc `state-machine.spec` integration (AC3/AC5 — persist + crash/resume round-trip trên SQLCipher thật). (AC6)
-- [ ] **T7** — Verify: `npm run lint` + `npm run typecheck` + chạy test mới PASS + full suite không giảm (baseline hiện 144).
+- [x] **T1** — `src/main/db/client.ts`: thêm migration `CREATE TABLE IF NOT EXISTS automation_jobs(...)` (sau `proxy_configs`). Cột theo architecture: `id, profile_id, type, state, started_at, completed_at, result`. FK `profile_id REFERENCES profiles(id) ON DELETE CASCADE` (foreign_keys đã ON). (AC3)
+- [x] **T1b** — 🟠 `tests/integration/db-schema.spec.ts`: thêm 1 test mirror pattern `proxy_configs` — regex match `CREATE TABLE ... automation_jobs` + assert các cột bắt buộc. (nếu không, schema mới không được cover) (AC6)
+- [x] **T2** — `src/shared/types/automation-job.ts`: `AutomationJobState` union literal (10 state) + `AutomationJob` interface + `TERMINAL_STATES` set + (tùy chọn) zod schema nếu cần validate `result`. (AC1)
+- [x] **T3** — `src/main/automation/state-machine.ts`: `TRANSITIONS: Record<AutomationJobState, readonly AutomationJobState[]>` + `canTransition(from, to)` + `isTerminal(state)` (pure) + `createStateMachine({ repo, now })` → `transition(jobId, to)` (guard → persist) + `createJob(input)`. (AC2, AC3, AC4)
+- [x] **T4** — `src/main/db/repositories/automation-job-repo.ts`: `createAutomationJobRepository(db)` → `createJob`, `updateState(id, state, { completedAt?, result? })`, `getJob(id)`, `listResumable()` (state NOT IN terminal). Pattern y hệt `proxy-repo.ts`/`profile-repo.ts`. (AC3, AC5)
+- [x] **T5** — `src/main/automation/index.ts`: barrel export state-machine + types (đã export fingerprint từ 4.1 — APPEND, không xóa). (rule #21)
+- [x] **T6** — Tests: `tests/unit/state-machine.spec.ts` (AC2/AC4 — transition table, guard reject invalid edge, terminal guard) + `tests/integration/automation-job-repo.spec.ts` hoặc `state-machine.spec` integration (AC3/AC5 — persist + crash/resume round-trip trên SQLCipher thật). (AC6)
+- [x] **T7** — Verify: `npm run lint` + `npm run typecheck` + chạy test mới PASS + full suite không giảm (baseline hiện 144).
 
 > **D1 (defer IPC/UI):** KHÔNG tạo `automation-handlers` IPC hay UI ở 4.2. FSM là orchestration infra; `phase3:automation:start` + UI job-list sẽ wire ở **4.6** (self-comment end-to-end, khi có executor thật). 4.2 chỉ cung cấp khung + persist + resume capability.
 
@@ -201,22 +201,43 @@ State machine **stateless về runtime** — mọi state sống trong DB. "Resum
 
 ### Agent Model Used
 
-_TBD_
+GPT-5 Codex
 
 ### Debug Log References
 
-_TBD_
+- `python3 _bmad/scripts/resolve_customization.py --skill .agents/skills/bmad-dev-story --key workflow`
+- `npx playwright test tests/unit/state-machine.spec.ts tests/integration/db-schema.spec.ts tests/integration/automation-job-repo.spec.ts --reporter=line` — red phase: failed before implementation; green phase: `10 passed (2.3s)`
+- `npx prettier --write src/shared/types/automation-job.ts src/main/automation/state-machine.ts src/main/db/repositories/automation-job-repo.ts src/main/db/client.ts src/main/automation/index.ts tests/unit/state-machine.spec.ts tests/integration/db-schema.spec.ts tests/integration/automation-job-repo.spec.ts tests/fixtures/automation-job-electron-entry.ts`
+- `npm run lint` — pass, 0 errors (existing MODULE_TYPELESS_PACKAGE_JSON warning only)
+- `npm run typecheck` — pass
+- `npx playwright test tests/unit tests/integration --reporter=line` — `153 passed (5.5s)`
+- `npx playwright test --reporter=line` — `174 passed (14.3s)`
 
 ### Completion Notes List
 
-_TBD_
+- Implemented `automation_jobs` SQLCipher table migration with FK cascade to `profiles`, plus schema guard test for required columns.
+- Added literal `AutomationJobState` type, terminal state set, transition table, `canTransition`, `isTerminal`, and injected-clock state machine with typed results.
+- Added automation job repository with `createJob`, `updateState`, `getJob`, and `listResumable` mapping snake_case DB rows to camelCase domain objects.
+- Added SQLCipher Electron integration fixture proving create/persist/resume after DB reopen, terminal exclusion from resumable jobs, `completed_at`/`result` persistence, and FK enforcement.
+- Kept scope infra-only: no IPC, no UI, no proxy/playwright/login side effects, and no bootstrap wiring.
 
 ### File List
 
-_TBD_
+- `_bmad-output/implementation-artifacts/4-2-state-machine-cho-automation-job.md`
+- `_bmad-output/implementation-artifacts/sprint-status-phase3.yaml`
+- `automation-desktop/src/main/db/client.ts`
+- `automation-desktop/src/shared/types/automation-job.ts`
+- `automation-desktop/src/main/automation/state-machine.ts`
+- `automation-desktop/src/main/db/repositories/automation-job-repo.ts`
+- `automation-desktop/src/main/automation/index.ts`
+- `automation-desktop/tests/integration/db-schema.spec.ts`
+- `automation-desktop/tests/unit/state-machine.spec.ts`
+- `automation-desktop/tests/integration/automation-job-repo.spec.ts`
+- `automation-desktop/tests/fixtures/automation-job-electron-entry.ts`
 
 ### Change Log
 
 | Date | Version | Description | Author |
 |---|---|---|---|
 | 2026-06-03 | 0.1 | Story created (bmad-create-story) — automation state-machine + persist + resume NFR19 | Luisphan |
+| 2026-06-03 | 1.0 | Implemented automation job FSM, SQLCipher persistence, resume coverage, and validation suite | GPT-5 Codex |

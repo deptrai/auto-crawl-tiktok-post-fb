@@ -12,3 +12,21 @@ export {
   FingerprintSchema,
   type Fingerprint
 } from '../../shared/types/fingerprint'
+export {
+  TRANSITIONS,
+  canTransition,
+  createStateMachine,
+  isTerminal,
+  type AutomationStateMachine,
+  type AutomationStateMachineDeps,
+  type AutomationTransitionErrorCode,
+  type AutomationTransitionResult,
+  type CreateAutomationJobInput,
+  type TransitionOptions
+} from './state-machine'
+export {
+  AUTOMATION_JOB_STATES,
+  TERMINAL_STATES,
+  type AutomationJob,
+  type AutomationJobState
+} from '../../shared/types/automation-job'

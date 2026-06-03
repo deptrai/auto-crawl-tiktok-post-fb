@@ -45,5 +45,16 @@ export function openEncryptedDatabase(options: EncryptedDbOptions): Database.Dat
       last_rotated_at TEXT
     )`
   ).run()
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS automation_jobs(
+      id TEXT PRIMARY KEY,
+      profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      state TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      completed_at TEXT,
+      result TEXT
+    )`
+  ).run()
   return db
 }
