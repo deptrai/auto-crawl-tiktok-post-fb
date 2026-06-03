@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="vi" class="accent-neutral">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>automation-desktop — Design Directions</title>
+<style>
+  /* ============ DESIGN TOKENS (Operator UI Kit) ============ */
+  :root {
+    --bg: #0f1216;
+    --surface: #171b21;
+    --surface-2: #1e242c;
+    --surface-3: #232b34;
+    --border: #2a323c;
+    --text: #e8eaed;
+    --text-muted: #9aa4b0;
+    --accent: #ff9d42;
+    --accent-hover: #ffb163;
+    --accent-text: #1a1206;
+    --status-idle: #4ad07f;
+    --status-running: #54a8ff;
+    --status-checkpoint: #ffb84d;
+    --status-error: #ff6a52;
+    --status-neutral: #9aa4b0;
+
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 24px; --sp-6: 32px;
+    --r-sm: 8px; --r-md: 12px; --r-lg: 16px;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    --row-h: 44px;
+    --sidebar-w: 240px;
+  }
+  /* Accent variant: neutral blue (toggle) */
+  :root.accent-neutral {
+    --accent: #6c7cff;
+    --accent-hover: #8893ff;
+    --accent-text: #0a0d24;
+  }
+  /* Density variant: compact */
+  :root.density-compact { --row-h: 36px; --sp-5: 16px; }
+
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  code, .mono { font-family: var(--font-mono); }
+
+  /* ============ TOP CONTROL BAR (demo controls, not part of app) ============ */
+  .demo-bar {
+    display: flex; gap: var(--sp-3); align-items: center; flex-wrap: wrap;
+    padding: var(--sp-3) var(--sp-5);
+    background: #000; border-bottom: 1px solid var(--border);
+    position: sticky; top: 0; z-index: 50;
+  }
+  .demo-bar strong { color: var(--accent); }
+  .demo-bar .spacer { flex: 1; }
+  .demo-btn {
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    padding: 6px 12px; border-radius: var(--r-sm); cursor: pointer; font: inherit; font-size: 13px;
+  }
+  .demo-btn:hover { background: var(--surface-3); }
+  .demo-btn.active { border-color: var(--accent); color: var(--accent); }
+
+  /* ============ APP SHELL ============ */
+  .app-shell {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr;
+    grid-template-rows: 56px 1fr;
+    grid-template-areas: "sidebar topbar" "sidebar content";
+    height: calc(100vh - 49px);
+  }
+
+  /* Sidebar */
+  .sidebar {
+    grid-area: sidebar;
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: var(--sp-4) var(--sp-3);
+    display: flex; flex-direction: column; gap: var(--sp-1);
+  }
+  .brand {
+    display: flex; align-items: center; gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3) var(--sp-5);
+    font-weight: 800; font-size: 15px; letter-spacing: 0.02em;
+  }
+  .brand .logo {
+    width: 28px; height: 28px; border-radius: var(--r-sm);
+    background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+    display: grid; place-items: center; color: var(--accent-text); font-weight: 900;
+  }
+  .nav-item {
+    display: flex; align-items: center; gap: var(--sp-3);
+    padding: 10px var(--sp-3); border-radius: var(--r-sm);
+    color: var(--text-muted); cursor: pointer; font-weight: 600; font-size: 14px;
+  }
+  .nav-item:hover { background: var(--surface-2); color: var(--text); }
+  .nav-item.active { background: var(--surface-2); color: var(--text); box-shadow: inset 3px 0 0 var(--accent); }
+  .nav-item .ico { width: 18px; text-align: center; }
+  .nav-spacer { flex: 1; }
+  .nav-foot {
+    border-top: 1px solid var(--border); margin-top: var(--sp-3); padding-top: var(--sp-3);
+    color: var(--text-muted); font-size: 12px;
+  }
+  .license-chip {
+    display: flex; align-items: center; gap: var(--sp-2);
+    padding: var(--sp-2) var(--sp-3); border-radius: var(--r-sm);
+    background: rgba(74,208,127,0.12); color: var(--status-idle); font-weight: 700; font-size: 12px;
+  }
+
+  /* Topbar */
+  .topbar {
+    grid-area: topbar;
+    display: flex; align-items: center; gap: var(--sp-4);
+    padding: 0 var(--sp-5);
+    background: var(--surface); border-bottom: 1px solid var(--border);
+  }
+  .topbar h1 { font-size: 18px; font-weight: 700; }
+  .counter-group { display: flex; gap: var(--sp-3); margin-left: auto; }
+  .counter {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 13px; font-weight: 700; color: var(--text-muted);
+  }
+  .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .dot.idle { background: var(--status-idle); }
+  .dot.running { background: var(--status-running); }
+  .dot.checkpoint { background: var(--status-checkpoint); }
+  .dot.error { background: var(--status-error); }
+
+  /* Content */
+  .content { grid-area: content; overflow-y: auto; padding: var(--sp-5); }
+
+  .panel {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--r-lg); margin-bottom: var(--sp-5);
+  }
+  .panel-head {
+    display: flex; align-items: center; gap: var(--sp-3);
+    padding: var(--sp-4) var(--sp-5); border-bottom: 1px solid var(--border);
+  }
+  .panel-head h2 { font-size: 16px; font-weight: 700; }
+  .eyebrow { font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-muted); }
+  .panel-body { padding: var(--sp-5); }
+
+  /* Import (collapsed summary style) */
+  .import-collapsed {
+    display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+  }
+  .ghost-btn {
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+    padding: 9px 14px; border-radius: var(--r-sm); cursor: pointer; font: inherit; font-weight: 700; font-size: 13px;
+  }
+  .ghost-btn:hover { background: var(--surface-3); }
+
+  /* Data table */
+  .table-wrap { overflow-x: auto; }
+  table.data-table { width: 100%; border-collapse: collapse; }
+  .data-table thead th {
+    text-align: left; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--text-muted); padding: var(--sp-3) var(--sp-4);
+    border-bottom: 1px solid var(--border); background: var(--surface-2);
+    position: sticky; top: 0;
+  }
+  .data-table tbody td { padding: 0 var(--sp-4); height: var(--row-h); border-bottom: 1px solid var(--border); vertical-align: middle; }
+  .data-table tbody tr:hover { background: var(--surface-2); }
+  .data-table tbody tr.selected { background: rgba(255,157,66,0.07); }
+  :root.accent-neutral .data-table tbody tr.selected { background: rgba(76,141,255,0.08); }
+  .col-check { width: 40px; }
+  .uid { font-family: var(--font-mono); font-weight: 700; }
+  .pname { color: var(--text-muted); font-size: 13px; }
+  input[type=checkbox] { width: 16px; height: 16px; accent-color: var(--accent); cursor: pointer; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; white-space: nowrap;
+  }
+  .pill .dot { width: 7px; height: 7px; }
+  .pill.idle { color: var(--status-idle); background: rgba(74,208,127,0.13); }
+  .pill.running { color: var(--status-running); background: rgba(84,168,255,0.14); }
+  .pill.checkpoint { color: var(--status-checkpoint); background: rgba(255,184,77,0.14); }
+  .pill.error { color: var(--status-error); background: rgba(255,106,82,0.14); }
+
+  .proxy-cell { font-family: var(--font-mono); font-size: 13px; }
+  .proxy-empty { color: var(--text-muted); font-style: italic; font-family: Inter; font-size: 12px; }
+  .job-cell { font-size: 12px; color: var(--text-muted); }
+  .job-link { color: var(--status-running); text-decoration: none; }
+  .row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+  .icon-btn {
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text-muted);
+    width: 30px; height: 30px; border-radius: var(--r-sm); cursor: pointer; font-size: 14px;
+  }
+  .icon-btn:hover { background: var(--surface-3); color: var(--text); }
+  .icon-btn.danger:hover { color: var(--status-error); border-color: var(--status-error); }
+
+  /* Bulk action bar */
+  .bulk-bar {
+    position: sticky; bottom: 0;
+    display: flex; align-items: center; gap: var(--sp-3); flex-wrap: wrap;
+    margin-top: var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
+    background: var(--surface-3); border: 1px solid var(--accent);
+    border-radius: var(--r-md);
+    box-shadow: 0 -8px 24px rgba(0,0,0,0.35);
+  }
+  .bulk-count { font-weight: 800; color: var(--accent); white-space: nowrap; }
+  .bulk-input {
+    flex: 1 1 240px; min-width: 180px;
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 9px 12px; border-radius: var(--r-sm); font: inherit; font-family: var(--font-mono); font-size: 13px;
+  }
+  .bulk-input:focus, .bulk-select:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,157,66,0.18); }
+  .bulk-select {
+    background: var(--bg); border: 1px solid var(--border); color: var(--text);
+    padding: 9px 12px; border-radius: var(--r-sm); font: inherit; font-size: 13px;
+  }
+  .toggle { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted); white-space: nowrap; }
+  .run-btn {
+    border: 0; background: linear-gradient(135deg, var(--accent), var(--accent-hover));
+    color: var(--accent-text); font-weight: 900; font-size: 14px;
+    padding: 10px 18px; border-radius: var(--r-sm); cursor: pointer; white-space: nowrap;
+  }
+  .run-btn:hover { filter: brightness(1.05); }
+
+  /* Toast */
+  .toast {
+    position: fixed; right: var(--sp-5); bottom: var(--sp-5);
+    background: var(--surface-3); border: 1px solid var(--border); border-left: 3px solid var(--status-idle);
+    padding: var(--sp-3) var(--sp-4); border-radius: var(--r-md);
+    box-shadow: 0 12px 40px rgba(0,0,0,0.5); font-size: 13px; max-width: 320px;
+    z-index: 40;
+  }
+  .toast strong { color: var(--status-idle); }
+
+  .note { color: var(--text-muted); font-size: 12px; margin-top: var(--sp-3); }
+  .annot {
+    margin: var(--sp-5); padding: var(--sp-4) var(--sp-5);
+    background: var(--surface); border: 1px dashed var(--border); border-radius: var(--r-md);
+    color: var(--text-muted); font-size: 13px; line-height: 1.7;
+  }
+  .annot b { color: var(--text); }
+  .annot .tag { color: var(--accent); font-weight: 800; }
+</style>
+</head>
+<body>
+
+<!-- DEMO CONTROLS (không thuộc app, chỉ để bạn so sánh direction) -->
+<div class="demo-bar">
+  <strong>🎨 Design Directions</strong> — automation-desktop · Màn hình Profiles (core)
+  <span class="spacer"></span>
+  <span style="color:var(--text-muted);font-size:13px">Accent:</span>
+  <button class="demo-btn" id="btn-warm" onclick="setAccent('warm')">Cam ấm</button>
+  <button class="demo-btn active" id="btn-neutral" onclick="setAccent('neutral')">Xanh trung tính</button>
+  <span style="color:var(--text-muted);font-size:13px;margin-left:12px">Mật độ:</span>
+  <button class="demo-btn active" id="btn-comfy" onclick="setDensity('comfy')">Vừa</button>
+  <button class="demo-btn" id="btn-compact" onclick="setDensity('compact')">Dày</button>
+</div>
+
+<!-- APP SHELL -->
+<div class="app-shell">
+
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="brand"><span class="logo">A</span> automation</div>
+    <div class="nav-item"><span class="ico">📊</span> Dashboard</div>
+    <div class="nav-item active"><span class="ico">👥</span> Profiles</div>
+    <div class="nav-item"><span class="ico">💬</span> Templates</div>
+    <div class="nav-item"><span class="ico">🌐</span> Proxy</div>
+    <div class="nav-item"><span class="ico">⚙️</span> Settings</div>
+    <div class="nav-spacer"></div>
+    <div class="nav-foot">
+      <div class="license-chip">✓ License · còn 28 ngày</div>
+    </div>
+  </aside>
+
+  <!-- TOPBAR -->
+  <header class="topbar">
+    <h1>Profiles</h1>
+    <div class="counter-group">
+      <span class="counter"><span class="dot idle"></span> 9 nhàn rỗi</span>
+      <span class="counter"><span class="dot running"></span> 3 đang chạy</span>
+      <span class="counter"><span class="dot checkpoint"></span> 1 checkpoint</span>
+      <span class="counter"><span class="dot error"></span> 1 lỗi</span>
+    </div>
+  </header>
+
+  <!-- CONTENT -->
+  <main class="content">
+
+    <!-- Import (gọn lại thành panel có nút mở rộng) -->
+    <section class="panel">
+      <div class="panel-head">
+        <div>
+          <div class="eyebrow">Quản lý tài khoản</div>
+          <h2>14 profile trong máy này</h2>
+        </div>
+        <div style="margin-left:auto" class="import-collapsed">
+          <button class="ghost-btn">⬆ Import profile</button>
+          <button class="ghost-btn">⬇ Export backup</button>
+        </div>
+      </div>
+
+      <div class="panel-body" style="padding-top:0">
+        <div class="table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="col-check"><input type="checkbox" onclick="toggleAll(this)" /></th>
+                <th>UID</th>
+                <th>Tên hiển thị</th>
+                <th>Trạng thái</th>
+                <th>Proxy riêng</th>
+                <th>Job hiện tại</th>
+                <th style="text-align:right">Thao tác</th>
+              </tr>
+            </thead>
+            <tbody id="tbody">
+              <tr class="selected">
+                <td><input type="checkbox" checked onclick="rowSel(this)" /></td>
+                <td><span class="uid">100012345678</span></td>
+                <td class="pname">Nguyễn Văn A</td>
+                <td><span class="pill idle"><span class="dot idle"></span> Nhàn rỗi</span></td>
+                <td class="proxy-cell">103.21.44.12:8080</td>
+                <td class="job-cell">—</td>
+                <td><div class="row-actions"><button class="icon-btn" title="Sửa">✎</button><button class="icon-btn danger" title="Xóa">🗑</button></div></td>
+              </tr>
+              <tr class="selected">
+                <td><input type="checkbox" checked onclick="rowSel(this)" /></td>
+                <td><span class="uid">100098765432</span></td>
+                <td class="pname">Trần Thị B</td>
+                <td><span class="pill running"><span class="dot running"></span> Đang chạy</span></td>
+                <td class="proxy-cell">103.21.44.51:8080</td>
+                <td class="job-cell">Đang đăng nhập · <a class="job-link" href="#">job#a3f</a></td>
+                <td><div class="row-actions"><button class="icon-btn" title="Sửa">✎</button><button class="icon-btn danger" title="Xóa">🗑</button></div></td>
+              </tr>
+              <tr class="selected">
+                <td><input type="checkbox" checked onclick="rowSel(this)" /></td>
+                <td><span class="uid">100055544433</span></td>
+                <td class="pname">Lê Văn C</td>
+                <td><span class="pill running"><span class="dot running"></span> Đang chạy</span></td>
+                <td class="proxy-cell">103.21.44.77:8080</td>
+                <td class="job-cell">Đang bình luận · <a class="job-link" href="#">job#b8e</a></td>
+                <td><div class="row-actions"><button class="icon-btn" title="Sửa">✎</button><button class="icon-btn danger" title="Xóa">🗑</button></div></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" onclick="rowSel(this)" /></td>
+                <td><span class="uid">100033322211</span></td>
+                <td class="pname">Phạm Thị D</td>
+                <td><span class="pill checkpoint"><span class="dot checkpoint"></span> Checkpoint</span></td>
+                <td class="proxy-cell">103.21.44.90:8080</td>
+                <td class="job-cell">Bị checkpoint · <a class="job-link" href="#">job#c1d</a></td>
+                <td><div class="row-actions"><button class="icon-btn" title="Sửa">✎</button><button class="icon-btn danger" title="Xóa">🗑</button></div></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" onclick="rowSel(this)" /></td>
+                <td><span class="uid">100077788899</span></td>
+                <td class="pname">Hoàng Văn E</td>
+                <td><span class="pill error"><span class="dot error"></span> Lỗi</span></td>
+                <td><span class="proxy-empty">Chưa gán</span></td>
+                <td class="job-cell" style="color:var(--status-error)">SELECTOR_MISS · thử lại?</td>
+                <td><div class="row-actions"><button class="icon-btn" title="Sửa">✎</button><button class="icon-btn danger" title="Xóa">🗑</button></div></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" onclick="rowSel(this)" /></td>
+                <td><span class="uid">100011122233</span></td>
+                <td class="pname">Đỗ Thị F</td>
+                <td><span class="pill idle"><span class="dot idle"></span> Nhàn rỗi</span></td>
+                <td><span class="proxy-empty">Chưa gán</span></td>
+                <td class="job-cell">—</td>
+                <td><div class="row-actions"><button class="icon-btn" title="Sửa">✎</button><button class="icon-btn danger" title="Xóa">🗑</button></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- BULK ACTION BAR (hiện khi có acc được chọn) -->
+        <div class="bulk-bar" id="bulkbar">
+          <span class="bulk-count" id="bulkcount">Đã chọn 3</span>
+          <input class="bulk-input" placeholder="https://www.facebook.com/.../posts/... (target URL)" />
+          <select class="bulk-select">
+            <option>🎲 Random tất cả template</option>
+            <option>Khen nhẹ</option>
+            <option>Hỏi giá</option>
+            <option>Tag bạn bè</option>
+          </select>
+          <label class="toggle"><input type="checkbox" /> Chạy ẩn trình duyệt</label>
+          <button class="run-btn">▶ Chạy self-comment (3)</button>
+        </div>
+        <p class="note">Bulk bar dính đáy danh sách, hiện ngay khi chọn ≥1 acc. Cấu hình target + template ở đúng nơi hành động — không còn tách rời như bản cũ.</p>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<!-- TOAST mẫu -->
+<div class="toast">✅ <strong>Batch hoàn tất</strong><br/>8/10 thành công · 1 checkpoint · 1 lỗi. Bấm acc lỗi để xem lý do.</div>
+
+<!-- ANNOTATION cho người đọc spec -->
+<div class="annot">
+  <b>Ghi chú cho người duyệt spec:</b><br/>
+  <span class="tag">①</span> <b>Sidebar nav</b> thay card cuộn dọc — mỗi domain 1 tab, chừa chỗ cho Phase 3.1–3.3.<br/>
+  <span class="tag">②</span> <b>Header counter</b> toàn cục — đọc trạng thái cả fleet trong 1 liếc.<br/>
+  <span class="tag">③</span> <b>Data table + checkbox</b> — UID/proxy/job dùng monospace, copy được; pill màu nhất quán.<br/>
+  <span class="tag">④</span> <b>Bulk action bar</b> — chọn nhiều → 1 nút chạy; target + template gắn liền.<br/>
+  <span class="tag">⑤</span> <b>Toast summary</b> điềm tĩnh khi xong batch; lỗi nổi bật nhưng không báo động toàn màn hình.<br/>
+  <span class="tag">⑥</span> Import gọn thành nút (mở panel/modal khi cần) — không chiếm chỗ thường trực.
+</div>
+
+<script>
+  function setAccent(mode) {
+    document.documentElement.classList.toggle('accent-neutral', mode === 'neutral');
+    document.getElementById('btn-warm').classList.toggle('active', mode === 'warm');
+    document.getElementById('btn-neutral').classList.toggle('active', mode === 'neutral');
+  }
+  function setDensity(mode) {
+    document.documentElement.classList.toggle('density-compact', mode === 'compact');
+    document.getElementById('btn-comfy').classList.toggle('active', mode === 'comfy');
+    document.getElementById('btn-compact').classList.toggle('active', mode === 'compact');
+  }
+  function rowSel(cb) {
+    cb.closest('tr').classList.toggle('selected', cb.checked);
+    refreshBulk();
+  }
+  function toggleAll(cb) {
+    document.querySelectorAll('#tbody input[type=checkbox]').forEach(c => { c.checked = cb.checked; c.closest('tr').classList.toggle('selected', cb.checked); });
+    refreshBulk();
+  }
+  function refreshBulk() {
+    const n = document.querySelectorAll('#tbody tr.selected').length;
+    const bar = document.getElementById('bulkbar');
+    bar.style.display = n > 0 ? 'flex' : 'none';
+    document.getElementById('bulkcount').textContent = 'Đã chọn ' + n;
+    bar.querySelector('.run-btn').textContent = '▶ Chạy self-comment (' + n + ')';
+  }
+  refreshBulk();
+</script>
+</body>
+</html>

@@ -19,7 +19,9 @@ const fingerprint: Fingerprint = {
 
 test('[P1] playwright runner launches visible mobile browser with fixed size and position', async () => {
   let userDataDir: string | undefined
-  let launchOptions: Parameters<NonNullable<Parameters<typeof createPlaywrightRunner>[0]>['launchPersistentContext']>[1]
+  let launchOptions: Parameters<
+    NonNullable<Parameters<typeof createPlaywrightRunner>[0]>['launchPersistentContext']
+  >[1]
   let contextOptions: Parameters<Browser['newContext']>[0]
   const page = {
     on: () => page,
@@ -70,7 +72,9 @@ test('[P1] playwright runner launches visible mobile browser with fixed size and
 })
 
 test('[P1] playwright runner can align mobile viewport width with dynamic window width', async () => {
-  let contextOptions: Parameters<NonNullable<Parameters<typeof createPlaywrightRunner>[0]>['launchPersistentContext']>[1]
+  let contextOptions: Parameters<
+    NonNullable<Parameters<typeof createPlaywrightRunner>[0]>['launchPersistentContext']
+  >[1]
   const page = {
     on: () => page,
     goto: async () => undefined
@@ -105,7 +109,9 @@ test('[P1] playwright runner can align mobile viewport width with dynamic window
 })
 
 test('[P1] playwright runner prefers imported user agent when provided', async () => {
-  let contextOptions: Parameters<NonNullable<Parameters<typeof createPlaywrightRunner>[0]>['launchPersistentContext']>[1]
+  let contextOptions: Parameters<
+    NonNullable<Parameters<typeof createPlaywrightRunner>[0]>['launchPersistentContext']
+  >[1]
   const page = {
     on: () => page,
     goto: async () => undefined

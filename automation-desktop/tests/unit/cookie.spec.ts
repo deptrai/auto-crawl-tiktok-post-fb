@@ -52,7 +52,9 @@ test('[P1] cookie parser keeps the last duplicate cookie value', () => {
 })
 
 test('[P1] cookie parser accepts empty cookie values from browser exports', () => {
-  const cookies = parseCookieHeader('c_user=100024652313185; xs=session-value; oo=; datr=datr-value')
+  const cookies = parseCookieHeader(
+    'c_user=100024652313185; xs=session-value; oo=; datr=datr-value'
+  )
 
   expect(cookies.find((cookie) => cookie.name === 'oo')?.value).toBe('')
   expect(cookies.find((cookie) => cookie.name === 'datr')?.value).toBe('datr-value')

@@ -15,7 +15,7 @@ function normalizeFacebookUrl(href: string): string | null {
     const url = new URL(trimmed, FACEBOOK_ORIGIN)
     if (!url.hostname.endsWith('facebook.com')) return null
     url.hash = ''
-    return url.toString()
+    return `${url.origin}${url.pathname}${url.search}`
   } catch {
     return null
   }

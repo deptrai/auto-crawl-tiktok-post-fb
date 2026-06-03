@@ -13,7 +13,7 @@ async function withMockServer(run: (baseUrl: string) => Promise<void>): Promise<
         ? 'checkpoint.html'
         : path.includes('mobile-logged-in')
           ? 'mobile-logged-in.html'
-        : 'logged-in.html'
+          : 'logged-in.html'
     res.setHeader('content-type', 'text/html; charset=utf-8')
     res.end(readFileSync(join(process.cwd(), 'tests/fixtures/fb-mock', fileName), 'utf8'))
   })

@@ -125,7 +125,9 @@ export function createPlaywrightRunner(deps: PlaywrightRunnerDeps = {}): Playwri
               : [])
           ]
       const useMobile = input.mobile ?? true
-      const userDataDir = input.headless ? undefined : mkdtempSync(join(tmpdir(), 'phase3-browser-'))
+      const userDataDir = input.headless
+        ? undefined
+        : mkdtempSync(join(tmpdir(), 'phase3-browser-'))
       let browser: Browser | undefined
       let context: BrowserContext | undefined
       try {
@@ -137,7 +139,9 @@ export function createPlaywrightRunner(deps: PlaywrightRunnerDeps = {}): Playwri
           })
         }
         const baseUserAgent = input.userAgent?.trim() || input.fingerprint.userAgent
-        const userAgent = browser ? reconcileUserAgentWithBrowser(baseUserAgent, browser) : baseUserAgent
+        const userAgent = browser
+          ? reconcileUserAgentWithBrowser(baseUserAgent, browser)
+          : baseUserAgent
         const contextOptions = {
           userAgent,
           viewport: useMobile

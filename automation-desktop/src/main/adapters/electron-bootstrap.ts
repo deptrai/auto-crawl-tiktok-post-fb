@@ -208,9 +208,9 @@ function createSelfCommentLoginAdapter(deps: {
 
     // Ensure the browser session is always closed if anything throws after launchSession.
     try {
-      await sessionHandle.page.waitForLoadState?.('networkidle', { timeout: 8_000 }).catch(
-        () => undefined
-      )
+      await sessionHandle.page
+        .waitForLoadState?.('networkidle', { timeout: 8_000 })
+        .catch(() => undefined)
       await sessionHandle.page.waitForTimeout?.(1_000).catch(() => undefined)
       let state = await detectLoginState(sessionHandle.page)
       if (state === 'TWO_FA_REQUIRED') {

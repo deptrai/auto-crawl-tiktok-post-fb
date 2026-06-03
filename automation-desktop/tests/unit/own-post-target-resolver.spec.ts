@@ -24,9 +24,9 @@ test('[P0] own post resolver collects lazy-loaded Facebook story anchors after s
           calls += 1
           const source = fn.toString()
           if (source.includes('scrollBy')) return undefined as never
-          return (calls > 2
-            ? ['https://www.facebook.com/story.php?story_fbid=999&id=61584385089407']
-            : []) as never
+          return (
+            calls > 2 ? ['https://www.facebook.com/story.php?story_fbid=999&id=61584385089407'] : []
+          ) as never
         }
       },
       { settleMs: 0 }
