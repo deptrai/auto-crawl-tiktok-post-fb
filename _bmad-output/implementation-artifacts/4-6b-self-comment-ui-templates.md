@@ -1,6 +1,6 @@
 # Story 4.6b: Self-comment — surface (IPC + UI + content_templates CRUD)
 
-Status: review
+Status: done
 
 Epic: 4 — Lõi Automation Facebook (Self-Comment MVP) · Story: 4.6b (tách từ 4.6) · ID: 4.6b
 
@@ -46,6 +46,31 @@ So that tôi dùng được tính năng tự bình luận mà không cần CLI (
 - [x] **V** — Verify: `npm run lint` + `typecheck` + test mới + full suite không giảm (baseline 189). Pre-commit secret guard.
 
 > **D1 (defer):** auto-find own post chính xác (Epic 5 selector 4-tier); warmup behavior trước comment (Epic 9); telemetry transport (Epic 6 — `onActionOutcome` hook đã có 4.6a); Messenger Seeding (Epic 12).
+
+### Review Findings
+
+> Code review adversarial 3-layer (Blind Hunter + Edge Case Hunter + Acceptance Auditor) — 2026-06-03. Diff: commit `8528a82`. Verdict per-AC: AC1/2/3/4/5/7 PASS; AC6 PARTIAL; AC8 PARTIAL (thiếu 1 test case).
+
+**Decision-needed**
+- [x] [Review][Decision] AC6 fallback chỉ `goto(DEFAULT_OWN_FEED_URL='/me')` rồi comment trực tiếp — KHÔNG có bước bundled-selector lấy URL post đầu như spec yêu cầu [self-comment-orchestrator.ts:114,153]. **Resolved option 2**: implement bundled-selector `resolveOwnPostTarget` dep + navigate-to-post trước execute; note fragile/Epic 5.
+
+**Patch**
+- [x] [Review][Patch] 🔴 BLOCKER — Rò rỉ Chromium session khi `detectLoginState` throw: added try/catch in `createSelfCommentLoginAdapter` to close `sessionHandle` on exception [electron-bootstrap.ts:127-160]
+- [x] [Review][Patch] Polling mồ côi + spam lỗi mỗi giây sau khi xóa profile — `handleDelete` giờ clear `automationStatuses[profile.id]` sau delete thành công [ProfilesView.tsx:192-196]
+- [x] [Review][Patch] `target` URL không validate protocol http/https — added `.refine()` in `AutomationStartRequestSchema` [automation.ts:8-14]
+- [x] [Review][Patch] AC6: implement `resolveOwnPostTarget` optional DI dep + bundled selector href + note fragile/Epic 5; explicit target bypasses own-feed navigation; 3 unit tests mới [self-comment-orchestrator.ts, electron-bootstrap.ts]
+- [x] [Review][Patch] AC8: thêm integration test `[P1] automation start rejects invalid request with VALIDATION_ERROR` [tests/integration/automation-ipc-handlers.spec.ts:106]
+- [x] [Review][Patch] Inputs label/body thêm `maxLength={120}` và `maxLength={2000}` (cả create form lẫn edit row) [ContentTemplatesView.tsx]
+
+**Deferred**
+- [x] [Review][Defer] Không có poll-timeout/max-poll → polling vô hạn nếu job kẹt non-terminal (mạng hang không throw) [ProfilesView.tsx:263-294] — deferred, cần thiết kế UX timeout
+- [x] [Review][Defer] `automationError` là state global, không attribution per-profile (lỗi profile này ghi đè profile kia) [ProfilesView.tsx:70,450] — deferred, UX refinement
+- [x] [Review][Defer] `normalizeError` nuốt error (`void error`) — không log non-secret để debug [automation-handlers.ts:29; content-template-handlers.ts:32] — deferred, observability
+- [x] [Review][Defer] `page.content?.() ?? ''` trả empty HTML âm thầm khi page không có `content()` → token extractor fail im lặng [electron-bootstrap.ts:245] — deferred, real Playwright luôn có content()
+- [x] [Review][Defer] Zombie jobs non-terminal tồn đọng sau restart (`listResumable` có nhưng không dùng trong bootstrap) [electron-bootstrap.ts] — deferred, job-resume phạm vi rộng hơn
+- [x] [Review][Defer] Thiếu unit test orchestrator với `options.target` tùy chỉnh (chỉ test default `/me`) [tests/unit/self-comment-orchestrator.spec.ts] — deferred, đã cover gián tiếp qua integration
+
+**Dismissed (false positive / đúng convention):** stub guard `!app.isPackaged` (đúng rule #2); `seedDefaults` "crash" (dùng `INSERT OR IGNORE`, table tạo khi mở DB); `deleteTemplate` TOCTOU (synchronous, không interleave); `profileId` không UUID (app-internal, không user-typed); render `jobId`/`outcome` XSS (React auto-escape); setState-on-unmounted (đã guard `cancelled`/`listCancelledRef`); `e.currentTarget.disabled=true` (chính là pattern rule #17); `onActionOutcome` chưa wire (optional, defer Epic 6).
 
 ## Dev Notes
 
@@ -191,4 +216,5 @@ GPT-5 Codex
 | Date | Version | Description | Author |
 |---|---|---|---|
 | 2026-06-03 | 1.0 | Implemented self-comment surface: template CRUD IPC/UI, automation start/status IPC/UI, bootstrap wiring, target navigation, license key secure storage, and test coverage | Codex |
+| 2026-06-03 | 1.1 | Applied 6 review patches: session-leak fix (detectLoginState try/finally), orphan-poll cleanup on profile delete, target URL http/https validation, AC6 own-post bundled-selector DI dep + fragile note, AC8 Zod-invalid test for automation:start, input maxLength attributes | Claude |
 | 2026-06-03 | 0.1 | Story created (split từ 4.6) — surface: automation IPC start/status + trigger UI + content_templates CRUD + navigate-to-own-post | Luisphan |

@@ -15,6 +15,7 @@ export interface SelfCommentSession {
       url: string,
       options?: { timeout?: number; waitUntil?: 'domcontentloaded' }
     ) => Promise<unknown>
+    getAttribute?: (selector: string, name: string) => Promise<string | null>
   }
   close(): Promise<void>
 }
@@ -44,6 +45,7 @@ export interface SelfCommentOrchestratorDeps {
   nowMs: () => number
   rng: () => number
   navigate?: (page: SelfCommentSession['page'], target: string) => Promise<void>
+  resolveOwnPostTarget?: (page: SelfCommentSession['page']) => Promise<string | null>
   onActionOutcome?: (event: { outcome: ActionOutcome; durationMs: number }) => void
   onTransitionError?: (jobId: string, to: AutomationJobState, code: string) => void
 }
@@ -111,7 +113,8 @@ export function createSelfCommentOrchestrator(
       const startedMs = deps.nowMs()
       let session: SelfCommentSession | undefined
       let actionToken: ActionToken | null = null
-      const target = options.target?.trim() || DEFAULT_OWN_FEED_URL
+      const explicitTarget = options.target?.trim()
+      let target: string = explicitTarget ?? DEFAULT_OWN_FEED_URL
 
       try {
         transition(deps, jobId, 'ACQUIRING_PROXY')
@@ -121,13 +124,13 @@ export function createSelfCommentOrchestrator(
         session = loginResult.session
         if (!loginResult.ok || loginResult.state === 'LOGIN_FAILED') {
           transition(deps, jobId, 'FAILED')
-          record(deps, jobId, 'error', null, target)
+          record(deps, jobId, 'error', null, explicitTarget ?? DEFAULT_OWN_FEED_URL)
           emit(deps, 'error', startedMs)
           return { outcome: 'error' }
         }
         if (loginResult.state === 'CHECKPOINT' || loginResult.state === 'TWO_FA_REQUIRED') {
           transition(deps, jobId, 'CHECKPOINT_BLOCKED')
-          record(deps, jobId, 'checkpoint', null, target)
+          record(deps, jobId, 'checkpoint', null, explicitTarget ?? DEFAULT_OWN_FEED_URL)
           emit(deps, 'checkpoint', startedMs)
           return { outcome: 'checkpoint' }
         }
@@ -144,9 +147,22 @@ export function createSelfCommentOrchestrator(
         const template = deps.contentTemplates.getRandomTemplate(deps.rng)
         if (!template) {
           transition(deps, jobId, 'FAILED')
-          record(deps, jobId, 'error', null, target)
+          record(deps, jobId, 'error', null, explicitTarget ?? DEFAULT_OWN_FEED_URL)
           emit(deps, 'error', startedMs)
           return { outcome: 'error' }
+        }
+
+        // Resolve the navigation target:
+        // 1. Use explicit target URL if provided.
+        // 2. Otherwise navigate to own feed and attempt to find the first post URL via
+        //    bundled selector (⚠️ fragile — Epic 5 will replace with 4-tier own-post finder).
+        // 3. Fall back to own feed if no post URL found.
+        if (explicitTarget) {
+          target = explicitTarget
+        } else {
+          await navigateToTarget(deps, activeSession.page, DEFAULT_OWN_FEED_URL)
+          const resolved = await deps.resolveOwnPostTarget?.(activeSession.page)
+          target = resolved ?? DEFAULT_OWN_FEED_URL
         }
 
         actionToken = await deps.actionTokenClient.requestActionToken({ actionType: 'comment' })

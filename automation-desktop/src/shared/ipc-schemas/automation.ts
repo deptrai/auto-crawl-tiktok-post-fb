@@ -5,7 +5,15 @@ import { AUTOMATION_JOB_STATES } from '../types/automation-job'
 export const AutomationStartRequestSchema = z
   .object({
     profileId: z.string().min(1),
-    target: z.string().trim().min(1).max(2_000).optional()
+    target: z
+      .string()
+      .trim()
+      .min(1)
+      .max(2_000)
+      .refine((v) => /^https?:\/\//i.test(v), {
+        message: 'URL phải bắt đầu bằng http:// hoặc https://'
+      })
+      .optional()
   })
   .strict()
 

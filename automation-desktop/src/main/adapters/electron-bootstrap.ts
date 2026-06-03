@@ -134,21 +134,27 @@ function createSelfCommentLoginAdapter(deps: {
       close: () => sessionHandle.close()
     }
 
-    let state = await detectLoginState(sessionHandle.page)
-    if (state === 'TWO_FA_REQUIRED') {
-      const twoFa = await deps.storage.get(profileSecretKey(profileId, 'twofa'))
-      if (!twoFa?.trim()) return { ok: true, state, session }
-      try {
-        await submitTwoFa(sessionHandle.page, generateTotp(twoFa, Date.now()))
-        state = await detectLoginState(sessionHandle.page)
-      } catch {
-        return { ok: true, state: 'TWO_FA_REQUIRED', session }
+    // Ensure the browser session is always closed if anything throws after launchSession.
+    try {
+      let state = await detectLoginState(sessionHandle.page)
+      if (state === 'TWO_FA_REQUIRED') {
+        const twoFa = await deps.storage.get(profileSecretKey(profileId, 'twofa'))
+        if (!twoFa?.trim()) return { ok: true, state, session }
+        try {
+          await submitTwoFa(sessionHandle.page, generateTotp(twoFa, Date.now()))
+          state = await detectLoginState(sessionHandle.page)
+        } catch {
+          return { ok: true, state: 'TWO_FA_REQUIRED', session }
+        }
       }
-    }
 
-    if (state === 'LOGGED_IN') return { ok: true, state, session }
-    if (state === 'CHECKPOINT' || state === 'TWO_FA_REQUIRED') return { ok: true, state, session }
-    return { ok: false, code: 'LOGIN_FAILED', session }
+      if (state === 'LOGGED_IN') return { ok: true, state, session }
+      if (state === 'CHECKPOINT' || state === 'TWO_FA_REQUIRED') return { ok: true, state, session }
+      return { ok: false, code: 'LOGIN_FAILED', session }
+    } catch (err) {
+      await sessionHandle.close().catch(() => undefined)
+      throw err
+    }
   }
 }
 
@@ -245,6 +251,19 @@ function initializeDeps(): BootstrapDeps {
               fetchHtml: async () => page.content?.() ?? '',
               onSelectorMiss: () => undefined
             }).extract(),
+          // ⚠️ Fragile bundled selector — Epic 5 will replace with 4-tier own-post finder.
+          resolveOwnPostTarget: async (page) => {
+            try {
+              const href = await page.getAttribute?.(
+                'a[href*="/posts/"], a[href*="/permalink/"], a[href*="/video/"], a[href*="story_fbid"]',
+                'href'
+              )
+              if (!href) return null
+              return href.startsWith('http') ? href : `https://www.facebook.com${href}`
+            } catch {
+              return null
+            }
+          },
           actionTokenClient,
           contentTemplates: contentTemplateRepo,
           actionExecutor: { executeSelfComment },

@@ -47,7 +47,7 @@ project: auto-crawl-tiktok-post-fb-phase3
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
-last_updated: 2026-06-03 (Epic 4 in-progress — 4.1-4.5+4.6a done; 4.6b review: automation IPC/UI + content_templates CRUD — story cuối Epic 4)
+last_updated: 2026-06-03 (Epic 4 complete — 4.1-4.6b all done; 6 review patches applied to 4.6b)
 
 development_status:
   # ===== Phase 3.0 MVP =====
@@ -84,7 +84,7 @@ development_status:
   4-5-lay-per-action-server-token: done
   # 4.6 tách thành 4.6a (core e2e headless) + 4.6b (surface IPC/UI) — quyết định 2026-06-03
   4-6a-self-comment-core-e2e: done
-  4-6b-self-comment-ui-templates: review
+  4-6b-self-comment-ui-templates: done
   epic-4-retrospective: optional
 
   # Epic 5: Khả năng Tự phục hồi (Adaptive Resilience)

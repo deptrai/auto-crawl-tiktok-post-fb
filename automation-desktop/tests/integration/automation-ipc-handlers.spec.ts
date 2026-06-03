@@ -102,3 +102,41 @@ test('[P1] automation status maps missing job to non-retryable ErrorEnvelope', a
     })
   )
 })
+
+test('[P1] automation start rejects invalid request with VALIDATION_ERROR, does not invoke orchestrator', async () => {
+  const ipc = new FakeIpcMain()
+  const createJobCalls: unknown[] = []
+  const runCalls: unknown[] = []
+  registerAutomationHandlers(ipc, {
+    stateMachine: {
+      createJob(input) {
+        createJobCalls.push(input)
+        return job(input.id, 'PENDING')
+      }
+    },
+    jobRepo: { getJob: () => undefined },
+    orchestrator: {
+      async runSelfComment(jobId, profileId) {
+        runCalls.push({ jobId, profileId })
+        return { outcome: 'success' as const }
+      }
+    }
+  })
+
+  const emptyProfileId = (await ipc.invoke('phase3:automation:start', {
+    profileId: ''
+  })) as { ok: false; error: { code: string; retryable: boolean } }
+
+  const missingField = (await ipc.invoke('phase3:automation:start', {})) as {
+    ok: false
+    error: { code: string }
+  }
+
+  expect(emptyProfileId.ok).toBe(false)
+  expect(emptyProfileId.error.code).toBe('VALIDATION_ERROR')
+  expect(emptyProfileId.error.retryable).toBe(false)
+  expect(missingField.ok).toBe(false)
+  expect(missingField.error.code).toBe('VALIDATION_ERROR')
+  expect(createJobCalls).toHaveLength(0)
+  expect(runCalls).toHaveLength(0)
+})

@@ -154,6 +154,7 @@ export function ContentTemplatesView(): React.JSX.Element {
             className="license-input"
             value={label}
             disabled={saving}
+            maxLength={120}
             placeholder="Ví dụ: Khen nhẹ"
             onChange={(e) => setLabel(e.target.value)}
           />
@@ -166,6 +167,7 @@ export function ContentTemplatesView(): React.JSX.Element {
             className="import-textarea template-body-input"
             value={body}
             disabled={saving}
+            maxLength={2000}
             placeholder="Nội dung bình luận"
             rows={3}
             onChange={(e) => setBody(e.target.value)}
@@ -203,6 +205,7 @@ export function ContentTemplatesView(): React.JSX.Element {
                       data-testid={`content-template-edit-label-${template.id}`}
                       value={editLabel}
                       disabled={isBusy}
+                      maxLength={120}
                       onChange={(e) => setEditLabel(e.target.value)}
                     />
                     <textarea
@@ -210,6 +213,7 @@ export function ContentTemplatesView(): React.JSX.Element {
                       data-testid={`content-template-edit-body-${template.id}`}
                       value={editBody}
                       disabled={isBusy}
+                      maxLength={2000}
                       rows={3}
                       onChange={(e) => setEditBody(e.target.value)}
                     />

@@ -126,7 +126,8 @@ test('[P0] self-comment orchestrator drives happy path, consumes token, records 
     'DONE'
   ])
   expect(deps.executed).toEqual(['Nội dung comment'])
-  expect(deps.navigated).toEqual(['https://www.facebook.com/me'])
+  // No resolveOwnPostTarget → fallback: navigate /me (feed), then navigate /me again (no post found).
+  expect(deps.navigated).toEqual(['https://www.facebook.com/me', 'https://www.facebook.com/me'])
   expect(deps.consumed).toEqual(['JWT_SECRET_VALUE'])
   expect(deps.records).toEqual([
     expect.objectContaining({
@@ -179,7 +180,8 @@ test('[P0] action-token deny blocks execution and does not consume', async () =>
   expect(deps.transitions).toEqual(['ACQUIRING_PROXY', 'LOGGING_IN', 'WARMING_UP', 'FAILED'])
   expect(deps.executed).toEqual([])
   expect(deps.consumed).toEqual([])
-  expect(deps.navigated).toEqual([])
+  // Own-feed navigation happens before requestActionToken, so /me is visited even on token-deny.
+  expect(deps.navigated).toEqual(['https://www.facebook.com/me'])
   expect(JSON.stringify(deps.records)).not.toContain('JWT_SECRET_VALUE')
 })
 
@@ -216,9 +218,40 @@ test('[P0] selector_miss records jti and transitions to failed after cleanup', a
     'EXECUTING',
     'FAILED'
   ])
-  expect(deps.navigated).toEqual(['https://www.facebook.com/me'])
+  expect(deps.navigated).toEqual(['https://www.facebook.com/me', 'https://www.facebook.com/me'])
   expect(deps.records).toEqual([
     expect.objectContaining({ outcome: 'selector_miss', actionTokenJti: 'jti-reference' })
   ])
   expect(deps.closed.value).toBe(true)
+})
+
+test('[P1] AC6 — explicit target bypasses own-feed navigation and navigates directly', async () => {
+  const deps = createDeps()
+  const orchestrator = createSelfCommentOrchestrator(deps)
+  const customTarget = 'https://www.facebook.com/me/posts/12345'
+
+  await expect(
+    orchestrator.runSelfComment('job-1', 'profile-1', { target: customTarget })
+  ).resolves.toEqual({ outcome: 'success' })
+
+  expect(deps.navigated).toEqual([customTarget])
+  expect(deps.records).toEqual([
+    expect.objectContaining({ target: customTarget, outcome: 'success' })
+  ])
+})
+
+test('[P1] AC6 — no target + resolveOwnPostTarget returns URL navigates to that post URL', async () => {
+  const postUrl = 'https://www.facebook.com/me/posts/99999'
+  const deps = createDeps({
+    resolveOwnPostTarget: async () => postUrl
+  })
+  const orchestrator = createSelfCommentOrchestrator(deps)
+
+  await expect(orchestrator.runSelfComment('job-1', 'profile-1')).resolves.toEqual({
+    outcome: 'success'
+  })
+
+  // First navigate to own feed for resolveOwnPostTarget, then navigate to resolved post URL.
+  expect(deps.navigated).toEqual(['https://www.facebook.com/me', postUrl])
+  expect(deps.records).toEqual([expect.objectContaining({ target: postUrl, outcome: 'success' })])
 })

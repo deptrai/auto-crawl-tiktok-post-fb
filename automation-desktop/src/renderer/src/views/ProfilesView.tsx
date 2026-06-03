@@ -196,6 +196,11 @@ export function ProfilesView(): React.JSX.Element {
         setEditingId(null)
         setEditName('')
       }
+      setAutomationStatuses((prev) => {
+        const next = { ...prev }
+        delete next[profile.id]
+        return next
+      })
       await refreshProfiles(false)
     } catch (err) {
       setRowError(err instanceof Error ? err.message : 'Không thể xóa profile.')
