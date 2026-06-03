@@ -34,6 +34,9 @@ export { generateTotp } from './totp'
 export { parseCookieHeader, type PlaywrightCookie } from './cookie'
 export {
   createPlaywrightRunner,
+  MOBILE_BROWSER_USER_AGENT,
+  MOBILE_BROWSER_VIEWPORT,
+  MOBILE_BROWSER_WINDOW_SIZE,
   type LaunchBrowser,
   type LaunchSessionInput,
   type PlaywrightProxyConfig,

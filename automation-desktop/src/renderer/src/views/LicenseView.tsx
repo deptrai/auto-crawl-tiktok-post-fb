@@ -6,7 +6,7 @@ interface LicenseViewProps {
 }
 
 export function LicenseView({ activating, onActivate }: LicenseViewProps): React.JSX.Element {
-  const [key, setKey] = useState('')
+  const [key, setKey] = useState(window.api.localDefaults.licenseKey)
   const [error, setError] = useState<string | null>(null)
 
   async function handleActivate(event: React.MouseEvent<HTMLButtonElement>): Promise<void> {

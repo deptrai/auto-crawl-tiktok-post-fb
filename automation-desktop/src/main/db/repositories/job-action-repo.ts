@@ -13,12 +13,15 @@ export interface RecordJobActionParams {
 
 export interface JobActionRepository {
   recordAction(params: RecordJobActionParams): void
-  getLatestByJob(jobId: string): { outcome: ActionOutcome; executedAt: string } | undefined
+  getLatestByJob(
+    jobId: string
+  ): { outcome: ActionOutcome; executedAt: string; target: string | null } | undefined
 }
 
 interface JobActionOutcomeRow {
   outcome: ActionOutcome
   executed_at: string
+  target: string | null
 }
 
 export function createJobActionRepository(db: Database.Database): JobActionRepository {
@@ -29,7 +32,7 @@ export function createJobActionRepository(db: Database.Database): JobActionRepos
      VALUES (?, ?, ?, ?, ?, ?, ?)`
   )
   const stmtLatest = db.prepare<[string], JobActionOutcomeRow>(
-    `SELECT outcome, executed_at
+    `SELECT outcome, executed_at, target
      FROM job_actions
      WHERE job_id = ?
      ORDER BY executed_at DESC, id DESC
@@ -51,7 +54,9 @@ export function createJobActionRepository(db: Database.Database): JobActionRepos
 
     getLatestByJob(jobId) {
       const row = stmtLatest.get(jobId)
-      return row ? { outcome: row.outcome, executedAt: row.executed_at } : undefined
+      return row
+        ? { outcome: row.outcome, executedAt: row.executed_at, target: row.target }
+        : undefined
     }
   }
 }

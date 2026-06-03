@@ -105,7 +105,7 @@ function parseCookieExport(text: string): ParseResult | null {
  * Format per line (split by `|`):
  *   6-field: uid|pass|2fa|cookie|hotmail|passmail
  *   7-field: uid|pass|2fa|cookie|token|hotmail|passmail
- *   external 7-field: uid|pass|email|passmail|cookie|token|userAgent
+ *   external 7-field: uid|pass|email-or-profile-url|passmail|cookie|token|userAgent
  *
  * Skips empty lines and lines starting with `#` (comments).
  * Returns per-line errors for invalid lines; does NOT abort the batch.
@@ -159,7 +159,7 @@ export function parseBulkProfiles(text: string): ParseResult {
     let passmail: string
 
     if (externalFormat) {
-      // External marketplace format: uid|pass|email|passmail|cookie|token|userAgent
+      // External marketplace format: uid|pass|email-or-profile-url|passmail|cookie|token|userAgent
       hotmail = fields[2] ?? ''
       passmail = fields[3] ?? ''
       token = fields[5] ?? ''
@@ -193,15 +193,11 @@ export function parseBulkProfiles(text: string): ParseResult {
 
 function isExternalCookieFormat(fields: string[]): boolean {
   if (fields.length < 7) return false
-  const email = fields[2] ?? ''
   const passmail = fields[3] ?? ''
   const cookie = fields[4] ?? ''
   const userAgent = fields[6] ?? ''
 
   return (
-    /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) &&
-    passmail.length > 0 &&
-    /(?:^|;\s*)(?:c_user|xs)=/.test(cookie) &&
-    /^Mozilla\//.test(userAgent)
+    passmail.length > 0 && /(?:^|;\s*)(?:c_user|xs)=/.test(cookie) && /^Mozilla\//.test(userAgent)
   )
 }

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, shell, session } from 'electron'
+import { app, BrowserWindow, ipcMain, screen, shell, session } from 'electron'
 import { join } from 'node:path'
 import icon from '../../../resources/icon.png?asset'
 import { openEncryptedDatabase } from '../db/client'
@@ -26,6 +26,7 @@ import {
   detectLoginState,
   executeSelfComment,
   generateTotp,
+  MOBILE_BROWSER_WINDOW_SIZE,
   parseCookieHeader,
   submitTwoFa,
   type SelfCommentLoginResult,
@@ -113,21 +114,91 @@ function profileSecretKey(profileId: string, field: 'cookie' | 'twofa'): string 
   return `profile.${profileId}.${field}`
 }
 
+const AUTOMATION_BROWSER_HEADLESS_SETTING = 'automation_browser_headless'
+let nextVisibleBrowserSlot = 0
+
+interface VisibleBrowserGeometry {
+  position: { x: number; y: number }
+  windowSize: { width: number; height: number }
+  viewport: { width: number; height: number }
+}
+
+function reserveNextVisibleBrowserGeometry(): VisibleBrowserGeometry {
+  const workArea = screen.getPrimaryDisplay().workArea
+  const gap = 6
+  const rows = 2
+  const windowHeight = Math.max(320, Math.floor((workArea.height - gap) / rows))
+  const viewportHeight = Math.max(260, windowHeight - 108)
+  const viewportWidth = Math.min(390, Math.max(320, Math.floor(windowHeight * 0.74)))
+  const windowSize = { width: Math.max(500, viewportWidth), height: windowHeight }
+  const stepX = windowSize.width + gap
+  const stepY = windowSize.height + gap
+  const columns = Math.max(1, Math.floor((workArea.width + gap) / stepX))
+  const slots = Math.max(1, columns * rows)
+  const slot = nextVisibleBrowserSlot % slots
+  nextVisibleBrowserSlot = (nextVisibleBrowserSlot + 1) % slots
+
+  return {
+    position: {
+      x: workArea.x + (slot % columns) * stepX,
+      y: workArea.y + Math.floor(slot / columns) * stepY
+    },
+    windowSize,
+    viewport: { width: viewportWidth, height: viewportHeight }
+  }
+}
+
 function createSelfCommentLoginAdapter(deps: {
   storage: ElectronSafeStorage
   profileRepo: ProfileRepository
+  settings: SettingsRepository
 }): (jobId: string, profileId: string) => Promise<SelfCommentLoginResult> {
   const runner = createPlaywrightRunner()
   const fingerprintService = createFingerprintService({ profileRepo: deps.profileRepo })
 
   return async (_jobId, profileId) => {
-    const rawCookie = await deps.storage.get(profileSecretKey(profileId, 'cookie'))
-    if (!rawCookie?.trim()) return { ok: false, code: 'LOGIN_FAILED' }
+    const cookieKey = profileSecretKey(profileId, 'cookie')
+    const rawCookie = await deps.storage.get(cookieKey)
+    if (!rawCookie?.trim()) {
+      return {
+        ok: false,
+        code: 'LOGIN_FAILED',
+        reason: deps.storage.hasEncryptedKey(cookieKey) ? 'COOKIE_DECRYPT_FAILED' : 'COOKIE_MISSING'
+      }
+    }
 
-    const sessionHandle = await runner.launchSession({
-      fingerprint: fingerprintService.ensureFingerprint(profileId),
-      cookies: parseCookieHeader(rawCookie)
-    })
+    let cookies: ReturnType<typeof parseCookieHeader>
+    try {
+      cookies = parseCookieHeader(rawCookie)
+    } catch {
+      return { ok: false, code: 'LOGIN_FAILED', reason: 'COOKIE_PARSE_FAILED' }
+    }
+
+    let fingerprint: ReturnType<typeof fingerprintService.ensureFingerprint>
+    try {
+      fingerprint = fingerprintService.ensureFingerprint(profileId)
+    } catch {
+      return { ok: false, code: 'LOGIN_FAILED', reason: 'FINGERPRINT_FAILED' }
+    }
+
+    let sessionHandle: Awaited<ReturnType<typeof runner.launchSession>>
+    try {
+      const headless = deps.settings.getSetting(AUTOMATION_BROWSER_HEADLESS_SETTING) === 'true'
+      const geometry = headless ? undefined : reserveNextVisibleBrowserGeometry()
+      const importedUserAgent = deps.profileRepo.getMetadata(profileId, 'user_agent')?.trim()
+      sessionHandle = await runner.launchSession({
+        fingerprint,
+        cookies,
+        headless,
+        mobile: true,
+        windowPosition: geometry?.position,
+        windowSize: geometry?.windowSize ?? MOBILE_BROWSER_WINDOW_SIZE,
+        viewport: geometry?.viewport,
+        ...(importedUserAgent ? { userAgent: importedUserAgent } : {})
+      })
+    } catch {
+      return { ok: false, code: 'LOGIN_FAILED', reason: 'BROWSER_LAUNCH_FAILED' }
+    }
 
     const session = {
       page: sessionHandle.page,
@@ -136,21 +207,56 @@ function createSelfCommentLoginAdapter(deps: {
 
     // Ensure the browser session is always closed if anything throws after launchSession.
     try {
+      await sessionHandle.page.waitForLoadState?.('networkidle', { timeout: 8_000 }).catch(
+        () => undefined
+      )
+      await sessionHandle.page.waitForTimeout?.(1_000).catch(() => undefined)
       let state = await detectLoginState(sessionHandle.page)
       if (state === 'TWO_FA_REQUIRED') {
         const twoFa = await deps.storage.get(profileSecretKey(profileId, 'twofa'))
-        if (!twoFa?.trim()) return { ok: true, state, session }
+        if (!twoFa?.trim()) return { ok: true, state, session, reason: 'TWO_FA_REQUIRED' }
         try {
           await submitTwoFa(sessionHandle.page, generateTotp(twoFa, Date.now()))
           state = await detectLoginState(sessionHandle.page)
         } catch {
-          return { ok: true, state: 'TWO_FA_REQUIRED', session }
+          return { ok: true, state: 'TWO_FA_REQUIRED', session, reason: 'TWO_FA_REQUIRED' }
         }
       }
 
       if (state === 'LOGGED_IN') return { ok: true, state, session }
-      if (state === 'CHECKPOINT' || state === 'TWO_FA_REQUIRED') return { ok: true, state, session }
-      return { ok: false, code: 'LOGIN_FAILED', session }
+      if (state === 'CHECKPOINT') return { ok: true, state, session, reason: 'CHECKPOINT_BLOCKED' }
+      if (state === 'TWO_FA_REQUIRED')
+        return { ok: true, state, session, reason: 'TWO_FA_REQUIRED' }
+      console.warn('[Phase3] Facebook login state failed', {
+        profileId,
+        url: sessionHandle.page.url(),
+        title: await sessionHandle.page.title().catch(() => ''),
+        loginInputs: await sessionHandle.page
+          .locator('input[name="email"], input[name="pass"]')
+          .count()
+          .catch(() => 0),
+        loggedInMarkers: await sessionHandle.page
+          .locator(
+            [
+              '[role="navigation"]',
+              '[aria-label*="Facebook"]',
+              '[data-testid="logged-in"]',
+              '[aria-label*="Messenger"]',
+              '[aria-label*="Notifications"]',
+              '[aria-label*="Thông báo"]',
+              '[aria-label*="Menu"]',
+              '[aria-label*="Profile"]',
+              '[aria-label*="Trang cá nhân"]',
+              '[aria-label*="Search Facebook"]',
+              '[aria-label*="Tìm kiếm trên Facebook"]',
+              'a[href*="/me/"]',
+              'a[href*="profile.php"]'
+            ].join(', ')
+          )
+          .count()
+          .catch(() => 0)
+      })
+      return { ok: false, code: 'LOGIN_FAILED', session, reason: 'LOGIN_STATE_FAILED' }
     } catch (err) {
       await sessionHandle.close().catch(() => undefined)
       throw err
@@ -167,8 +273,10 @@ function createStubSelfCommentOrchestrator(
       stateMachine.transition(jobId, 'LOGGING_IN')
       stateMachine.transition(jobId, 'WARMING_UP')
       stateMachine.transition(jobId, 'EXECUTING')
-      stateMachine.transition(jobId, 'DONE', { result: '{"outcome":"success"}' })
-      return { outcome: 'success' }
+      stateMachine.transition(jobId, 'FAILED', {
+        result: '{"outcome":"error","reason":"STUB_MODE_NO_COMMENT"}'
+      })
+      return { outcome: 'error' }
     }
   }
 }
@@ -245,7 +353,11 @@ function initializeDeps(): BootstrapDeps {
       ? createStubSelfCommentOrchestrator(stateMachine)
       : createSelfCommentOrchestrator({
           stateMachine,
-          login: createSelfCommentLoginAdapter({ storage: adapters.storage, profileRepo }),
+          login: createSelfCommentLoginAdapter({
+            storage: adapters.storage,
+            profileRepo,
+            settings
+          }),
           extractTokens: async (page) =>
             createTokenExtractor({
               fetchHtml: async () => page.content?.() ?? '',

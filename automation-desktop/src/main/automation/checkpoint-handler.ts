@@ -46,7 +46,23 @@ export async function detectLoginState(page: PageLike): Promise<LoginState> {
   if (
     (await locatorCount(
       page,
-      '[role="navigation"], [aria-label="Facebook"], [data-testid="logged-in"]'
+      [
+        '[role="navigation"]',
+        '[aria-label*="Facebook"]',
+        '[data-testid="logged-in"]',
+        '[aria-label*="Messenger"]',
+        '[aria-label*="Notifications"]',
+        '[aria-label*="Thông báo"]',
+        '[aria-label*="Menu"]',
+        '[aria-label*="Profile"]',
+        '[aria-label*="Trang cá nhân"]',
+        '[aria-label*="Search Facebook"]',
+        '[aria-label*="Tìm kiếm trên Facebook"]',
+        '[aria-label*="Create"]',
+        '[aria-label*="Tạo"]',
+        'a[href*="/me/"]',
+        'a[href*="profile.php"]'
+      ].join(', ')
     )) > 0
   ) {
     return 'LOGGED_IN'

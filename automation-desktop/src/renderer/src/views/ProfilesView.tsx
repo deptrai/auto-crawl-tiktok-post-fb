@@ -11,6 +11,9 @@ import {
   listProxyAssignments,
   releaseProxyForProfile
 } from '../api/proxy-api'
+import { getSetting, setSetting } from '../api/settings-api'
+
+const AUTOMATION_BROWSER_HEADLESS_SETTING = 'automation_browser_headless'
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   idle: { label: 'Nhàn rỗi', className: 'status-idle' },
@@ -38,6 +41,9 @@ interface AutomationRowStatus {
   jobId: string
   state: string
   outcome?: string
+  target?: string
+  reason?: string
+  message?: string
 }
 
 function getStatusBadge(status: string): { label: string; className: string } {
@@ -63,6 +69,8 @@ export function ProfilesView(): React.JSX.Element {
   const [proxyBusyId, setProxyBusyId] = useState<string | null>(null)
   const [proxyError, setProxyError] = useState<string | null>(null)
   const [automationTarget, setAutomationTarget] = useState('')
+  const [automationBrowserHeadless, setAutomationBrowserHeadless] = useState(false)
+  const [automationBrowserModeSaving, setAutomationBrowserModeSaving] = useState(false)
   const [automationBusyId, setAutomationBusyId] = useState<string | null>(null)
   const [automationStatuses, setAutomationStatuses] = useState<Record<string, AutomationRowStatus>>(
     {}
@@ -140,6 +148,35 @@ export function ProfilesView(): React.JSX.Element {
       window.clearInterval(interval)
     }
   }, [refreshProfiles])
+
+  useEffect(() => {
+    let cancelled = false
+    void getSetting(AUTOMATION_BROWSER_HEADLESS_SETTING)
+      .then((value) => {
+        if (!cancelled) setAutomationBrowserHeadless(value === 'true')
+      })
+      .catch(() => undefined)
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function handleAutomationBrowserModeChange(nextHeadless: boolean): Promise<void> {
+    if (automationBrowserModeSaving) return
+    const previous = automationBrowserHeadless
+    setAutomationBrowserHeadless(nextHeadless)
+    setAutomationBrowserModeSaving(true)
+    setAutomationError(null)
+    try {
+      await setSetting(AUTOMATION_BROWSER_HEADLESS_SETTING, String(nextHeadless))
+    } catch (err) {
+      setAutomationBrowserHeadless(previous)
+      setAutomationError(err instanceof Error ? err.message : 'Không thể lưu chế độ trình duyệt.')
+    } finally {
+      setAutomationBrowserModeSaving(false)
+    }
+  }
 
   async function handleImport(): Promise<void> {
     if (!text.trim() || importing) return
@@ -279,7 +316,14 @@ export function ProfilesView(): React.JSX.Element {
             if (cancelled) return
             setAutomationStatuses((current) => ({
               ...current,
-              [profileId]: { jobId: status.jobId, state: next.state, outcome: next.outcome }
+              [profileId]: {
+                jobId: status.jobId,
+                state: next.state,
+                outcome: next.outcome,
+                target: next.target,
+                reason: next.reason,
+                message: next.message
+              }
             }))
           })
           .catch((err) => {
@@ -449,6 +493,19 @@ export function ProfilesView(): React.JSX.Element {
             <p className="profiles-list-subtitle">
               Nếu bỏ trống, app sẽ thử vào profile feed của tài khoản và dùng selector tạm.
             </p>
+            <label className="automation-browser-mode-toggle" htmlFor="automation-browser-headless">
+              <input
+                id="automation-browser-headless"
+                data-testid="automation-browser-headless-toggle"
+                type="checkbox"
+                checked={automationBrowserHeadless}
+                disabled={automationBrowserModeSaving || Boolean(automationBusyId)}
+                onChange={(e) => {
+                  void handleAutomationBrowserModeChange(e.target.checked)
+                }}
+              />
+              <span>Chạy ẩn trình duyệt</span>
+            </label>
           </div>
         ) : null}
 
@@ -640,6 +697,15 @@ export function ProfilesView(): React.JSX.Element {
                       Job {automationStatus.jobId}:{' '}
                       {AUTOMATION_STATE_LABELS[automationStatus.state] ?? automationStatus.state}
                       {automationStatus.outcome ? ` · ${automationStatus.outcome}` : ''}
+                      {automationStatus.message ? ` · ${automationStatus.message}` : ''}
+                      {automationStatus.target ? (
+                        <>
+                          {' · Post: '}
+                          <a href={automationStatus.target} target="_blank" rel="noreferrer">
+                            {automationStatus.target}
+                          </a>
+                        </>
+                      ) : null}
                     </p>
                   ) : null}
                   {proxyError ? (

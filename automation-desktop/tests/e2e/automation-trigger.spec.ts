@@ -69,7 +69,7 @@ async function launchWithActiveLicense(
   })
 }
 
-test('[P0] profile row triggers self-comment and polls status without exposing secrets', async () => {
+test('[P0] profile row triggers self-comment and reports stub mode as non-success without exposing secrets', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'phase3-automation-trigger-'))
   const license = await startLicenseServer()
   let app: ElectronApplication | null = null
@@ -90,16 +90,27 @@ test('[P0] profile row triggers self-comment and polls status without exposing s
     await window.getByTestId('import-button').click()
     await expect(window.getByTestId('profile-row-uid_auto_1')).toBeVisible({ timeout: 10_000 })
 
+    await expect(window.getByTestId('automation-browser-headless-toggle')).not.toBeChecked()
+    await window.getByTestId('automation-browser-headless-toggle').check()
+    await expect
+      .poll(() =>
+        window.evaluate(() =>
+          window.api.ipc.call('phase3:settings:get', { key: 'automation_browser_headless' })
+        )
+      )
+      .toEqual({ ok: true, value: 'true' })
+
     await window.getByTestId('automation-target-input').fill('https://www.facebook.com/me/posts/1')
     await window.getByTestId('profile-self-comment-uid_auto_1').click()
     await expect(window.getByTestId('profile-automation-status-uid_auto_1')).toContainText(
-      'Hoàn tất',
+      'Thất bại',
       {
         timeout: 10_000
       }
     )
+    await expect(window.getByTestId('profile-automation-status-uid_auto_1')).toContainText('error')
     await expect(window.getByTestId('profile-automation-status-uid_auto_1')).toContainText(
-      'success'
+      'Đang chạy chế độ mô phỏng nên chưa bình luận thật lên Facebook.'
     )
     await expect(window.getByTestId('profiles-list-section')).not.toContainText('pass-secret')
     await expect(window.getByTestId('profiles-list-section')).not.toContainText('seed-secret')

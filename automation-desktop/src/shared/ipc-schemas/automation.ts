@@ -31,7 +31,10 @@ export const AutomationStartSuccessResponseSchema = z.object({
 export const AutomationStatusSuccessResponseSchema = z.object({
   ok: z.literal(true),
   state: z.enum(AUTOMATION_JOB_STATES),
-  outcome: z.string().min(1).optional()
+  outcome: z.string().min(1).optional(),
+  target: z.string().min(1).optional(),
+  reason: z.string().min(1).optional(),
+  message: z.string().min(1).optional()
 })
 
 export const AutomationStartResponseSchema = z.union([

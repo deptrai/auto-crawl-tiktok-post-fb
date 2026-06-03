@@ -4,6 +4,9 @@ import type { AutomationJobState } from '../../../shared/types/automation-job'
 export interface AutomationStatusView {
   state: AutomationJobState
   outcome?: string
+  target?: string
+  reason?: string
+  message?: string
 }
 
 function assertOk<T extends { ok: boolean; error?: { message: string } }>(
@@ -32,5 +35,11 @@ export async function getAutomationStatus(jobId: string): Promise<AutomationStat
     AutomationStatusResponse
   >('phase3:automation:status', { jobId })
   assertOk(response)
-  return { state: response.state, outcome: response.outcome }
+  return {
+    state: response.state,
+    outcome: response.outcome,
+    target: response.target,
+    reason: response.reason,
+    message: response.message
+  }
 }

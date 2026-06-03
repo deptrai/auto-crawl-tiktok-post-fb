@@ -11,6 +11,8 @@ async function withMockServer(run: (baseUrl: string) => Promise<void>): Promise<
       ? 'two-fa.html'
       : path.includes('checkpoint')
         ? 'checkpoint.html'
+        : path.includes('mobile-logged-in')
+          ? 'mobile-logged-in.html'
         : 'logged-in.html'
     res.setHeader('content-type', 'text/html; charset=utf-8')
     res.end(readFileSync(join(process.cwd(), 'tests/fixtures/fb-mock', fileName), 'utf8'))
@@ -32,6 +34,9 @@ test('[P1] real Chromium detects login, 2FA, and checkpoint against local Facebo
     const page = await browser.newPage()
     try {
       await page.goto(`${baseUrl}/logged-in`, { timeout: 10_000 })
+      await expect.poll(() => detectLoginState(page)).toBe('LOGGED_IN')
+
+      await page.goto(`${baseUrl}/mobile-logged-in`, { timeout: 10_000 })
       await expect.poll(() => detectLoginState(page)).toBe('LOGGED_IN')
 
       await page.goto(`${baseUrl}/two-fa`, { timeout: 10_000 })

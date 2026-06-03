@@ -26,6 +26,9 @@ export type LicensePushApi = {
 export type DesktopApi = {
   ipc: IpcBridge
   license: LicensePushApi
+  localDefaults: {
+    licenseKey: string
+  }
 }
 
 const electronApi: DesktopElectronApi = {
@@ -80,6 +83,10 @@ const api: DesktopApi = {
         ipcRenderer.removeListener(LICENSE_CHANGED_CHANNEL, listener)
       }
     }
+  },
+  localDefaults: {
+    // Local preview/dev convenience only. Packaged builds do not set this env var.
+    licenseKey: process.env['PHASE3_DEFAULT_LICENSE_KEY'] ?? ''
   }
 }
 

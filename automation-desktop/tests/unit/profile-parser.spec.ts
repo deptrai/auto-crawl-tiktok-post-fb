@@ -50,6 +50,25 @@ test('[P1] parser handles external 7-field line with email before cookie', () =>
   expect(p.userAgent).toBe(userAgent)
 })
 
+test('[P1] parser handles external 7-field line with profile URL before cookie', () => {
+  const cookie = 'c_user=1000; xs=session-value; datr=datr-value'
+  const userAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'
+  const { parsed, errors } = parseBulkProfiles(
+    `uid-ext|fb-pass|https://facebook.com/uid-ext|mail-pass|${cookie}|token-value|${userAgent}`
+  )
+
+  expect(errors).toHaveLength(0)
+  expect(parsed).toHaveLength(1)
+  const p = parsed[0]
+  expect(p.uid).toBe('uid-ext')
+  expect(p.hotmail).toBe('https://facebook.com/uid-ext')
+  expect(p.passmail).toBe('mail-pass')
+  expect(p.cookie).toBe(cookie)
+  expect(p.token).toBe('token-value')
+  expect(p.userAgent).toBe(userAgent)
+})
+
 test('[P1] parser skips empty lines and comment lines', () => {
   const text = [
     '# This is a comment',

@@ -26,6 +26,10 @@ export class ElectronSafeStorage implements SecureStorage {
     }
   }
 
+  hasEncryptedKey(key: string): boolean {
+    return this.readStore()[key] !== undefined
+  }
+
   async set(key: string, value: string): Promise<void> {
     if (!safeStorage.isEncryptionAvailable()) {
       throw new Error('Không thể mã hóa dữ liệu license trên máy này.')

@@ -16,7 +16,7 @@ class FakeIpcMain {
   }
 }
 
-function job(id: string, state: AutomationJobState): AutomationJob {
+function job(id: string, state: AutomationJobState, result: string | null = null): AutomationJob {
   return {
     id,
     profileId: 'profile-1',
@@ -24,7 +24,7 @@ function job(id: string, state: AutomationJobState): AutomationJob {
     state,
     startedAt: '2026-06-03T00:00:00.000Z',
     completedAt: null,
-    result: null
+    result
   }
 }
 
@@ -70,15 +70,68 @@ test('[P0] automation status returns state and latest outcome without secrets', 
     stateMachine: { createJob: (input) => job(input.id, 'PENDING') },
     jobRepo: { getJob: () => job('job-1', 'DONE') },
     jobActions: {
-      getLatestByJob: () => ({ outcome: 'success', executedAt: '2026-06-03T00:00:01.000Z' })
+      getLatestByJob: () => ({
+        outcome: 'success',
+        executedAt: '2026-06-03T00:00:01.000Z',
+        target: 'https://www.facebook.com/me/posts/1'
+      })
     },
     orchestrator: { runSelfComment: async () => ({ outcome: 'success' }) }
   })
 
   const response = await ipc.invoke('phase3:automation:status', { jobId: 'job-1' })
 
-  expect(response).toEqual({ ok: true, state: 'DONE', outcome: 'success' })
+  expect(response).toEqual({
+    ok: true,
+    state: 'DONE',
+    outcome: 'success',
+    target: 'https://www.facebook.com/me/posts/1'
+  })
   expect(JSON.stringify(response)).not.toMatch(/cookie|token|JWT|fb_dtsg|secret/i)
+})
+
+test('[P1] automation status returns safe terminal reason message from job result', async () => {
+  const ipc = new FakeIpcMain()
+  registerAutomationHandlers(ipc, {
+    stateMachine: { createJob: (input) => job(input.id, 'PENDING') },
+    jobRepo: {
+      getJob: () => job('job-1', 'FAILED', '{"outcome":"error","reason":"COOKIE_PARSE_FAILED"}')
+    },
+    orchestrator: { runSelfComment: async () => ({ outcome: 'error' }) }
+  })
+
+  const response = await ipc.invoke('phase3:automation:status', { jobId: 'job-1' })
+
+  expect(response).toEqual({
+    ok: true,
+    state: 'FAILED',
+    outcome: 'error',
+    reason: 'COOKIE_PARSE_FAILED',
+    message: 'Cookie đã lưu không đúng định dạng name=value. Hãy import lại đúng format.'
+  })
+  expect(JSON.stringify(response)).not.toMatch(/xs=|c_user=|token|JWT|fb_dtsg|secret/i)
+})
+
+test('[P1] automation status explains cookie decrypt failures without secrets', async () => {
+  const ipc = new FakeIpcMain()
+  registerAutomationHandlers(ipc, {
+    stateMachine: { createJob: (input) => job(input.id, 'PENDING') },
+    jobRepo: {
+      getJob: () => job('job-1', 'FAILED', '{"outcome":"error","reason":"COOKIE_DECRYPT_FAILED"}')
+    },
+    orchestrator: { runSelfComment: async () => ({ outcome: 'error' }) }
+  })
+
+  const response = await ipc.invoke('phase3:automation:status', { jobId: 'job-1' })
+
+  expect(response).toEqual({
+    ok: true,
+    state: 'FAILED',
+    outcome: 'error',
+    reason: 'COOKIE_DECRYPT_FAILED',
+    message: 'Cookie đã lưu nhưng không giải mã được. Hãy xóa profile này rồi import lại profile.'
+  })
+  expect(JSON.stringify(response)).not.toMatch(/xs=|c_user=|token|JWT|fb_dtsg|secret/i)
 })
 
 test('[P1] automation status maps missing job to non-retryable ErrorEnvelope', async () => {

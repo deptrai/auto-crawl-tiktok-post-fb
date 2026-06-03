@@ -165,6 +165,28 @@ test('[P1] importBulk accepts external email-passmail-cookie-token-userAgent for
   expect(JSON.stringify(result)).not.toContain('token-value')
 })
 
+test('[P1] importBulk accepts external profile-url-passmail-cookie-token-userAgent format', async () => {
+  const storage = createMemoryStorage()
+  const repo = createMemoryRepo()
+  const service = createProfileService({ storage, repo })
+  const cookie = 'c_user=100024652313185; xs=session-value; datr=datr-value'
+  const userAgent =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/139.0.0.0 Safari/537.36'
+
+  const result = await service.importBulk(
+    `100024652313185|fb-pass|https://facebook.com/100024652313185|mail-pass|${cookie}|token-value|${userAgent}`
+  )
+
+  expect(result.imported).toBe(1)
+  expect(result.failed).toHaveLength(0)
+  const id = result.profiles[0].id
+  expect(await storage.get(`profile.${id}.cookie`)).toBe(cookie)
+  expect(repo.metadata.get(`${id}:email`)).toBe('https://facebook.com/100024652313185')
+  expect(repo.metadata.get(`${id}:token`)).toBe('token-value')
+  expect(repo.metadata.get(`${id}:user_agent`)).toBe(userAgent)
+  expect(JSON.stringify(result)).not.toContain('session-value')
+})
+
 test('[P1] importBulk skips duplicate uid in same batch', async () => {
   const storage = createMemoryStorage()
   const repo = createMemoryRepo()

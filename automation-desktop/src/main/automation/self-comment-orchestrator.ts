@@ -7,6 +7,7 @@ import type { AutomationStateMachine } from './state-machine'
 import { executeSelfComment, type ActionOutcome, type CommentPageLike } from './action-executor'
 
 const DEFAULT_OWN_FEED_URL = 'https://www.facebook.com/me'
+const TARGET_POST_NOT_FOUND = 'TARGET_POST_NOT_FOUND'
 
 export interface SelfCommentSession {
   page: CommentPageLike & {
@@ -30,8 +31,9 @@ export type SelfCommentLoginResult =
       ok: true
       state: 'CHECKPOINT' | 'TWO_FA_REQUIRED' | 'LOGIN_FAILED'
       session?: SelfCommentSession
+      reason?: string
     }
-  | { ok: false; code: 'LOGIN_FAILED'; session?: SelfCommentSession }
+  | { ok: false; code: 'LOGIN_FAILED'; session?: SelfCommentSession; reason?: string }
 
 export interface SelfCommentOrchestratorDeps {
   stateMachine: Pick<AutomationStateMachine, 'transition'>
@@ -61,14 +63,19 @@ export interface SelfCommentOrchestrator {
 function transition(
   deps: SelfCommentOrchestratorDeps,
   jobId: string,
-  to: AutomationJobState
+  to: AutomationJobState,
+  options?: { result?: string | null }
 ): boolean {
-  const result = deps.stateMachine.transition(jobId, to)
+  const result = deps.stateMachine.transition(jobId, to, options)
   if (!result.ok) {
     deps.onTransitionError?.(jobId, to, result.code)
     return false
   }
   return true
+}
+
+function safeResult(outcome: ActionOutcome, reason?: string): string {
+  return JSON.stringify(reason ? { outcome, reason } : { outcome })
 }
 
 function record(
@@ -123,13 +130,17 @@ export function createSelfCommentOrchestrator(
         const loginResult = await deps.login(jobId, profileId)
         session = loginResult.session
         if (!loginResult.ok || loginResult.state === 'LOGIN_FAILED') {
-          transition(deps, jobId, 'FAILED')
+          transition(deps, jobId, 'FAILED', {
+            result: safeResult('error', loginResult.reason ?? 'LOGIN_FAILED')
+          })
           record(deps, jobId, 'error', null, explicitTarget ?? DEFAULT_OWN_FEED_URL)
           emit(deps, 'error', startedMs)
           return { outcome: 'error' }
         }
         if (loginResult.state === 'CHECKPOINT' || loginResult.state === 'TWO_FA_REQUIRED') {
-          transition(deps, jobId, 'CHECKPOINT_BLOCKED')
+          transition(deps, jobId, 'CHECKPOINT_BLOCKED', {
+            result: safeResult('checkpoint', loginResult.reason ?? loginResult.state)
+          })
           record(deps, jobId, 'checkpoint', null, explicitTarget ?? DEFAULT_OWN_FEED_URL)
           emit(deps, 'checkpoint', startedMs)
           return { outcome: 'checkpoint' }
@@ -146,7 +157,7 @@ export function createSelfCommentOrchestrator(
 
         const template = deps.contentTemplates.getRandomTemplate(deps.rng)
         if (!template) {
-          transition(deps, jobId, 'FAILED')
+          transition(deps, jobId, 'FAILED', { result: safeResult('error', 'TEMPLATE_MISSING') })
           record(deps, jobId, 'error', null, explicitTarget ?? DEFAULT_OWN_FEED_URL)
           emit(deps, 'error', startedMs)
           return { outcome: 'error' }
@@ -156,13 +167,21 @@ export function createSelfCommentOrchestrator(
         // 1. Use explicit target URL if provided.
         // 2. Otherwise navigate to own feed and attempt to find the first post URL via
         //    bundled selector (⚠️ fragile — Epic 5 will replace with 4-tier own-post finder).
-        // 3. Fall back to own feed if no post URL found.
+        // 3. Fail closed if no post URL is found. /me is a feed, not proof of a target post.
         if (explicitTarget) {
           target = explicitTarget
         } else {
           await navigateToTarget(deps, activeSession.page, DEFAULT_OWN_FEED_URL)
           const resolved = await deps.resolveOwnPostTarget?.(activeSession.page)
-          target = resolved ?? DEFAULT_OWN_FEED_URL
+          if (!resolved) {
+            transition(deps, jobId, 'FAILED', {
+              result: safeResult('selector_miss', TARGET_POST_NOT_FOUND)
+            })
+            record(deps, jobId, 'selector_miss', null, null)
+            emit(deps, 'selector_miss', startedMs)
+            return { outcome: 'selector_miss' }
+          }
+          target = resolved
         }
 
         actionToken = await deps.actionTokenClient.requestActionToken({ actionType: 'comment' })
@@ -175,10 +194,14 @@ export function createSelfCommentOrchestrator(
         await deps.actionTokenClient.consumeActionToken(actionToken.token).catch(() => undefined)
         record(deps, jobId, outcome, actionToken, target)
         emit(deps, outcome, startedMs)
-        transition(deps, jobId, outcome === 'success' ? 'DONE' : 'FAILED')
+        transition(deps, jobId, outcome === 'success' ? 'DONE' : 'FAILED', {
+          result: safeResult(outcome, outcome === 'success' ? undefined : 'ACTION_EXECUTION_FAILED')
+        })
         return { outcome }
       } catch {
-        transition(deps, jobId, 'FAILED')
+        transition(deps, jobId, 'FAILED', {
+          result: safeResult('error', actionToken ? 'ACTION_EXECUTION_FAILED' : 'AUTOMATION_FAILED')
+        })
         record(deps, jobId, 'error', actionToken, target)
         emit(deps, 'error', startedMs)
         return { outcome: 'error' }
