@@ -1,0 +1,1453 @@
+diff --git a/_bmad-output/implementation-artifacts/ux-2-1-trust-feedback-polish.md b/_bmad-output/implementation-artifacts/ux-2-1-trust-feedback-polish.md
+new file mode 100644
+index 0000000..f47a8e8
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/ux-2-1-trust-feedback-polish.md
+@@ -0,0 +1,166 @@
++# Story UX-2.1: Hoàn thiện trải nghiệm — Copy, Toast, Onboarding, Đồng nhất & A11y
++
++Status: review
++
++> **Namespace:** Epic 2 của `epics-ux-redesign.md` (Phase B). Prefix `ux-` tránh trùng Phase 3 features. KHÔNG ghi `sprint-status.yaml`. Tiếp nối **Story UX-1.1 (done)**: AppShell/Sidebar/TopBar/StatusCounter/StatusPill/BulkActionBar/DataTable + design tokens đã có.
++
++## Story
++
++As an operator (vận hành nhiều tài khoản Facebook),
++I want copy được mọi dữ liệu, nhận tổng kết rõ sau mỗi batch, được dẫn dắt khi mới vào, và mọi màn hình đồng nhất + dùng được bằng bàn phím,
++so that tôi tin tưởng giao việc cho tool và dùng nó lâu dài không mệt.
++
++## Acceptance Criteria
++
++**AC1 — Copy được dữ liệu (UX-DR9)**
++1. Gỡ `user-select: none` ở `body` (`main.css:9`). Operator bôi đen + copy được UID, proxy `host:port`, job id, error message.
++2. Có thể giữ `user-select: none` cục bộ cho sidebar nav / nút (tránh chọn nhầm khi click nhanh) — KHÔNG để ở `body`.
++3. Không ảnh hưởng drag/click hiện có.
++
++**AC2 — Toast summary sau batch (UX-DR8)**
++1. Tạo component `Toast` (`components/Toast.tsx`) + CSS `.toast` dùng token; `role="status" aria-live="polite"`; variant success/warning/error (border-left màu status); auto-dismiss (~5s) + nút đóng.
++2. **Given** một batch self-comment (Story 1.1) có ≥1 job về terminal state cuối cùng, **Then** hiện Toast "X/N hoàn tất · Y checkpoint · Z lỗi" (đếm từ `automationStatuses` của batch).
++3. Acc lỗi vẫn nổi bật trong table (pill đỏ) — Toast KHÔNG che thông tin lỗi; data-testid `bulk-summary-toast`.
++4. Toast điềm tĩnh (rule calm-on-error) — KHÔNG overlay đỏ toàn màn hình.
++
++**AC3 — Chuẩn hóa Button/Input/Panel (UX-DR11)**
++1. Thống nhất biến thể Button (primary/ghost/icon/danger) dùng `var(--accent)` + focus ring accent 2px; Input/Textarea/Select dùng token; Panel hợp nhất.
++2. Mọi async button disable-on-click (rule #17); giữ `data-testid`.
++
++**AC4 — Áp token cho Templates/Proxy/EULA/License (UX-DR12)**
++1. Gỡ Georgia serif h1 (`main.css:261-263`) → dùng `--fs-display` (Inter). Bỏ `border-radius: 28px`, `radial-gradient` body bg, `backdrop-filter: blur` (glow marketing) ở gate cards (`main.css:41-52`).
++2. EULA + License giữ full màn (ẩn sidebar) nhưng dùng token mới; ContentTemplatesView + ProxyView dùng component chuẩn hóa.
++3. Secret field (license key, API key proxy) vẫn `type="password"` + clear sau dùng (rule #10). Error tiếng Việt (rule #15).
++
++**AC5 — Dashboard EmptyState + onboarding 3 bước (UX-DR10)**
++1. Tạo component `EmptyState` (icon + tiêu đề + mô tả + CTA) dùng token.
++2. Tab Dashboard (hiện là placeholder `dashboard-panel`): khi chưa có profile/proxy → onboarding 3 bước (① Cấu hình proxy → ② Import profile → ③ Chạy self-comment), mỗi bước có CTA `onNavigate` tới tab tương ứng.
++3. Khi đã có dữ liệu → Dashboard hiện tổng quan ngắn (StatusCounter + license). EmptyState tái dùng cho list rỗng (profiles/templates) thay text thô hiện tại.
++
++**AC6 — Responsive desktop (UX-DR13)**
++1. Breakpoint `1200px` → sidebar icon-only (~64px); `900px` → sidebar collapse (toggle) + table scroll ngang + bulk bar wrap.
++2. BrowserWindow đặt `minWidth ~880px` (main process window config).
++3. Bỏ breakpoint mobile `620px` cũ (`main.css:1027+`). E2E resize 1280/1024/900px pass.
++
++**AC7 — Accessibility WCAG 2.1 AA (UX-DR14) + các mục defer từ review UX-1.1**
++1. Keyboard nav đầy đủ (tab/enter/space, chọn row bằng phím), focus ring accent 2px rõ ở mọi control.
++2. `StatusPill`: thêm `role="img"` + `aria-label` (vd "Trạng thái: Đang chạy") — hiện chỉ có `title`.
++3. `StatusCounter`: giảm noise screen reader — bỏ `aria-live` ở container đọc cả 4 mục mỗi poll, hoặc `aria-label` tổng hợp ngắn / chỉ announce khi đổi (hiện `aria-live="polite"` đọc lại toàn bộ mỗi 5s).
++4. `BulkActionBar` template `<select>`: chuyển sang controlled (`value` + `onChange` state) thay `defaultValue` (uncontrolled); cân nhắc lift/cache `listContentTemplates` để không refetch mỗi lần remount.
++5. `Sidebar` `licenseText`: fallback khi license inactive KHÔNG hiển thị "License active" sai (vd "License" / trạng thái thực).
++6. `bulk-target-input`: thêm `autoComplete="off"` (cân nhắc `type="url"`); target whitespace-only → cảnh báo hoặc indicator thay vì im lặng fallback feed.
++7. `proxyError` chỉ hiện ở đúng row lỗi (`proxyBusyId === profile.id`), không hiện mọi row.
++8. `automationError`: cân nhắc tách state per-row vs bulk để không đè lỗi lẫn nhau.
++9. `.data-table td` đổi `vertical-align: top` → `middle` (lệch khi cell delete-confirm cao).
++10. `offlineGrace` dead prop ở AppShell: dùng hoặc gỡ.
++11. Status phân biệt bằng dot + label (không chỉ màu — color-blind). Contrast AA.
++
++**AC8 — Chất lượng**
++1. `npm run lint` 0 errors (kể cả test), `npm run typecheck` 0 errors.
++2. E2E hiện có còn xanh; thêm test: copy được (chọn text), Toast hiện sau bulk, **`profiles-select-all` checkbox** (defer từ review UX-1.1), resize breakpoints.
++3. Renderer KHÔNG import `electron` (R-D16); plain CSS, KHÔNG thêm dependency.
++
++## Tasks / Subtasks
++
++- [x] **Task 1 — Copy (AC1)**: gỡ `user-select:none` body; khoanh vùng cục bộ nếu cần.
++- [x] **Task 2 — Toast (AC2)**: `components/Toast.tsx` + CSS; tính summary từ batch `automationStatuses`; gắn vào ProfilesView sau khi batch terminal.
++- [x] **Task 3 — Chuẩn hóa Button/Input/Panel (AC3)**: gom class + token.
++- [x] **Task 4 — Token cho gate + Templates/Proxy (AC4)**: bỏ Georgia/glow/radius 28; áp token; giữ password fields.
++- [x] **Task 5 — Dashboard onboarding + EmptyState (AC5)**: `components/EmptyState.tsx`; Dashboard có/chưa-có-dữ-liệu; tái dùng cho list rỗng.
++- [x] **Task 6 — Responsive (AC6)**: breakpoint 1200/900; minWidth window; bỏ 620px.
++- [x] **Task 7 — A11y + review defers (AC7)**: StatusPill aria, StatusCounter noise, template controlled, Sidebar license text, proxyError per-row, automationError tách, vertical-align, offlineGrace prop, target validation, keyboard/focus.
++- [x] **Task 8 — Chất lượng (AC8)**: lint/typecheck/E2E + test mới (copy, toast, select-all, resize).
++
++## Dev Notes
++
++### Trạng thái hiện tại đã verify (đọc code post-UX-1.1)
++
++| Điểm | Vị trí | Việc |
++|------|--------|------|
++| `user-select: none` | `main.css:9` (body) | gỡ |
++| Georgia serif h1 | `main.css:261-263` | → `--fs-display` Inter |
++| Gate card glow | `main.css:41-52` (radius 28, radial-gradient body, backdrop blur) | bỏ glow, dùng token |
++| `.data-table td vertical-align: top` | `main.css:719` | → `middle` |
++| breakpoint mobile 620px | `main.css:1027+` | bỏ, thay 1200/900 |
++| `dashboard-panel`/`settings-panel` | placeholder (`App.tsx:39-60`, `main.css:244`) | Dashboard → onboarding thật |
++| Chưa có `.toast`/`.empty-state` | — | tạo mới |
++| 102 `var(--)` đã dùng | console part tokenized | mở rộng sang gate/views |
++
++### Component đã có (Story 1.1) — mở rộng, KHÔNG viết lại
++
++- `StatusPill.tsx`: thêm `role="img"`+`aria-label` (AC7.2).
++- `StatusCounter.tsx`: sửa `aria-live` noise (AC7.3).
++- `BulkActionBar.tsx`: template `<select>` `defaultValue`→controlled; `listContentTemplates` đang fetch mỗi mount (AC7.4); `bulk-target-input` thêm `autoComplete` (AC7.6).
++- `Sidebar.tsx`: `licenseText` fallback inactive (AC7.5).
++- `AppShell.tsx`: `offlineGrace` prop dead — dùng/gỡ (AC7.10).
++- `ProfilesView.tsx`: `proxyError` render mọi row (line ~743) → per-row (AC7.7); `automationError` chung state (AC7.8); target trim im lặng (AC7.6); batch summary feed Toast (AC2).
++
++### Việc PHẢI giữ (regression guard)
++
++- Mọi `data-testid` hiện có (cả Story 1.1 mới: `bulk-action-bar`, `profiles-select-all`, `nav-*`, `license-chip`, `topbar-status-counter`...).
++- Pattern disable-on-click (#17), loading-shell riêng (#16), error tiếng Việt (#15), không import electron (R-D16).
++- Gate flow (EULA→License→ready) + `activeView` routing + keep-mounted ProfilesView (đã thêm ở review UX-1.1) — không phá.
++- Bulk run logic đã sửa ở review (per-job commit + retry) — không hồi quy.
++
++### Ràng buộc
++
++Plain CSS, không thêm dependency. Token đã có ở `base.css :root` (accent `#6c7cff`). Tham chiếu visual: `ux-design-directions.html`. Lock tiếng Việt (NFR28).
++
++### References
++
++- [Source: _bmad-output/planning-artifacts/ux-design-specification.md] — §Visual Foundation, §Component Strategy, §UX Patterns, §Responsive & A11y
++- [Source: _bmad-output/planning-artifacts/epics-ux-redesign.md#Story 2.1]
++- [Source: _bmad-output/implementation-artifacts/deferred-work.md] — mục "code review of story ux-1-1" (12 defer gộp vào AC7)
++- [Source: _bmad-output/implementation-artifacts/ux-1-1-operator-console-bulk-run.md] — story trước (done) + Review Findings
++- [Source: automation-desktop/CLAUDE.md] — rule #15/#16/#17/#20, R-D16
++- [Source: automation-desktop/src/renderer/src/assets/main.css] — line refs ở trên
++- [Source: automation-desktop/src/renderer/src/components/*.tsx] — component cần mở rộng
++
++## Dev Agent Record
++
++### Agent Model Used
++
++GPT-5 Codex
++
++### Debug Log References
++
++- 2026-06-04: Started implementation from explicit story path. Per story namespace note, sprint-status.yaml is not updated for this UX story.
++- 2026-06-04: RED phase `npx playwright test tests/e2e/profiles.spec.ts -g "UX polish" ...` failed as expected on body `user-select: none` / missing UX polish behavior.
++- 2026-06-04: `npm run build` passed; build includes `npm run typecheck` for node and web.
++- 2026-06-04: Targeted GREEN `npx playwright test tests/e2e/profiles.spec.ts -g "UX polish" --reporter=line` passed: 1 passed.
++- 2026-06-04: Targeted integration `npx playwright test tests/integration/security-baseline.spec.ts --reporter=line` passed: 4 passed.
++- 2026-06-04: `npm run lint` passed with 0 errors; one existing warning remains in `src/main/adapters/electron-bootstrap.ts` for `phase3-security/no-direct-logger`.
++- 2026-06-04: `npm run test:e2e` passed: 23 passed.
++- 2026-06-04: Full regression `npx playwright test tests/unit tests/integration tests/e2e --reporter=line` passed: 250 passed.
++- 2026-06-04: Renderer Electron import check returned no matches for `src/renderer/src`.
++
++### Completion Notes List
++
++- Enabled operator copy/select by removing body-level `user-select: none` while keeping no-select behavior scoped to controls/navigation.
++- Added `Toast` batch summary for bulk self-comment terminal states with calm success/warning/error styling, `role="status"`, auto-dismiss, and `bulk-summary-toast` coverage.
++- Standardized token use across gate cards, inputs, textareas, buttons, focus rings, panels, Templates, Proxy, EULA/License surfaces, and removed Georgia/glow/radius-28/mobile-marketing styling.
++- Added reusable `EmptyState` and replaced placeholder Dashboard with 3-step onboarding CTAs; reused EmptyState for Profiles/Templates empty lists.
++- Added responsive desktop behavior: 1200px icon-only sidebar, 900px sidebar toggle/table horizontal scroll/bulk bar wrap, and BrowserWindow `minWidth` guard.
++- Closed UX-1.1 deferred a11y/polish items: StatusPill aria, quieter StatusCounter aria label, controlled bulk template select, safer license fallback, target whitespace warning, per-row proxy/automation errors, middle-aligned table cells, and keyboard/focus coverage.
++- Added E2E coverage for copy/select behavior, Dashboard onboarding, select-all checkbox, bulk summary toast, a11y attrs, and resize breakpoints; added integration assertion for BrowserWindow minWidth.
++
++### File List
++
++- `automation-desktop/src/main/adapters/electron-security-baseline.ts`
++- `automation-desktop/src/renderer/src/App.tsx`
++- `automation-desktop/src/renderer/src/assets/main.css`
++- `automation-desktop/src/renderer/src/components/AppShell.tsx`
++- `automation-desktop/src/renderer/src/components/BulkActionBar.tsx`
++- `automation-desktop/src/renderer/src/components/EmptyState.tsx`
++- `automation-desktop/src/renderer/src/components/Sidebar.tsx`
++- `automation-desktop/src/renderer/src/components/StatusCounter.tsx`
++- `automation-desktop/src/renderer/src/components/StatusPill.tsx`
++- `automation-desktop/src/renderer/src/components/Toast.tsx`
++- `automation-desktop/src/renderer/src/views/ContentTemplatesView.tsx`
++- `automation-desktop/src/renderer/src/views/ProfilesView.tsx`
++- `automation-desktop/tests/e2e/profiles.spec.ts`
++- `automation-desktop/tests/integration/security-baseline.spec.ts`
++
++## Change Log
++
++- 2026-06-04: Implemented UX-2.1 trust/feedback polish: copyable data, batch toast summary, tokenized controls/gates/views, Dashboard onboarding, reusable EmptyState, responsive sidebar/table/bulk layout, a11y/deferred UX-1.1 fixes, BrowserWindow minWidth, and regression coverage.
+diff --git a/automation-desktop/src/main/adapters/electron-security-baseline.ts b/automation-desktop/src/main/adapters/electron-security-baseline.ts
+index 50a9baa..91d0d2c 100644
+--- a/automation-desktop/src/main/adapters/electron-security-baseline.ts
++++ b/automation-desktop/src/main/adapters/electron-security-baseline.ts
+@@ -10,6 +10,7 @@ const DEV_CSP_VALUE =
+ export function buildMainWindowOptions(): BrowserWindowConstructorOptions {
+   return {
+     width: 900,
++    minWidth: 880,
+     height: 670,
+     show: false,
+     autoHideMenuBar: true,
+diff --git a/automation-desktop/src/renderer/src/App.tsx b/automation-desktop/src/renderer/src/App.tsx
+index 8b09772..08e5a0a 100644
+--- a/automation-desktop/src/renderer/src/App.tsx
++++ b/automation-desktop/src/renderer/src/App.tsx
+@@ -9,6 +9,8 @@ import { ContentTemplatesView } from './views/ContentTemplatesView'
+ import { ProfilesView } from './views/ProfilesView'
+ import { ProxyView } from './views/ProxyView'
+ import { AppShell } from './components/AppShell'
++import { EmptyState } from './components/EmptyState'
++import { StatusCounter } from './components/StatusCounter'
+ import type { ConsoleView } from './components/Sidebar'
+ import type { StatusCounts } from './components/StatusCounter'
+ 
+@@ -39,13 +41,54 @@ function MainShell({
+   // mounted liên tục (ẩn bằng `hidden`) để job polling + selection không mất khi đổi tab.
+   function renderSecondaryView(): React.JSX.Element | null {
+     if (activeView === 'dashboard') {
++      const totalProfiles = Object.values(profileCounts).reduce((sum, value) => sum + value, 0)
++
+       return (
+         <section className="dashboard-panel" data-testid="dashboard-view">
+-          <p className="eyebrow">Tổng quan</p>
+-          <h2>Đội tài khoản</h2>
+-          <p className="profiles-list-subtitle">
+-            Chọn tab Profiles để import, gán proxy và chạy self-comment hàng loạt.
+-          </p>
++          {totalProfiles === 0 ? (
++            <div className="dashboard-onboarding" data-testid="dashboard-onboarding">
++              <EmptyState
++                icon="①"
++                title="Cấu hình proxy"
++                description="Lưu API key proxyfb trước để mỗi profile có proxy riêng khi chạy."
++                testId="dashboard-step-proxy"
++                action={{
++                  label: 'Mở Proxy',
++                  testId: 'dashboard-proxy-cta',
++                  onClick: () => setActiveView('proxy')
++                }}
++              />
++              <EmptyState
++                icon="②"
++                title="Import profile"
++                description="Dán danh sách profile hoặc JSON cookie export để tạo đội tài khoản."
++                testId="dashboard-step-import"
++                action={{
++                  label: 'Mở Profiles',
++                  testId: 'dashboard-import-cta',
++                  onClick: () => setActiveView('profiles')
++                }}
++              />
++              <EmptyState
++                icon="③"
++                title="Chạy self-comment"
++                description="Chọn nhiều profile, nhập URL post đích rồi chạy batch có theo dõi trạng thái."
++                testId="dashboard-step-run"
++              />
++            </div>
++          ) : (
++            <div className="dashboard-summary" data-testid="dashboard-summary">
++              <p className="eyebrow">Tổng quan</p>
++              <h2>Đội tài khoản</h2>
++              <StatusCounter counts={profileCounts} />
++              <p className="profiles-list-subtitle">
++                License:{' '}
++                {licenseStatus?.active
++                  ? `còn ${licenseStatus.daysRemaining ?? 0} ngày`
++                  : 'chưa kích hoạt'}
++              </p>
++            </div>
++          )}
+         </section>
+       )
+     }
+diff --git a/automation-desktop/src/renderer/src/assets/main.css b/automation-desktop/src/renderer/src/assets/main.css
+index 7d91c2c..75116e4 100644
+--- a/automation-desktop/src/renderer/src/assets/main.css
++++ b/automation-desktop/src/renderer/src/assets/main.css
+@@ -6,15 +6,22 @@ body {
+   overflow: hidden;
+   color: var(--text);
+   background: var(--bg);
+-  user-select: none;
+   font-size: var(--fs-body);
+ }
+ 
+ button,
+-input {
++input,
++select,
++textarea {
+   font: inherit;
+ }
+ 
++button,
++.nav-item,
++.sidebar-toggle {
++  user-select: none;
++}
++
+ .sr-only {
+   position: absolute;
+   width: 1px;
+@@ -27,10 +34,6 @@ input {
+   border: 0;
+ }
+ 
+-textarea {
+-  font: inherit;
+-}
+-
+ #root {
+   min-height: 100vh;
+   display: block;
+@@ -44,12 +47,11 @@ textarea {
+ .readonly-shell {
+   width: min(780px, 100%);
+   margin: 28px auto;
+-  border: 1px solid rgba(255, 255, 255, 0.18);
+-  border-radius: 28px;
++  border: 1px solid var(--border);
++  border-radius: var(--r-lg);
+   padding: 34px;
+-  background: rgba(16, 18, 20, 0.78);
+-  box-shadow: 0 28px 90px rgba(0, 0, 0, 0.45);
+-  backdrop-filter: blur(18px);
++  background: var(--surface);
++  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.28);
+ }
+ 
+ .readonly-shell {
+@@ -80,6 +82,22 @@ textarea {
+   gap: var(--sp-3);
+ }
+ 
++.sidebar-brand > div {
++  min-width: 0;
++}
++
++.sidebar-toggle {
++  display: none;
++  margin-left: auto;
++  border: 1px solid var(--border);
++  border-radius: var(--r-sm);
++  width: 36px;
++  height: 36px;
++  color: var(--text);
++  background: var(--surface-2);
++  cursor: pointer;
++}
++
+ .sidebar-brand-mark {
+   width: 34px;
+   height: 34px;
+@@ -127,7 +145,8 @@ textarea {
+ .nav-item:focus-visible {
+   color: var(--text);
+   background: var(--surface-2);
+-  outline: none;
++  outline: 2px solid var(--accent);
++  outline-offset: 2px;
+ }
+ 
+ .nav-item[aria-current='page'] {
+@@ -249,6 +268,58 @@ textarea {
+   background: var(--surface);
+ }
+ 
++.dashboard-onboarding {
++  display: grid;
++  grid-template-columns: repeat(3, minmax(0, 1fr));
++  gap: var(--sp-4);
++}
++
++.dashboard-summary {
++  display: grid;
++  gap: var(--sp-3);
++}
++
++.empty-state {
++  display: grid;
++  gap: var(--sp-3);
++  align-content: start;
++  border: 1px solid var(--border);
++  border-radius: var(--r-md);
++  padding: var(--sp-4);
++  color: var(--text);
++  background: var(--surface-2);
++}
++
++.empty-state-icon {
++  display: inline-grid;
++  place-items: center;
++  width: 38px;
++  height: 38px;
++  border: 1px solid rgba(108, 124, 255, 0.42);
++  border-radius: 999px;
++  color: var(--text);
++  background: rgba(108, 124, 255, 0.16);
++  font-weight: 900;
++}
++
++.empty-state h3,
++.empty-state p {
++  margin: 0;
++}
++
++.empty-state h3 {
++  font-size: var(--fs-body);
++}
++
++.empty-state p {
++  color: var(--text-muted);
++  line-height: 1.5;
++}
++
++.empty-state-action {
++  width: max-content;
++}
++
+ .eyebrow {
+   margin: 0 0 10px;
+   color: #ffcc7a;
+@@ -260,15 +331,15 @@ textarea {
+ 
+ h1 {
+   margin: 0;
+-  font-family: Georgia, 'Times New Roman', serif;
+-  font-size: clamp(34px, 7vw, 64px);
+-  line-height: 0.95;
++  font-family: inherit;
++  font-size: var(--fs-display);
++  line-height: 1.15;
+ }
+ 
+ .lead {
+   margin: 18px 0 0;
+-  color: #d8d0c2;
+-  font-size: 18px;
++  color: var(--text-muted);
++  font-size: var(--fs-body);
+   line-height: 1.55;
+ }
+ 
+@@ -286,6 +357,11 @@ h1 {
+   font-weight: 800;
+ }
+ 
++.target-warning {
++  width: 100%;
++  margin: 0;
++}
++
+ .readonly-actions {
+   display: grid;
+   gap: 14px;
+@@ -293,11 +369,11 @@ h1 {
+ }
+ 
+ .secondary-button {
+-  border: 1px solid rgba(255, 255, 255, 0.22);
+-  border-radius: 18px;
++  border: 1px solid var(--border);
++  border-radius: var(--r-sm);
+   padding: 14px 18px;
+-  color: #fff7e9;
+-  background: rgba(255, 255, 255, 0.08);
++  color: var(--text);
++  background: var(--surface-2);
+   cursor: pointer;
+   font-weight: 900;
+ }
+@@ -352,29 +428,28 @@ h1 {
+ .license-input {
+   width: 100%;
+   box-sizing: border-box;
+-  border: 1px solid rgba(255, 255, 255, 0.22);
+-  border-radius: 16px;
++  border: 1px solid var(--border);
++  border-radius: var(--r-sm);
+   padding: 14px 16px;
+-  color: #fff7e9;
+-  background: rgba(255, 255, 255, 0.08);
++  color: var(--text);
++  background: var(--surface-2);
+   outline: none;
+ }
+ 
+ .license-input:focus {
+-  border-color: #ffcc7a;
+-  box-shadow: 0 0 0 4px rgba(255, 204, 122, 0.12);
++  border-color: var(--accent);
++  box-shadow: 0 0 0 2px var(--accent);
+ }
+ 
+ .primary-button {
+   width: 100%;
+   border: 0;
+-  border-radius: 18px;
++  border-radius: var(--r-sm);
+   padding: 16px 20px;
+-  color: #21150a;
+-  background: linear-gradient(135deg, #ffcc7a, #ff8d42);
++  color: var(--accent-text);
++  background: var(--accent);
+   cursor: pointer;
+   font-weight: 900;
+-  box-shadow: 0 18px 42px rgba(255, 141, 66, 0.28);
+ }
+ 
+ .primary-button:disabled {
+@@ -405,18 +480,18 @@ h1 {
+ .import-textarea {
+   width: 100%;
+   box-sizing: border-box;
+-  border: 1px solid rgba(255, 255, 255, 0.22);
+-  border-radius: 18px;
++  border: 1px solid var(--border);
++  border-radius: var(--r-sm);
+   padding: 16px;
+-  color: #fff7e9;
+-  background: rgba(255, 255, 255, 0.08);
++  color: var(--text);
++  background: var(--surface-2);
+   outline: none;
+   resize: vertical;
+ }
+ 
+ .import-textarea:focus {
+-  border-color: #ffcc7a;
+-  box-shadow: 0 0 0 4px rgba(255, 204, 122, 0.12);
++  border-color: var(--accent);
++  box-shadow: 0 0 0 2px var(--accent);
+ }
+ 
+ .import-button {
+@@ -716,7 +791,7 @@ h1 {
+   border-bottom: 1px solid var(--border);
+   padding: 11px 12px;
+   text-align: left;
+-  vertical-align: top;
++  vertical-align: middle;
+ }
+ 
+ .data-table thead th {
+@@ -985,6 +1060,53 @@ h1 {
+   opacity: 0.6;
+ }
+ 
++.toast {
++  display: flex;
++  gap: var(--sp-3);
++  align-items: center;
++  justify-content: space-between;
++  border: 1px solid var(--border);
++  border-left: 4px solid var(--status-neutral);
++  border-radius: var(--r-md);
++  padding: var(--sp-3) var(--sp-4);
++  color: var(--text);
++  background: var(--surface-2);
++  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.24);
++  font-weight: 800;
++}
++
++.toast-success {
++  border-left-color: var(--status-idle);
++}
++
++.toast-warning {
++  border-left-color: var(--status-checkpoint);
++}
++
++.toast-error {
++  border-left-color: var(--status-error);
++}
++
++.toast-close {
++  border: 1px solid var(--border);
++  border-radius: var(--r-sm);
++  padding: 7px 10px;
++  color: var(--text);
++  background: var(--surface);
++  cursor: pointer;
++  font-weight: 900;
++}
++
++.toast-close:focus-visible,
++.secondary-button:focus-visible,
++.license-input:focus-visible,
++.import-textarea:focus-visible,
++.profile-edit-input:focus-visible,
++.sidebar-toggle:focus-visible {
++  outline: 2px solid var(--accent);
++  outline-offset: 2px;
++}
++
+ .status-badge {
+   flex: 0 0 auto;
+   border: 1px solid rgba(255, 255, 255, 0.16);
+@@ -1019,35 +1141,108 @@ h1 {
+   background: rgba(255, 255, 255, 0.1);
+ }
+ 
+-@media (max-width: 620px) {
+-  #root {
+-    padding: 16px;
++@media (max-width: 1200px) {
++  .app-shell {
++    grid-template-columns: 64px minmax(0, 1fr);
+   }
+ 
+-  .eula-card,
+-  .license-card,
+-  .loading-shell,
+-  .main-shell,
+-  .readonly-shell {
+-    padding: 24px;
+-    border-radius: 22px;
++  .sidebar {
++    padding: var(--sp-4) var(--sp-2);
+   }
+ 
+-  .profiles-list-header,
+-  .profile-list-row,
+-  .profile-row-side {
+-    align-items: stretch;
++  .sidebar-brand {
++    justify-content: center;
++  }
++
++  .sidebar-brand > div,
++  .nav-item-label,
++  .license-chip span,
++  .license-chip strong {
++    position: absolute;
++    width: 1px;
++    height: 1px;
++    padding: 0;
++    margin: -1px;
++    overflow: hidden;
++    clip: rect(0, 0, 0, 0);
++    white-space: nowrap;
++    border: 0;
++  }
++
++  .nav-item {
++    justify-content: center;
++    padding: 11px 8px;
++  }
++
++  .license-chip {
++    min-height: 36px;
++    padding: var(--sp-2);
++  }
++}
++
++@media (max-width: 900px) {
++  .app-shell {
++    grid-template-columns: 64px minmax(0, 1fr);
++  }
++
++  .app-shell.sidebar-expanded {
++    grid-template-columns: 240px minmax(0, 1fr);
++  }
++
++  .sidebar-toggle {
++    display: inline-grid;
++    place-items: center;
++  }
++
++  .app-shell.sidebar-expanded .sidebar {
++    padding: var(--sp-4);
++  }
++
++  .app-shell.sidebar-expanded .sidebar-brand {
++    justify-content: flex-start;
++  }
++
++  .app-shell.sidebar-expanded .sidebar-brand > div,
++  .app-shell.sidebar-expanded .nav-item-label,
++  .app-shell.sidebar-expanded .license-chip span,
++  .app-shell.sidebar-expanded .license-chip strong {
++    position: static;
++    width: auto;
++    height: auto;
++    padding: 0;
++    margin: 0;
++    overflow: visible;
++    clip: auto;
++    white-space: normal;
++  }
++
++  .app-shell.sidebar-expanded .nav-item {
++    justify-content: flex-start;
++    padding: 11px 12px;
++  }
++
++  .topbar,
++  .profiles-list-header {
++    align-items: flex-start;
+     flex-direction: column;
+   }
+ 
+-  .profile-row-side,
+-  .profile-edit-input {
+-    width: 100%;
++  .dashboard-onboarding {
++    grid-template-columns: 1fr;
++  }
++
++  .data-table-wrap {
++    overflow-x: auto;
++  }
++
++  .bulk-action-bar {
++    grid-template-columns: 1fr 1fr;
++    align-items: stretch;
+   }
+ 
+-  .profile-proxy-assignment {
+-    min-width: 0;
+-    width: 100%;
++  .bulk-action-bar > strong,
++  .bulk-run-button {
++    grid-column: 1 / -1;
+   }
+ 
+   .proxy-actions {
+diff --git a/automation-desktop/src/renderer/src/components/AppShell.tsx b/automation-desktop/src/renderer/src/components/AppShell.tsx
+index 7982eef..07a2b6d 100644
+--- a/automation-desktop/src/renderer/src/components/AppShell.tsx
++++ b/automation-desktop/src/renderer/src/components/AppShell.tsx
+@@ -1,4 +1,5 @@
+ import type { LicensePublicStatus } from '../../../shared/ipc-schemas'
++import { useState } from 'react'
+ import { Sidebar, type ConsoleView } from './Sidebar'
+ import { TopBar } from './TopBar'
+ import type { StatusCounts } from './StatusCounter'
+@@ -26,13 +27,19 @@ export function AppShell({
+   offlineGrace: boolean
+   onNavigate: (view: ConsoleView) => void
+ }): React.JSX.Element {
++  const [sidebarExpanded, setSidebarExpanded] = useState(false)
++
+   return (
+-    <main className="app-shell" data-testid="app-shell">
++    <main
++      className={`app-shell ${sidebarExpanded ? 'sidebar-expanded' : ''}`}
++      data-testid="app-shell"
++    >
+       <Sidebar
+         activeView={activeView}
+         licenseStatus={licenseStatus}
+         offlineGrace={offlineGrace}
+         onNavigate={onNavigate}
++        onToggleSidebar={() => setSidebarExpanded((current) => !current)}
+       />
+       <section className="console-content" data-testid="main-shell">
+         <TopBar title={VIEW_TITLES[activeView]} counts={counts} />
+diff --git a/automation-desktop/src/renderer/src/components/BulkActionBar.tsx b/automation-desktop/src/renderer/src/components/BulkActionBar.tsx
+index 7b2b450..d5872e3 100644
+--- a/automation-desktop/src/renderer/src/components/BulkActionBar.tsx
++++ b/automation-desktop/src/renderer/src/components/BulkActionBar.tsx
+@@ -20,6 +20,7 @@ export function BulkActionBar({
+   onTargetChange: (target: string) => void
+ }): React.JSX.Element {
+   const [templates, setTemplates] = useState<ContentTemplateSummary[]>([])
++  const [selectedTemplate, setSelectedTemplate] = useState('random')
+ 
+   useEffect(() => {
+     let cancelled = false
+@@ -46,6 +47,8 @@ export function BulkActionBar({
+         <input
+           id="bulk-target-input"
+           data-testid="bulk-target-input"
++          type="url"
++          autoComplete="off"
+           value={target}
+           placeholder="https://www.facebook.com/.../posts/..."
+           onChange={(event) => onTargetChange(event.target.value)}
+@@ -53,7 +56,12 @@ export function BulkActionBar({
+       </label>
+       <label className="bulk-field" htmlFor="bulk-template-select">
+         Template
+-        <select id="bulk-template-select" data-testid="bulk-template-select" defaultValue="random">
++        <select
++          id="bulk-template-select"
++          data-testid="bulk-template-select"
++          value={selectedTemplate}
++          onChange={(event) => setSelectedTemplate(event.target.value)}
++        >
+           <option value="random">Random tất cả</option>
+           {templates.map((template) => (
+             <option
+diff --git a/automation-desktop/src/renderer/src/components/EmptyState.tsx b/automation-desktop/src/renderer/src/components/EmptyState.tsx
+new file mode 100644
+index 0000000..685bd2f
+--- /dev/null
++++ b/automation-desktop/src/renderer/src/components/EmptyState.tsx
+@@ -0,0 +1,43 @@
++export interface EmptyStateAction {
++  label: string
++  onClick: () => void
++  testId?: string
++}
++
++export interface EmptyStateProps {
++  icon: string
++  title: string
++  description: string
++  action?: EmptyStateAction
++  testId?: string
++}
++
++export function EmptyState({
++  icon,
++  title,
++  description,
++  action,
++  testId
++}: EmptyStateProps): React.JSX.Element {
++  return (
++    <div className="empty-state" data-testid={testId}>
++      <span className="empty-state-icon" aria-hidden="true">
++        {icon}
++      </span>
++      <div>
++        <h3>{title}</h3>
++        <p>{description}</p>
++      </div>
++      {action ? (
++        <button
++          className="secondary-button empty-state-action"
++          type="button"
++          data-testid={action.testId}
++          onClick={action.onClick}
++        >
++          {action.label}
++        </button>
++      ) : null}
++    </div>
++  )
++}
+diff --git a/automation-desktop/src/renderer/src/components/Sidebar.tsx b/automation-desktop/src/renderer/src/components/Sidebar.tsx
+index b01aa9e..6b08bd2 100644
+--- a/automation-desktop/src/renderer/src/components/Sidebar.tsx
++++ b/automation-desktop/src/renderer/src/components/Sidebar.tsx
+@@ -13,19 +13,23 @@ const NAV_ITEMS: Array<{ id: ConsoleView; label: string }> = [
+ function licenseText(status: LicensePublicStatus | null, offlineGrace: boolean): string {
+   if (offlineGrace) return 'Offline grace'
+   if (status?.active) return `License active: còn ${status.daysRemaining ?? 0} ngày`
+-  return 'License active'
++  if (status?.gate === 'expired-readonly') return 'Chỉ đọc'
++  if (status?.gate === 'locked') return 'Đã khóa'
++  return 'Chưa kích hoạt'
+ }
+ 
+ export function Sidebar({
+   activeView,
+   licenseStatus,
+   offlineGrace,
+-  onNavigate
++  onNavigate,
++  onToggleSidebar
+ }: {
+   activeView: ConsoleView
+   licenseStatus: LicensePublicStatus | null
+   offlineGrace: boolean
+   onNavigate: (view: ConsoleView) => void
++  onToggleSidebar: () => void
+ }): React.JSX.Element {
+   return (
+     <aside className="sidebar" data-testid="sidebar">
+@@ -35,6 +39,15 @@ export function Sidebar({
+           <strong>Phase 3</strong>
+           <span>Automation</span>
+         </div>
++        <button
++          className="sidebar-toggle"
++          data-testid="sidebar-toggle"
++          type="button"
++          aria-label="Thu gọn hoặc mở rộng sidebar"
++          onClick={onToggleSidebar}
++        >
++          ☰
++        </button>
+       </div>
+ 
+       <nav className="sidebar-nav" data-testid="sidebar-nav" aria-label="Điều hướng console">
+@@ -45,10 +58,12 @@ export function Sidebar({
+             type="button"
+             key={item.id}
+             aria-current={activeView === item.id ? 'page' : undefined}
++            aria-label={item.label}
++            title={item.label}
+             onClick={() => onNavigate(item.id)}
+           >
+             <span className="nav-item-indicator" aria-hidden="true" />
+-            {item.label}
++            <span className="nav-item-label">{item.label}</span>
+           </button>
+         ))}
+       </nav>
+diff --git a/automation-desktop/src/renderer/src/components/StatusCounter.tsx b/automation-desktop/src/renderer/src/components/StatusCounter.tsx
+index 8be1491..b4ed122 100644
+--- a/automation-desktop/src/renderer/src/components/StatusCounter.tsx
++++ b/automation-desktop/src/renderer/src/components/StatusCounter.tsx
+@@ -13,8 +13,10 @@ const COUNTER_ITEMS: Array<{ key: keyof StatusCounts; label: string }> = [
+ ]
+ 
+ export function StatusCounter({ counts }: { counts: StatusCounts }): React.JSX.Element {
++  const summary = `Nhàn rỗi ${counts.idle}, đang chạy ${counts.running}, checkpoint ${counts.checkpoint}, lỗi ${counts.error}`
++
+   return (
+-    <div className="status-counter" data-testid="topbar-status-counter" aria-live="polite">
++    <div className="status-counter" data-testid="topbar-status-counter" aria-label={summary}>
+       {COUNTER_ITEMS.map((item) => (
+         <span className={`status-counter-item status-counter-${item.key}`} key={item.key}>
+           <span className="status-counter-dot" aria-hidden="true" />
+diff --git a/automation-desktop/src/renderer/src/components/StatusPill.tsx b/automation-desktop/src/renderer/src/components/StatusPill.tsx
+index 259c370..31259fd 100644
+--- a/automation-desktop/src/renderer/src/components/StatusPill.tsx
++++ b/automation-desktop/src/renderer/src/components/StatusPill.tsx
+@@ -8,7 +8,12 @@ export interface StatusPillProps {
+ 
+ export function StatusPill({ label, variant, title }: StatusPillProps): React.JSX.Element {
+   return (
+-    <span className={`status-pill status-pill-${variant}`} title={title ?? label}>
++    <span
++      className={`status-pill status-pill-${variant}`}
++      title={title ?? label}
++      role="img"
++      aria-label={`Trạng thái: ${label}`}
++    >
+       <span className="status-pill-dot" aria-hidden="true" />
+       <span>{label}</span>
+     </span>
+diff --git a/automation-desktop/src/renderer/src/components/Toast.tsx b/automation-desktop/src/renderer/src/components/Toast.tsx
+new file mode 100644
+index 0000000..973a229
+--- /dev/null
++++ b/automation-desktop/src/renderer/src/components/Toast.tsx
+@@ -0,0 +1,19 @@
++export type ToastVariant = 'success' | 'warning' | 'error'
++
++export interface ToastProps {
++  message: string
++  variant: ToastVariant
++  testId?: string
++  onDismiss: () => void
++}
++
++export function Toast({ message, variant, testId, onDismiss }: ToastProps): React.JSX.Element {
++  return (
++    <div className={`toast toast-${variant}`} data-testid={testId} role="status" aria-live="polite">
++      <span>{message}</span>
++      <button className="toast-close" type="button" aria-label="Đóng thông báo" onClick={onDismiss}>
++        Đóng
++      </button>
++    </div>
++  )
++}
+diff --git a/automation-desktop/src/renderer/src/views/ContentTemplatesView.tsx b/automation-desktop/src/renderer/src/views/ContentTemplatesView.tsx
+index 20bc7d5..fb150e7 100644
+--- a/automation-desktop/src/renderer/src/views/ContentTemplatesView.tsx
++++ b/automation-desktop/src/renderer/src/views/ContentTemplatesView.tsx
+@@ -11,6 +11,7 @@ import {
+   listContentTemplates,
+   updateContentTemplate
+ } from '../api/content-template-api'
++import { EmptyState } from '../components/EmptyState'
+ 
+ const SAMPLE_TEMPLATE_VARS: Required<ContentTemplateVars> = {
+   uid: '100012345678',
+@@ -154,9 +155,12 @@ export function ContentTemplatesView(): React.JSX.Element {
+       ) : null}
+ 
+       {!loading && !error && templates.length === 0 ? (
+-        <p className="profiles-empty" data-testid="content-templates-empty">
+-          Chưa có template nào.
+-        </p>
++        <EmptyState
++          icon="✎"
++          title="Chưa có template nào."
++          description="Thêm ít nhất một template để self-comment có nội dung random."
++          testId="content-templates-empty"
++        />
+       ) : null}
+ 
+       <div className="template-form" data-testid="content-template-form">
+diff --git a/automation-desktop/src/renderer/src/views/ProfilesView.tsx b/automation-desktop/src/renderer/src/views/ProfilesView.tsx
+index 0a2c729..698ba22 100644
+--- a/automation-desktop/src/renderer/src/views/ProfilesView.tsx
++++ b/automation-desktop/src/renderer/src/views/ProfilesView.tsx
+@@ -13,8 +13,10 @@ import {
+ } from '../api/proxy-api'
+ import { getSetting, setSetting } from '../api/settings-api'
+ import { BulkActionBar } from '../components/BulkActionBar'
++import { EmptyState } from '../components/EmptyState'
+ import { StatusPill, type StatusPillVariant } from '../components/StatusPill'
+ import type { StatusCounts } from '../components/StatusCounter'
++import { Toast, type ToastVariant } from '../components/Toast'
+ 
+ const AUTOMATION_BROWSER_HEADLESS_SETTING = 'automation_browser_headless'
+ 
+@@ -49,6 +51,21 @@ interface AutomationRowStatus {
+   message?: string
+ }
+ 
++interface BatchTracker {
++  id: number
++  profileIds: string[]
++}
++
++interface ToastState {
++  message: string
++  variant: ToastVariant
++}
++
++interface ScopedError {
++  profileId: string | null
++  message: string
++}
++
+ function getStatusBadge(status: string): { label: string; variant: StatusPillVariant } {
+   return STATUS_LABELS[status] ?? { label: 'Không xác định', variant: 'neutral' }
+ }
+@@ -73,6 +90,26 @@ function countProfileStatuses(profiles: ProfileSummary[]): StatusCounts {
+   )
+ }
+ 
++function getTargetValidationMessage(target: string): string | null {
++  return target.length > 0 && !target.trim()
++    ? 'URL post chỉ có khoảng trắng. Hãy nhập URL hợp lệ hoặc xóa trống để dùng feed.'
++    : null
++}
++
++function summarizeBatch(statuses: AutomationRowStatus[], total: number): ToastState {
++  const completed = statuses.filter((status) => status.state === 'DONE').length
++  const checkpoints = statuses.filter((status) => status.state === 'CHECKPOINT_BLOCKED').length
++  const errors = statuses.filter(
++    (status) => status.state === 'FAILED' || status.state === 'CANCELLED'
++  ).length
++  const variant: ToastVariant = errors > 0 ? 'error' : checkpoints > 0 ? 'warning' : 'success'
++
++  return {
++    variant,
++    message: `${completed}/${total} hoàn tất · ${checkpoints} checkpoint · ${errors} lỗi`
++  }
++}
++
+ export function ProfilesView({
+   onStatusCountsChange
+ }: {
+@@ -94,8 +131,9 @@ export function ProfilesView({
+     {}
+   )
+   const [proxyBusyId, setProxyBusyId] = useState<string | null>(null)
+-  const [proxyError, setProxyError] = useState<string | null>(null)
++  const [proxyError, setProxyError] = useState<ScopedError | null>(null)
+   const [automationTarget, setAutomationTarget] = useState('')
++  const [automationTargetWarning, setAutomationTargetWarning] = useState<string | null>(null)
+   const [automationBrowserHeadless, setAutomationBrowserHeadless] = useState(false)
+   const [automationBrowserModeSaving, setAutomationBrowserModeSaving] = useState(false)
+   const [automationBusyId, setAutomationBusyId] = useState<string | null>(null)
+@@ -104,10 +142,13 @@ export function ProfilesView({
+   const [automationStatuses, setAutomationStatuses] = useState<Record<string, AutomationRowStatus>>(
+     {}
+   )
+-  const [automationError, setAutomationError] = useState<string | null>(null)
++  const [automationError, setAutomationError] = useState<ScopedError | null>(null)
++  const [trackedBatches, setTrackedBatches] = useState<BatchTracker[]>([])
++  const [bulkToast, setBulkToast] = useState<ToastState | null>(null)
+   const listInFlightRef = useRef(false)
+   const listCancelledRef = useRef(false)
+   const pendingRefreshRef = useRef(false)
++  const batchIdRef = useRef(0)
+ 
+   useEffect(() => {
+     onStatusCountsChange?.(countProfileStatuses(profiles))
+@@ -155,7 +196,10 @@ export function ProfilesView({
+       )
+       setProxyError(null)
+     } catch (err) {
+-      setProxyError(err instanceof Error ? err.message : 'Không thể tải proxy đã gán.')
++      setProxyError({
++        profileId: null,
++        message: err instanceof Error ? err.message : 'Không thể tải proxy đã gán.'
++      })
+     }
+   }, [])
+ 
+@@ -205,7 +249,10 @@ export function ProfilesView({
+       await setSetting(AUTOMATION_BROWSER_HEADLESS_SETTING, String(nextHeadless))
+     } catch (err) {
+       setAutomationBrowserHeadless(previous)
+-      setAutomationError(err instanceof Error ? err.message : 'Không thể lưu chế độ trình duyệt.')
++      setAutomationError({
++        profileId: null,
++        message: err instanceof Error ? err.message : 'Không thể lưu chế độ trình duyệt.'
++      })
+     } finally {
+       setAutomationBrowserModeSaving(false)
+     }
+@@ -295,7 +342,10 @@ export function ProfilesView({
+       const assignment = await acquireProxyForProfile(profile.id)
+       setProxyAssignments((current) => ({ ...current, [profile.id]: assignment }))
+     } catch (err) {
+-      setProxyError(err instanceof Error ? err.message : 'Không thể gán proxy riêng.')
++      setProxyError({
++        profileId: profile.id,
++        message: err instanceof Error ? err.message : 'Không thể gán proxy riêng.'
++      })
+     } finally {
+       setProxyBusyId(null)
+     }
+@@ -314,7 +364,10 @@ export function ProfilesView({
+         return next
+       })
+     } catch (err) {
+-      setProxyError(err instanceof Error ? err.message : 'Không thể thả proxy riêng.')
++      setProxyError({
++        profileId: profile.id,
++        message: err instanceof Error ? err.message : 'Không thể thả proxy riêng.'
++      })
+     } finally {
+       setProxyBusyId(null)
+     }
+@@ -325,6 +378,12 @@ export function ProfilesView({
+ 
+     setAutomationBusyId(profile.id)
+     setAutomationError(null)
++    const targetWarning = getTargetValidationMessage(automationTarget)
++    setAutomationTargetWarning(targetWarning)
++    if (targetWarning) {
++      setAutomationBusyId(null)
++      return
++    }
+     try {
+       const target = automationTarget.trim()
+       const { jobId } = await startSelfComment({
+@@ -336,7 +395,10 @@ export function ProfilesView({
+         [profile.id]: { jobId, state: 'PENDING' }
+       }))
+     } catch (err) {
+-      setAutomationError(err instanceof Error ? err.message : 'Không thể chạy self-comment.')
++      setAutomationError({
++        profileId: profile.id,
++        message: err instanceof Error ? err.message : 'Không thể chạy self-comment.'
++      })
+     } finally {
+       setAutomationBusyId(null)
+     }
+@@ -363,6 +425,12 @@ export function ProfilesView({
+ 
+     setBulkRunning(true)
+     setAutomationError(null)
++    const targetWarning = getTargetValidationMessage(automationTarget)
++    setAutomationTargetWarning(targetWarning)
++    if (targetWarning) {
++      setBulkRunning(false)
++      return
++    }
+     const target = automationTarget.trim()
+     const enqueuedIds: string[] = []
+     const failures: string[] = []
+@@ -393,9 +461,17 @@ export function ProfilesView({
+         return next
+       })
+       if (failures.length > 0) {
+-        setAutomationError(
+-          `Không enqueue được ${failures.length} profile: ${failures.join(', ')}. Đã giữ lại để thử lại.`
+-        )
++        setAutomationError({
++          profileId: null,
++          message: `Không enqueue được ${failures.length} profile: ${failures.join(', ')}. Đã giữ lại để thử lại.`
++        })
++      }
++      if (enqueuedIds.length > 0) {
++        batchIdRef.current += 1
++        setTrackedBatches((current) => [
++          ...current,
++          { id: batchIdRef.current, profileIds: enqueuedIds }
++        ])
+       }
+     } finally {
+       setBulkRunning(false)
+@@ -428,9 +504,10 @@ export function ProfilesView({
+           })
+           .catch((err) => {
+             if (!cancelled) {
+-              setAutomationError(
+-                err instanceof Error ? err.message : 'Không thể đọc trạng thái automation.'
+-              )
++              setAutomationError({
++                profileId,
++                message: err instanceof Error ? err.message : 'Không thể đọc trạng thái automation.'
++              })
+             }
+           })
+       }
+@@ -442,6 +519,41 @@ export function ProfilesView({
+     }
+   }, [automationStatuses])
+ 
++  useEffect(() => {
++    if (trackedBatches.length === 0) return undefined
++
++    const completedBatches: BatchTracker[] = []
++    let nextToast: ToastState | null = null
++    for (const batch of trackedBatches) {
++      const statuses = batch.profileIds.map((profileId) => automationStatuses[profileId])
++      if (
++        statuses.every(
++          (status): status is AutomationRowStatus =>
++            Boolean(status) && TERMINAL_AUTOMATION_STATES.has(status.state)
++        )
++      ) {
++        completedBatches.push(batch)
++        nextToast = summarizeBatch(statuses, batch.profileIds.length)
++      }
++    }
++
++    if (completedBatches.length === 0 || !nextToast) return undefined
++
++    const timer = window.setTimeout(() => {
++      const completedIds = new Set(completedBatches.map((batch) => batch.id))
++      setBulkToast(nextToast)
++      setTrackedBatches((current) => current.filter((batch) => !completedIds.has(batch.id)))
++    }, 0)
++
++    return () => window.clearTimeout(timer)
++  }, [automationStatuses, trackedBatches])
++
++  useEffect(() => {
++    if (!bulkToast) return undefined
++    const timer = window.setTimeout(() => setBulkToast(null), 5_000)
++    return () => window.clearTimeout(timer)
++  }, [bulkToast])
++
+   const selectedCount = selectedIds.size
+   const allProfilesSelected =
+     profiles.length > 0 && profiles.every((profile) => selectedIds.has(profile.id))
+@@ -579,9 +691,12 @@ export function ProfilesView({
+         ) : null}
+ 
+         {!listLoading && !listError && profiles.length === 0 ? (
+-          <p className="profiles-empty" data-testid="profiles-list-empty">
+-            Chưa có profile nào.
+-          </p>
++          <EmptyState
++            icon="②"
++            title="Chưa có profile nào."
++            description="Import profile để bắt đầu gán proxy và chạy self-comment hàng loạt."
++            testId="profiles-list-empty"
++          />
+         ) : null}
+ 
+         {profiles.length > 0 ? (
+@@ -594,9 +709,18 @@ export function ProfilesView({
+                 className="license-input"
+                 value={automationTarget}
+                 placeholder="https://www.facebook.com/.../posts/..."
+-                onChange={(e) => setAutomationTarget(e.target.value)}
++                autoComplete="off"
++                onChange={(e) => {
++                  setAutomationTarget(e.target.value)
++                  setAutomationTargetWarning(getTargetValidationMessage(e.target.value))
++                }}
+               />
+             </label>
++            {automationTargetWarning ? (
++              <p className="warning-banner target-warning" data-testid="automation-target-warning">
++                {automationTargetWarning}
++              </p>
++            ) : null}
+             <p className="profiles-list-subtitle">
+               Nếu bỏ trống, app sẽ thử vào profile feed của tài khoản và dùng selector tạm.
+             </p>
+@@ -616,12 +740,27 @@ export function ProfilesView({
+           </div>
+         ) : null}
+ 
+-        {automationError ? (
++        {automationError?.profileId === null ? (
+           <p className="error-message list-error" data-testid="automation-error">
+-            {automationError}
++            {automationError.message}
++          </p>
++        ) : null}
++
++        {proxyError?.profileId === null ? (
++          <p className="error-message list-error" data-testid="profile-proxy-error">
++            {proxyError.message}
+           </p>
+         ) : null}
+ 
++        {bulkToast ? (
++          <Toast
++            message={bulkToast.message}
++            variant={bulkToast.variant}
++            testId="bulk-summary-toast"
++            onDismiss={() => setBulkToast(null)}
++          />
++        ) : null}
++
+         {profiles.length > 0 ? (
+           <div className="data-table-wrap">
+             <table className="data-table profiles-list" data-testid="profiles-list">
+@@ -771,12 +910,12 @@ export function ProfilesView({
+                             </button>
+                           </div>
+                         </div>
+-                        {proxyError ? (
++                        {proxyError?.profileId === profile.id ? (
+                           <p
+                             className="error-message profile-row-error"
+                             data-testid="profile-proxy-error"
+                           >
+-                            {proxyError}
++                            {proxyError.message}
+                           </p>
+                         ) : null}
+                       </td>
+@@ -888,6 +1027,11 @@ export function ProfilesView({
+                         {rowError && (isEditing || isConfirmingDelete) ? (
+                           <p className="error-message profile-row-error">{rowError}</p>
+                         ) : null}
++                        {automationError?.profileId === profile.id ? (
++                          <p className="error-message profile-row-error">
++                            {automationError.message}
++                          </p>
++                        ) : null}
+                       </td>
+                     </tr>
+                   )
+@@ -905,7 +1049,10 @@ export function ProfilesView({
+             target={automationTarget}
+             onHeadlessChange={(next) => void handleAutomationBrowserModeChange(next)}
+             onRun={() => void handleBulkSelfComment()}
+-            onTargetChange={setAutomationTarget}
++            onTargetChange={(next) => {
++              setAutomationTarget(next)
++              setAutomationTargetWarning(getTargetValidationMessage(next))
++            }}
+           />
+         ) : null}
+       </section>
+diff --git a/automation-desktop/tests/e2e/profiles.spec.ts b/automation-desktop/tests/e2e/profiles.spec.ts
+index 7c4d693..937d479 100644
+--- a/automation-desktop/tests/e2e/profiles.spec.ts
++++ b/automation-desktop/tests/e2e/profiles.spec.ts
+@@ -251,6 +251,105 @@ test('[P0] operator console renders sidebar table and bulk self-comment enqueue
+   }
+ })
+ 
++test('[P0] UX polish supports copy, dashboard onboarding, select-all, toast summary, and breakpoints', async () => {
++  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-ux-polish-'))
++  let app: ElectronApplication | null = null
++  let server: Server | null = null
++
++  try {
++    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'), {
++      PHASE3_AUTOMATION_STUB: '1'
++    })
++    app = launched.app
++    server = launched.server
++    const window = launched.window
++
++    await expect(window.getByTestId('app-shell')).toBeVisible({ timeout: 10_000 })
++    await expect
++      .poll(() => window.evaluate(() => getComputedStyle(document.body).userSelect))
++      .not.toBe('none')
++
++    await window.getByTestId('nav-dashboard').click()
++    await expect(window.getByTestId('dashboard-onboarding')).toBeVisible()
++    await expect(window.getByTestId('dashboard-step-proxy')).toContainText('Cấu hình proxy')
++    await window.getByTestId('dashboard-import-cta').click()
++    await expect(window.getByTestId('nav-profiles')).toHaveAttribute('aria-current', 'page')
++
++    const textarea = window.getByTestId('import-textarea')
++    await setTextareaValue(
++      textarea,
++      [
++        'uid_copy_1|pass1|seed1|cookie_COPY_1|mail1@example.com|mailpass1',
++        'uid_copy_2|pass2|seed2|cookie_COPY_2|mail2@example.com|mailpass2'
++      ].join('\n')
++    )
++    await window.getByTestId('import-button').click()
++    await expect(window.getByTestId('profile-row-uid_copy_1')).toBeVisible({ timeout: 10_000 })
++
++    await expect(
++      window.evaluate(() => {
++        const uidCell = document.querySelector(
++          '[data-testid="profile-row-uid_copy_1"] .profile-list-uid'
++        )
++        if (!uidCell?.firstChild) return ''
++        const range = document.createRange()
++        range.selectNodeContents(uidCell)
++        const selection = window.getSelection()
++        selection?.removeAllRanges()
++        selection?.addRange(range)
++        return selection?.toString() ?? ''
++      })
++    ).resolves.toBe('uid_copy_1')
++
++    const selectAll = window.getByTestId('profiles-select-all')
++    await selectAll.check()
++    await expect(window.getByTestId('profile-select-uid_copy_1')).toBeChecked()
++    await expect(window.getByTestId('profile-select-uid_copy_2')).toBeChecked()
++    await expect(window.getByTestId('bulk-template-select')).toHaveValue('random')
++    await expect(window.getByTestId('bulk-target-input')).toHaveAttribute('autocomplete', 'off')
++
++    await window
++      .getByTestId('bulk-target-input')
++      .fill('https://www.facebook.com/me/posts/ux-polish')
++    await window.getByTestId('bulk-run-button').click()
++    await expect(window.getByTestId('bulk-summary-toast')).toContainText('0/2 hoàn tất', {
++      timeout: 15_000
++    })
++    await expect(window.getByTestId('bulk-summary-toast')).toContainText('2 lỗi')
++
++    await expect(
++      window.getByTestId('profile-automation-status-uid_copy_1').getByRole('img')
++    ).toHaveAttribute('aria-label', /Trạng thái:/)
++    await expect(window.getByTestId('topbar-status-counter')).toHaveAttribute(
++      'aria-label',
++      /Nhàn rỗi/
++    )
++
++    await window.setViewportSize({ width: 1024, height: 760 })
++    await expect
++      .poll(() =>
++        window.evaluate(
++          () => getComputedStyle(document.querySelector('.app-shell')!).gridTemplateColumns
++        )
++      )
++      .toContain('64px')
++
++    await window.setViewportSize({ width: 900, height: 760 })
++    await expect(window.getByTestId('sidebar-toggle')).toBeVisible()
++    await expect
++      .poll(() =>
++        window.evaluate(
++          () => getComputedStyle(document.querySelector('.app-shell')!).gridTemplateColumns
++        )
++      )
++      .toContain('64px')
++  } finally {
++    if (app) await app.close()
++    await closeServer(server)
++    rmSync(dir, { recursive: true, force: true })
++  }
++})
++
+ test('[P0] profile row can visibly acquire and release a unique proxy assignment', async () => {
+   const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-proxy-assign-'))
+   const proxyfb = await startProxyfbServer()
+diff --git a/automation-desktop/tests/integration/security-baseline.spec.ts b/automation-desktop/tests/integration/security-baseline.spec.ts
+index 65f9c8b..ce404bd 100644
+--- a/automation-desktop/tests/integration/security-baseline.spec.ts
++++ b/automation-desktop/tests/integration/security-baseline.spec.ts
+@@ -15,6 +15,7 @@ test('[P0] security baseline enforces hardened BrowserWindow webPreferences', ()
+   expect(options.webPreferences?.sandbox).toBe(true)
+   expect(options.webPreferences?.contextIsolation).toBe(true)
+   expect(options.webPreferences?.nodeIntegration).toBe(false)
++  expect(options.minWidth).toBeGreaterThanOrEqual(880)
+ })
+ 
+ test('[P0] registerCspHeaders injects CSP header', () => {

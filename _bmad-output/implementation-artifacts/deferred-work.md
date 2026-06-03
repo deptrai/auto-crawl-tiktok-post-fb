@@ -153,3 +153,17 @@
 - `.data-table td { vertical-align: top }` gây lệch khi cell delete-confirm cao — cosmetic, đổi `middle` sau.
 - `offlineGrace` truyền vào AppShell nhưng không dùng trong body (chỉ forward Sidebar) — dead prop cleanup.
 - E2E thiếu test cho `profiles-select-all` checkbox — bổ sung coverage sau.
+
+## Deferred from: code review of story ux-2-1 (2026-06-04)
+
+- Toast không thấy khi operator ở tab khác (ProfilesView render trong `<div hidden>`); cân nhắc lift toast state lên App-level để hiển thị toàn cục.
+- `automationError` (ScopedError đơn) bị ghi đè khi nhiều job fail poll cùng tick → chỉ profile cuối hiện lỗi; cân nhắc map per-profile.
+- `proxyError` bị clear khi acquire proxy cho profile khác (`setProxyError(null)` đầu handler) — pre-existing.
+- Dashboard onboarding nhấp nháy khi `profileCounts` chưa load xong (initial {0,0,0,0}); và chỉ check profile count, chưa check proxy đã cấu hình (AC5.2 nói "profile/proxy").
+- `sidebar-toggle` thiếu `aria-expanded`; state `sidebarExpanded` giữ qua resize breakpoint có thể gây layout 240px ở range 900–1200 sau khi expand.
+- E2E thiếu resize ở 1280px (AC6.3 nêu 1280/1024/900).
+- `summarizeBatch` đếm CANCELLED vào errors (toast đỏ) — chưa có UI cancel nên hiếm; phân loại lại khi thêm cancel.
+- BulkActionBar vẫn `listContentTemplates()` mỗi remount (chưa cache/lift) — flicker dropdown.
+- `selectedTemplate` dead state đến khi mở rộng IPC `phase3:automation:start` nhận templateId; ProfilesView target input lẻ thiếu `type="url"` (BulkActionBar đã có).
+- StatusCounter bỏ hẳn `aria-live` (thay `aria-label`) → screen reader không announce thay đổi count; cân nhắc live region concise.
+- LicenseView input license key cân nhắc `type="password"` (pre-existing, ngoài rule #10 secret list nhưng nên xem xét).

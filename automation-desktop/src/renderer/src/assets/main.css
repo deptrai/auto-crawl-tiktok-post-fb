@@ -1061,6 +1061,11 @@ h1 {
 }
 
 .toast {
+  position: fixed;
+  right: var(--sp-5);
+  bottom: var(--sp-5);
+  z-index: 50;
+  max-width: 360px;
   display: flex;
   gap: var(--sp-3);
   align-items: center;

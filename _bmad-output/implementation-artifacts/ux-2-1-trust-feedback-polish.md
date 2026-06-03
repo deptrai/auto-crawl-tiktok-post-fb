@@ -1,6 +1,6 @@
 # Story UX-2.1: Hoàn thiện trải nghiệm — Copy, Toast, Onboarding, Đồng nhất & A11y
 
-Status: review
+Status: done
 
 > **Namespace:** Epic 2 của `epics-ux-redesign.md` (Phase B). Prefix `ux-` tránh trùng Phase 3 features. KHÔNG ghi `sprint-status.yaml`. Tiếp nối **Story UX-1.1 (done)**: AppShell/Sidebar/TopBar/StatusCounter/StatusPill/BulkActionBar/DataTable + design tokens đã có.
 
@@ -70,6 +70,27 @@ so that tôi tin tưởng giao việc cho tool và dùng nó lâu dài không m�
 - [x] **Task 6 — Responsive (AC6)**: breakpoint 1200/900; minWidth window; bỏ 620px.
 - [x] **Task 7 — A11y + review defers (AC7)**: StatusPill aria, StatusCounter noise, template controlled, Sidebar license text, proxyError per-row, automationError tách, vertical-align, offlineGrace prop, target validation, keyboard/focus.
 - [x] **Task 8 — Chất lượng (AC8)**: lint/typecheck/E2E + test mới (copy, toast, select-all, resize).
+
+### Review Findings
+
+> Code review commit `0b05c7c` (2026-06-04) — Blind · Edge · Acceptance. KHÔNG có BLOCKER. 4 patch, không decision.
+
+- [x] [Review][Patch] Toast không float — FIXED: `.toast` thêm `position: fixed; right/bottom; z-index; max-width` → góc dưới phải [main.css:1063]
+- [x] [Review][Patch] Duplicate `data-testid="profile-proxy-error"` — FIXED: đổi global (list-level) → `data-testid="proxy-list-error"`; per-row giữ `profile-proxy-error` [ProfilesView.tsx:750]
+- [x] [Review][Patch] Xóa profile giữa batch → stuck batch — FIXED: handleDelete dọn profileId khỏi `trackedBatches` (filter + drop batch rỗng) [ProfilesView.tsx handleDelete]
+- [x] [Review][Patch] Nhiều batch cùng tick → chỉ toast cuối — FIXED: gộp mọi batch hoàn tất vào 1 toast tổng (aggregatedStatuses + aggregatedTotal) [ProfilesView.tsx tracking effect]
+- [x] [Review][Defer] Toast không thấy khi đang ở tab khác (ProfilesView `hidden`) — cân nhắc lift toast lên App; operator thường theo dõi ở tab Profiles
+- [x] [Review][Defer] `automationError` (ScopedError đơn) bị ghi đè khi nhiều job fail poll cùng tick — chỉ profile cuối hiện lỗi
+- [x] [Review][Defer] `proxyError` bị clear khi acquire proxy cho profile khác (setProxyError(null) đầu handler) — pre-existing
+- [x] [Review][Defer] Dashboard onboarding nhấp nháy khi `profileCounts` chưa load (initial 0); chỉ check profile, chưa check proxy (AC5.2)
+- [x] [Review][Defer] `sidebar-toggle` thiếu `aria-expanded`; state expand giữ qua resize breakpoint
+- [x] [Review][Defer] E2E thiếu resize 1280px (AC6.3 nêu 1280/1024/900)
+- [x] [Review][Defer] `summarizeBatch` đếm CANCELLED là lỗi (red) — chưa có UI cancel nên hiếm
+- [x] [Review][Defer] BulkActionBar vẫn refetch `listContentTemplates` mỗi remount (chưa cache/lift)
+- [x] [Review][Defer] `selectedTemplate` dead state đến khi mở IPC templateId; ProfilesView target input lẻ thiếu `type=url`
+- [x] [Review][Defer] StatusCounter bỏ hẳn `aria-live` (thay aria-label) — không announce thay đổi; cân nhắc live region concise
+
+**Dismissed:** template không "lift" vào startSelfComment (ĐÚNG thiết kế — options `disabled`, IPC chưa nhận templateId); `getTargetValidationMessage` không validate URL đầy đủ (ngoài scope, chỉ defer whitespace); LicenseView input thiếu `type=password` (pre-existing + license key không thuộc rule #10 secret list); EmptyState/Toast "thiếu React import" (typecheck xanh); Toast `role=status`+`aria-live` thừa (vô hại).
 
 ## Dev Notes
 

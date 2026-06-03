@@ -325,6 +325,17 @@ export function ProfilesView({
         next.delete(profile.id)
         return next
       })
+      // Dọn profile khỏi batch tracking — nếu không, batch sẽ "kẹt" chờ status của
+      // profile đã bị xóa (mãi không terminal) và toast tổng kết không bao giờ hiện.
+      setTrackedBatches((prev) => {
+        if (!prev.some((batch) => batch.profileIds.includes(profile.id))) return prev
+        return prev
+          .map((batch) => ({
+            ...batch,
+            profileIds: batch.profileIds.filter((id) => id !== profile.id)
+          }))
+          .filter((batch) => batch.profileIds.length > 0)
+      })
       await refreshProfiles(false)
     } catch (err) {
       setRowError(err instanceof Error ? err.message : 'Không thể xóa profile.')
@@ -523,7 +534,9 @@ export function ProfilesView({
     if (trackedBatches.length === 0) return undefined
 
     const completedBatches: BatchTracker[] = []
-    let nextToast: ToastState | null = null
+    // Gộp mọi batch hoàn tất trong cùng tick vào 1 toast tổng — tránh chỉ hiện batch cuối.
+    const aggregatedStatuses: AutomationRowStatus[] = []
+    let aggregatedTotal = 0
     for (const batch of trackedBatches) {
       const statuses = batch.profileIds.map((profileId) => automationStatuses[profileId])
       if (
@@ -533,11 +546,13 @@ export function ProfilesView({
         )
       ) {
         completedBatches.push(batch)
-        nextToast = summarizeBatch(statuses, batch.profileIds.length)
+        aggregatedStatuses.push(...statuses)
+        aggregatedTotal += batch.profileIds.length
       }
     }
 
-    if (completedBatches.length === 0 || !nextToast) return undefined
+    if (completedBatches.length === 0) return undefined
+    const nextToast = summarizeBatch(aggregatedStatuses, aggregatedTotal)
 
     const timer = window.setTimeout(() => {
       const completedIds = new Set(completedBatches.map((batch) => batch.id))
@@ -747,7 +762,7 @@ export function ProfilesView({
         ) : null}
 
         {proxyError?.profileId === null ? (
-          <p className="error-message list-error" data-testid="profile-proxy-error">
+          <p className="error-message list-error" data-testid="proxy-list-error">
             {proxyError.message}
           </p>
         ) : null}
