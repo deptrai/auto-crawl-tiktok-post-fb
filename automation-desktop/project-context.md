@@ -110,3 +110,4 @@ automation-desktop/
 - `Number.parseInt` để parse version/integer từ string DB
 - `test.fixme` trên task đã tick verify
 - Error message tiếng Anh trong `ErrorEnvelope.message`
+- ⚠️ proxyfb provider dùng HTTP (api.proxyfb.com KHÔNG hỗ trợ HTTPS — verified). API key + proxy credential đi plaintext qua mạng → rủi ro MITM inject proxy. Đây là ràng buộc provider (accepted Story 3.1). Mitigation: parseProxyString reject control chars. KHI thêm provider mới → ưu tiên HTTPS.

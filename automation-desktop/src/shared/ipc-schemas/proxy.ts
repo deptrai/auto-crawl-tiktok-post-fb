@@ -3,9 +3,11 @@ import { IpcErrorResponseSchema } from './common'
 
 export const ProxyConfigGetRequestSchema = z.object({}).strict()
 
-export const ProxyConfigSetRequestSchema = z.object({
-  apiKey: z.string().trim().min(1).max(500)
-})
+export const ProxyConfigSetRequestSchema = z
+  .object({
+    apiKey: z.string().trim().min(1).max(500)
+  })
+  .strict()
 
 export const ProxyRotateRequestSchema = z
   .object({

@@ -76,6 +76,9 @@ export function ProxyView(): React.JSX.Element {
         <div>
           <p className="eyebrow">Proxy provider</p>
           <h2 id="proxy-title">proxyfb</h2>
+          <p className="proxy-http-warning" data-testid="proxy-http-warning">
+            proxyfb dùng kết nối HTTP (không mã hóa transport). Chỉ dùng mạng tin cậy.
+          </p>
           <p className="profiles-list-subtitle">
             {loadingConfig
               ? 'Đang kiểm tra cấu hình...'

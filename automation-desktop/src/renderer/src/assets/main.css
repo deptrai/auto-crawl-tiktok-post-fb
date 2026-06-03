@@ -299,6 +299,17 @@ h1 {
   font-weight: 900;
 }
 
+.proxy-http-warning {
+  margin: 10px 0 0;
+  border: 1px solid rgba(255, 204, 122, 0.26);
+  border-radius: 12px;
+  padding: 10px 12px;
+  color: #ffe2ad;
+  background: rgba(255, 184, 77, 0.1);
+  font-size: 13px;
+  font-weight: 800;
+}
+
 .failed-list,
 .imported-profiles {
   margin-top: 16px;

@@ -9,6 +9,13 @@ function jsonResponse(body: unknown): Response {
   })
 }
 
+function statusResponse(status: number): Response {
+  return new Response(JSON.stringify({ success: 'False', proxy: '' }), {
+    status,
+    headers: { 'Content-Type': 'application/json' }
+  })
+}
+
 test.afterEach(() => {
   Reflect.deleteProperty(globalThis, 'fetch')
 })
@@ -53,6 +60,29 @@ test('[P0] proxyfb provider falls back to getProxy when changeProxy fails', asyn
   ])
 })
 
+test('[P1] proxyfb provider falls back when changeProxy returns HTTP error status', async () => {
+  const calls: string[] = []
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    calls.push(String(input))
+    if (String(input).includes('changeProxy.php')) return statusResponse(500)
+    return jsonResponse({ success: 'True', proxy: '9.9.9.9:8081:fallback:secret' })
+  }) as typeof fetch
+  const provider = new ProxyfbProvider({ baseUrl: 'http://proxyfb.test/api' })
+
+  const proxy = await provider.getProxy('KEY-123')
+
+  expect(proxy).toEqual({
+    host: '9.9.9.9',
+    port: 8081,
+    username: 'fallback',
+    password: 'secret'
+  })
+  expect(calls.map((url) => new URL(url).pathname)).toEqual([
+    '/api/changeProxy.php',
+    '/api/getProxy.php'
+  ])
+})
+
 test('[P0] proxyfb provider throws retryable unavailable when both endpoints fail', async () => {
   globalThis.fetch = (async () => jsonResponse({ success: 'False', proxy: '' })) as typeof fetch
   const provider = new ProxyfbProvider({ baseUrl: 'http://proxyfb.test/api' })
@@ -72,8 +102,28 @@ test('[P1] parseProxyString parses host port username password', () => {
   })
 })
 
+test('[P1] parseProxyString accepts password containing colon', () => {
+  expect(parseProxyString('h:8080:u:pa:ss')).toEqual({
+    host: 'h',
+    port: 8080,
+    username: 'u',
+    password: 'pa:ss'
+  })
+})
+
 test('[P1] parseProxyString rejects malformed proxy string and invalid port', () => {
   expect(() => parseProxyString('proxy.example.com:8080:user')).toThrow(/proxy/i)
+  expect(() => parseProxyString('proxy.example.com\r\n:8080:user:pass')).toThrow(/proxy/i)
   expect(() => parseProxyString('proxy.example.com:8080abc:user:pass')).toThrow(/port/i)
+  expect(() => parseProxyString('proxy.example.com:0:user:pass')).toThrow(/port/i)
   expect(() => parseProxyString('proxy.example.com:70000:user:pass')).toThrow(/port/i)
+})
+
+test('[P1] parseProxyString format and port errors are non-retryable data errors', () => {
+  expect(() => parseProxyString('proxy.example.com\r\n:8080:user:pass')).toThrow(
+    expect.objectContaining({ code: 'PROXY_FORMAT_INVALID', retryable: false })
+  )
+  expect(() => parseProxyString('proxy.example.com:65536:user:pass')).toThrow(
+    expect.objectContaining({ code: 'PROXY_PORT_INVALID', retryable: false })
+  )
 })

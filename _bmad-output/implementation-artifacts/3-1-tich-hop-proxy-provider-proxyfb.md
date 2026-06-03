@@ -1,6 +1,6 @@
 # Story 3.1: Tích hợp proxy provider proxyfb
 
-Status: review
+Status: done
 
 <!-- Phase 3 story (Epic 3 — Proxy Management, story 1/3). Sources: epics-phase3.md#Story-3.1 (L314-326), prd-phase3.md#FR24 (L376), architecture.md (folder proxy/ L1826-1827, FR-P3-08 L912). ⚠️ automation-desktop/ (Electron client) — 25 rules CLAUDE.md ÁP DỤNG. Previous: Epic 2 done (2.1+2.2+2.3). C# source: automation-facebook/SST_TOOL_FB/Tech_Meta/proxyfb.cs. -->
 
@@ -61,9 +61,9 @@ so that mỗi profile automation session dùng được IP riêng từ provider 
 
 **Patch (Low — robustness/consistency):**
 
-- [ ] [Review][Patch] `proxyfb.ts` fetchProxy: `catch {} → return null` nuốt MỌI lỗi (parse/format/auth) + KHÔNG check `response.ok`. Fix: check `response.ok` trước `.json()`; `PROXY_FORMAT_INVALID`/`PROXY_PORT_INVALID` → `retryable:false` (data error, retry không sửa) [proxyfb.ts:20,26,56-67]
-- [ ] [Review][Patch] `parseProxyString` hardening: (a) password chứa `:` → split-limit (host:port:user, phần còn lại = password); (b) host validation cơ bản (reject control chars `\r\n`) — mitigation cho D1 MITM-inject [proxyfb.ts:17-35]
-- [ ] [Review][Patch] Schema/type consistency: `ProxyConfigSetRequestSchema` thêm `.strict()` (2 schema kia đã có); xóa duplicate type `PublicProxyInfo` trong `types/proxy.ts` (giữ Zod-inferred từ `ipc-schemas/proxy.ts` — single source, bài học 2.2 P3) [proxy.ts, types/proxy.ts]
+- [x] [Review][Patch] `proxyfb.ts` fetchProxy: `catch {} → return null` nuốt MỌI lỗi (parse/format/auth) + KHÔNG check `response.ok`. Fix: check `response.ok` trước `.json()`; `PROXY_FORMAT_INVALID`/`PROXY_PORT_INVALID` → `retryable:false` (data error, retry không sửa) [proxyfb.ts:20,26,56-67]
+- [x] [Review][Patch] `parseProxyString` hardening: (a) password chứa `:` → split-limit (host:port:user, phần còn lại = password); (b) host validation cơ bản (reject control chars `\r\n`) — mitigation cho D1 MITM-inject [proxyfb.ts:17-35]
+- [x] [Review][Patch] Schema/type consistency: `ProxyConfigSetRequestSchema` thêm `.strict()` (2 schema kia đã có); xóa duplicate type `PublicProxyInfo` trong `types/proxy.ts` (giữ Zod-inferred từ `ipc-schemas/proxy.ts` — single source, bài học 2.2 P3) [proxy.ts, types/proxy.ts]
 
 **Dismissed (false-positive / inherited / intentional):** HTTP "Critical" như patch độc lập (provider chỉ có HTTP → thành D1 decision, không phải code bug); `e.currentTarget.disabled` rule#17 (đúng pattern CLAUDE.md #17, nhất quán 2.1-2.3); `proxy_configs` table "dead" (cố ý theo AC5 — 3.2 circuit-breaker sẽ ghi `last_rotated_at`); `rotateProxy()` thiếu `profileId` (3.1 test-proxy không có profile context; 3.3 sẽ thêm param); AC3 vs Dev-Notes "mâu thuẫn" rotate response (impl ĐÚNG — handler strip về `{host,port}`, Auditor + integration test xác nhận; chỉ cần sửa wording AC3); credential leak (verified none); React implicit import + IPC type-anchor (inherited Epic 2, typecheck pass); storage.set raw error khi encryption unavailable (caught→normalizeError generic VN, rare headless Linux); various test-coverage gaps HTTP-4xx/port-boundary/e2e-error (Low — gộp note P1).
 
@@ -161,12 +161,16 @@ Codex GPT-5
 ### Debug Log References
 - RED targeted proxy tests: `npx playwright test tests/unit/proxyfb-provider.spec.ts tests/unit/proxy-service.spec.ts tests/integration/proxy-ipc-handlers.spec.ts --reporter=line` failed initially because `proxyfb` provider and `proxy-handlers` did not exist.
 - Targeted proxy + schema + E2E: `npx playwright test tests/unit/proxyfb-provider.spec.ts tests/unit/proxy-service.spec.ts tests/integration/proxy-ipc-handlers.spec.ts tests/integration/db-schema.spec.ts --reporter=line && npx electron-vite build && npx playwright test tests/e2e/proxy.spec.ts --reporter=line` -> 18 passed, build passed, 1 E2E passed.
+- Review patch targeted proxy + schema: `npx playwright test tests/unit/proxyfb-provider.spec.ts tests/unit/proxy-service.spec.ts tests/integration/proxy-ipc-handlers.spec.ts tests/integration/db-schema.spec.ts --reporter=line` -> 21 passed.
 - Typecheck: `npm run typecheck` -> passed.
 - Lint: `npm run lint` -> passed (existing Node module-type warning only for local eslint-rules files).
-- Full non-E2E regression: `npx playwright test tests/unit tests/integration tests/api tests/component --reporter=line` -> 107 passed.
-- Full E2E regression: `npx electron-vite build && npx playwright test tests/e2e --reporter=line` -> build passed, 17 passed.
+- Review patch E2E proxy: `npx electron-vite build && npx playwright test tests/e2e/proxy.spec.ts --reporter=line` -> build passed, 1 passed.
+- Full non-E2E regression: `npx playwright test tests/unit tests/integration tests/api tests/component --reporter=line` -> 110 passed.
+- Full E2E regression: `npx playwright test tests/e2e --reporter=line` -> 17 passed.
 
 ### Completion Notes List
+- Applied review patches P1/P2/P3: `fetchProxy` now checks `response.ok`; `parseProxyString` supports `:` inside password, rejects raw control chars, and marks format/port data errors non-retryable; proxy config-set schema is strict; duplicate `PublicProxyInfo` type was removed from shared proxy types.
+- Applied D1 HTTP-only mitigation: documented accepted proxyfb HTTP transport risk in `automation-desktop/project-context.md` and added a non-error warning in `ProxyView`.
 - Added proxy shared types and `ProxyServiceError`, then implemented `ProxyfbProvider` with `changeProxy.php` first, `getProxy.php` fallback, strict `host:port:user:pass` parsing, 10s abort timeout, and retryable unavailable errors.
 - Implemented `ProxyService` storing API key only in safeStorage key `proxy.proxyfb.api_key`; `configGet` returns only configured boolean and `rotate` returns full `ProxyInfo` for main-process future use.
 - Added proxy IPC schemas/registry and handlers for `phase3:proxy:config-get`, `phase3:proxy:config-set`, and `phase3:proxy:rotate`; public rotate IPC response exposes only `{ host, port }`, never username/password/API key.
@@ -187,6 +191,7 @@ Codex GPT-5
 - `automation-desktop/src/main/adapters/electron-bootstrap.ts`
 - `automation-desktop/src/renderer/src/api/proxy-api.ts`
 - `automation-desktop/src/renderer/src/views/ProxyView.tsx`
+- `automation-desktop/project-context.md`
 - `automation-desktop/src/renderer/src/views/ProfilesView.tsx`
 - `automation-desktop/src/renderer/src/App.tsx`
 - `automation-desktop/src/renderer/src/assets/main.css`
@@ -199,4 +204,5 @@ Codex GPT-5
 - `automation-desktop/tests/integration/profile-ipc-handlers.spec.ts`
 
 ### Change Log
+- 2026-06-03: Apply review patches: P1 response.ok+retryable, P2 parseProxyString hardening (':' password + control-char reject), P3 schema .strict()+dedupe type, D1 document HTTP risk + ProxyView warning.
 - 2026-06-03: Implemented Story 3.1 proxyfb provider integration, secure API-key config, proxy IPC, ProxyView UI, proxy metadata schema, and proxy-focused unit/integration/E2E validation.

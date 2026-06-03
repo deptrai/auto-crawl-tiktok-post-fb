@@ -8,8 +8,3 @@ export interface ProxyInfo {
 export interface ProxyProvider {
   getProxy(key: string): Promise<ProxyInfo>
 }
-
-export interface PublicProxyInfo {
-  host: string
-  port: number
-}
