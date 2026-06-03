@@ -48,3 +48,11 @@ export {
   type LoginService,
   type LoginServiceDeps
 } from './login-service'
+export {
+  TokenExtractionError,
+  createTokenExtractor,
+  parseTokens,
+  type SessionTokens,
+  type TokenExtractor,
+  type TokenExtractorDeps
+} from './token-extractor'

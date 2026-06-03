@@ -1,6 +1,6 @@
 # Story 4.4: Trích xuất CSRF token qua HTTP
 
-Status: ready-for-dev
+Status: done
 
 Epic: 4 — Lõi Automation Facebook (Self-Comment MVP) · Story: 4.4 · ID: 4.4
 
@@ -21,21 +21,40 @@ So that các action HTTP-based (self-comment 4.6) có đủ CSRF token để g�
 
 ## Tasks / Subtasks
 
-- [ ] **T1** — `src/main/automation/token-extractor.ts`:
+- [x] **T1** — `src/main/automation/token-extractor.ts`:
   - `export interface SessionTokens { fbDtsg: string; lsd: string; jazoest: string }`
   - `parseTokens(html: string): SessionTokens | null` — PURE regex parser (AC1/AC3). Return `null` nếu thiếu `fbDtsg` HOẶC `lsd`.
   - `createTokenExtractor(deps): TokenExtractor` → `extract(): Promise<SessionTokens>` (AC2/AC4).
-- [ ] **T2** — `src/main/automation/index.ts`: APPEND export `createTokenExtractor`, `parseTokens`, type `SessionTokens` (giữ exports 4.1/4.2/4.3). (rule #21)
-- [ ] **T3** — Tests:
+- [x] **T2** — `src/main/automation/index.ts`: APPEND export `createTokenExtractor`, `parseTokens`, type `SessionTokens` (giữ exports 4.1/4.2/4.3). (rule #21)
+- [x] **T3** — Tests:
   - `tests/unit/token-extractor.spec.ts`:
     - `[P0] parseTokens` happy: HTML chứa `DTSGInitialData`/`fb_dtsg` + `LSD`/`lsd` + `jazoest` → parse đúng 3 token.
     - `[P0] jazoest fallback`: HTML có fb_dtsg nhưng KHÔNG có jazoest → compute `"2"+sumCharCode(fbDtsg)` đúng (test vector cố định).
     - `[P0] parse fail`: HTML thiếu fb_dtsg/lsd → `parseTokens` trả `null`.
     - `[P0] extract retry + selector_miss`: DI `fetchHtml` fail lần 1 (HTML rác) → `onSelectorMiss` gọi → lần 2 HTML ok → trả token. Hết maxAttempts → throw typed error.
     - `[P0] no-leak`: error/telemetry KHÔNG chứa token value (assert `not.toContain` token giả).
-- [ ] **T4** — Verify: `npm run lint` + `npm run typecheck` + test mới PASS + full suite không giảm (baseline 167). Grep tự kiểm KHÔNG có log statement chứa token + KHÔNG `Date.now` trong logic thuần (inject nếu cần backoff).
+- [x] **T4** — Verify: `npm run lint` + `npm run typecheck` + test mới PASS + full suite không giảm (baseline 167). Grep tự kiểm KHÔNG có log statement chứa token + KHÔNG `Date.now` trong logic thuần (inject nếu cần backoff).
 
 > **D1 (defer):** KHÔNG per-action server JWT (4.5 — khác hẳn, gọi backend). KHÔNG self-comment / HTTP POST action (4.6). KHÔNG IPC/UI. KHÔNG telemetry transport (Epic 6 — chỉ `onSelectorMiss` hook). KHÔNG state machine transition (4.4 là helper của EXECUTING, không tự transition).
+
+## Review Findings (2026-06-03 — bmad-code-review, 3-lens adversarial)
+
+> Diff: commit `ae1d819` (thuần 4.4). **Lint ✅ · Typecheck ✅ · 172 tests PASS** (167 + 5 mới). No log / no Date.now. Verdict: **APPROVE — không blocker, không bug. Tất cả finding Low/info.**
+
+**AC1–AC6 + guardrail — đạt:**
+- ✅ **AC1/AC3** `parseTokens` multi-pattern (DTSGInitialData JSON + input name↔value 2 chiều + DTSGInitial array); jazoest parse-or-compute (`"2"+sumCharCode`, test '2294' đúng). `matchFirst` non-global regex (không lỗi lastIndex). null nếu thiếu fb_dtsg/lsd.
+- ✅ **AC2** in-memory only — KHÔNG persist/IPC (D1 verify grep sạch).
+- ✅ **AC4** retry **re-fetch** bounded (maxAttempts default 3, validate >0+floor); test confirm fetchHtml gọi lại mỗi attempt; hết → `TokenExtractionError`.
+- ✅ **AC5 secret hygiene** XUẤT SẮC: 0 log statement; `TokenExtractionError.message='TOKEN_EXTRACTION_FAILED'` (code-only, no token); `onSelectorMiss('fb_dtsg_or_lsd')` name-only; test assert `not.toContain(FB_DTSG/LSD)` ở cả selectorMiss + error.
+- ✅ **AC6** unit phủ happy/fallback/null/retry/exhaust + no-leak. Deps `Pick<>`-style (fetchHtml/onSelectorMiss injected, KHÔNG import playwright → giữ pure).
+
+**Findings (tất cả LOW/INFO — KHÔNG block done):**
+
+- [ ] [Review][Info] `extract()` không có timeout quanh `fetchHtml()` — nếu nguồn HTML hang thì extract hang. 4.4 OK (fetchHtml injected; real = `page.content()` nhanh). Note **4.6**: đảm bảo `fetchHtml` (page.content) có timeout/đã navigate xong.
+- [x] [Review][Nit] **(ĐÃ FIX)** `onSelectorMiss` giờ báo cụ thể token thiếu qua `missingTokenNames(html)` → `'fb_dtsg'` / `'lsd'` / `'fb_dtsg+lsd'` (vẫn name-only, no value).
+- [ ] [Review][Info] retry KHÔNG backoff (immediate) — đúng quyết định story (FB HTML fail = đổi cấu trúc, retry ngay OK). Nếu sau cần chịu network blip → thêm `computeBackoffMs` (shared/retry.ts) + inject sleep.
+
+**Dismissed:** ReDoS (regex `[^>]*`/`[^"]+` linear, bounded — an toàn); first-match nhiều fb_dtsg (FB nhất quán, story acknowledged); integration test thiếu (AC6 cho unit-only đủ với pure parser + DI); double-extract trong test exhaust (cố ý — verify cả reject shape lẫn instance, 2×2=4 selectorMiss đúng).
 
 ## Dev Notes
 
@@ -150,22 +169,41 @@ Pure parser + DI orchestration → **unit-only đủ** (KHÔNG cần integration
 
 ### Agent Model Used
 
-_TBD_
+GPT-5 Codex
 
 ### Debug Log References
 
-_TBD_
+- `python3 _bmad/scripts/resolve_customization.py --skill .agents/skills/bmad-dev-story --key workflow` — loaded workflow customization.
+- `cat _bmad-output/implementation-artifacts/sprint-status-phase3.yaml` — loaded complete Phase 3 sprint status; 4.4 was `ready-for-dev`.
+- `cat _bmad-output/implementation-artifacts/4-4-trich-xuat-csrf-token-qua-http.md` — loaded complete story context.
+- `npx playwright test tests/unit/token-extractor.spec.ts --reporter=line` — RED phase failed because `src/main/automation/token-extractor.ts` did not exist.
+- `npx playwright test tests/unit/token-extractor.spec.ts --reporter=line` — GREEN phase `5 passed (539ms)`, final focused run `5 passed (602ms)`.
+- `npm run lint` — pass, 0 errors (existing MODULE_TYPELESS_PACKAGE_JSON warning only).
+- `npm run typecheck` — pass.
+- `npx playwright test tests/unit tests/integration --reporter=line` — `172 passed (6.1s)`.
+- `rg -n "console\.|logger\.|Date\.now|fbDtsg|fb_dtsg|lsd|jazoest|TOKEN_EXTRACTION_FAILED" src/main/automation/token-extractor.ts tests/unit/token-extractor.spec.ts` — verified no `console`, `logger`, or `Date.now`; hits are token field/pattern/test assertions only.
+- `npx playwright test --reporter=line` — full regression `193 passed (14.0s)`.
 
 ### Completion Notes List
 
-_TBD_
+- Implemented `token-extractor.ts` with pure `parseTokens(html)` for `fb_dtsg`, `lsd`, and `jazoest` extraction using multiple Facebook HTML patterns.
+- Added deterministic `jazoest` fallback from `fb_dtsg` (`"2" + sum(charCode)`) when HTML does not include `jazoest`.
+- Added `createTokenExtractor({ fetchHtml, onSelectorMiss, maxAttempts })` with bounded retry, selector-miss hook carrying token name only, and typed `TokenExtractionError` with no HTML/token values.
+- Exported token extractor APIs from the automation barrel without changing prior 4.1/4.2/4.3 exports.
+- Added unit coverage for happy parse, input fallback, jazoest fallback, parse fail, retry + selector_miss, typed exhausted error, and no-leak assertions.
+- Scope respected: no persistence, IPC/UI/bootstrap, telemetry transport, state-machine transitions, per-action server token, or self-comment action.
 
 ### File List
 
-_TBD_
+- `_bmad-output/implementation-artifacts/4-4-trich-xuat-csrf-token-qua-http.md`
+- `_bmad-output/implementation-artifacts/sprint-status-phase3.yaml`
+- `automation-desktop/src/main/automation/token-extractor.ts`
+- `automation-desktop/src/main/automation/index.ts`
+- `automation-desktop/tests/unit/token-extractor.spec.ts`
 
 ### Change Log
 
 | Date | Version | Description | Author |
 |---|---|---|---|
 | 2026-06-03 | 0.1 | Story created (bmad-create-story) — token-extractor fb_dtsg/lsd/jazoest qua HTTP | Luisphan |
+| 2026-06-03 | 1.0 | Implemented token extractor parser/retry helper with secret-safe unit coverage | GPT-5 Codex |
