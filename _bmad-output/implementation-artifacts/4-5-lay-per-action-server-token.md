@@ -1,6 +1,6 @@
 # Story 4.5: Lấy per-action server token
 
-Status: ready-for-dev
+Status: review
 
 Epic: 4 — Lõi Automation Facebook (Self-Comment MVP) · Story: 4.5 · ID: 4.5
 
@@ -24,25 +24,25 @@ So that crack license thuần client-side KHÔNG hoạt động (R-D9) — reven
 ## Tasks / Subtasks
 
 ### Backend (Python/FastAPI — mirror `automation/license` pattern)
-- [ ] **B1** — `backend/app/models/automation/action_token.py`: `ActionToken(Base)` `__tablename__="action_tokens"` schema `phase3`. Cột: `jti` (String PK/UNIQUE), `license_activation_id` (Uuid FK `phase3.license_activations.id` ON DELETE CASCADE), `action_type` (String), `issued_at`, `expires_at` (DateTime tz), `used_at` (DateTime tz, nullable). (AC2)
-- [ ] **B2** — `alembic/versions/20260603_..phase3_action_tokens.py`: migration tạo bảng (mirror `20260602_01_phase3_license_init.py`). (AC2)
-- [ ] **B3** — `backend/app/schemas/automation/action_token.py`: `ActionTokenRequest {key, hwid, action_type}` + `ActionTokenResponse {token, jti, expires_at}` (Pydantic).
-- [ ] **B4** — `backend/app/services/automation/action_token.py`: `ActionTokenError(code, message, retryable)` + `issue_action_token(db, *, key, hwid, action_type, now=None)`:
+- [x] **B1** — `backend/app/models/automation/action_token.py`: `ActionToken(Base)` `__tablename__="action_tokens"` schema `phase3`. Cột: `jti` (String PK/UNIQUE), `license_activation_id` (Uuid FK `phase3.license_activations.id` ON DELETE CASCADE), `action_type` (String), `issued_at`, `expires_at` (DateTime tz), `used_at` (DateTime tz, nullable). (AC2)
+- [x] **B2** — `alembic/versions/20260603_..phase3_action_tokens.py`: migration tạo bảng (mirror `20260602_01_phase3_license_init.py`). (AC2)
+- [x] **B3** — `backend/app/schemas/automation/action_token.py`: `ActionTokenRequest {key, hwid, action_type}` + `ActionTokenResponse {token, jti, expires_at}` (Pydantic).
+- [x] **B4** — `backend/app/services/automation/action_token.py`: `ActionTokenError(code, message, retryable)` + `issue_action_token(db, *, key, hwid, action_type, now=None)`:
   - tìm license theo `key` + `_latest_activation` (reuse từ `license.py`) → none → `LICENSE_INVALID`.
   - revoked / `expires_at < now` → `LICENSE_INVALID` / `LICENSE_EXPIRED`.
   - `validate_hwid` + `activation.hwid_hash != normalized` → `LICENSE_HWID_MISMATCH`.
   - `action_type ∉ {post,comment,react,share,friend}` → `ACTION_NOT_ALLOWED`.
   - `jti=uuid4`, `exp=now+60s`, `token=create_access_token-style` qua `app/core/security.py` (`settings.JWT_SECRET`, HS256) claims `{jti, sub=str(activation.id), action, exp}`.
   - INSERT `ActionToken` row (jti UNIQUE). Return `ActionTokenResponse`. (AC1/AC2/AC3)
-- [ ] **B5** — `backend/app/api/automation.py`: route `POST /api/v1/automation/action/token` (Depends `get_db`) + reuse rate-limiter + `_error_response` map (mirror `/license/activate`). (AC1/AC3)
-- [ ] **B6** — `backend/tests/automation/test_automation_action_token.py`: pytest (AC6) — issue success (exp 60s, jti in DB), invalid/expired/hwid deny + status, action-not-allowed, rate limit, jti uniqueness.
+- [x] **B5** — `backend/app/api/automation.py`: route `POST /api/v1/automation/action/token` (Depends `get_db`) + reuse rate-limiter + `_error_response` map (mirror `/license/activate`). (AC1/AC3)
+- [x] **B6** — `backend/tests/automation/test_automation_action_token.py`: pytest (AC6) — issue success (exp 60s, jti in DB), invalid/expired/hwid deny + status, action-not-allowed, rate limit, jti uniqueness.
 
 ### Client (automation-desktop — mirror `BackendLicenseClient`)
-- [ ] **C1** — `src/shared/api-client/http-client.ts`: thêm `ActionTokenResponseSchema` (zod) + type (mirror `BackendActivationResponseSchema`).
-- [ ] **C2** — `src/main/license/action-token-client.ts`: `createActionTokenClient(deps)` → `requestActionToken({ actionType }): Promise<ActionToken>`: lấy hwid (hwid-generator) + license key → `postJson` `/api/v1/automation/action/token` → trả `{token, jti, expiresAt}`. Offline (`BackendHttpError` network) → `ACTION_TOKEN_OFFLINE` (retryable); server 4xx → `ACTION_TOKEN_DENIED`. ErrorEnvelope message tiếng Việt. Deps `Pick<>`. (AC4/AC5)
-- [ ] **C3** — `src/main/license/index.ts`: barrel APPEND export. (rule #21)
-- [ ] **C4** — `tests/unit/action-token-client.spec.ts`: DI mock postJson — success→token; offline→`ACTION_TOKEN_OFFLINE`; 403→`ACTION_TOKEN_DENIED`; assert error KHÔNG chứa token/jti value. (AC6)
-- [ ] **V** — Verify: backend `pytest backend/tests/automation/test_automation_action_token.py` xanh; client `npm run lint` + `typecheck` + test mới + full suite không giảm (baseline 172).
+- [x] **C1** — `src/shared/api-client/http-client.ts`: thêm `ActionTokenResponseSchema` (zod) + type (mirror `BackendActivationResponseSchema`).
+- [x] **C2** — `src/main/license/action-token-client.ts`: `createActionTokenClient(deps)` → `requestActionToken({ actionType }): Promise<ActionToken>`: lấy hwid (hwid-generator) + license key → `postJson` `/api/v1/automation/action/token` → trả `{token, jti, expiresAt}`. Offline (`BackendHttpError` network) → `ACTION_TOKEN_OFFLINE` (retryable); server 4xx → `ACTION_TOKEN_DENIED`. ErrorEnvelope message tiếng Việt. Deps `Pick<>`. (AC4/AC5)
+- [x] **C3** — `src/main/license/index.ts`: barrel APPEND export. (rule #21)
+- [x] **C4** — `tests/unit/action-token-client.spec.ts`: DI mock postJson — success→token; offline→`ACTION_TOKEN_OFFLINE`; 403→`ACTION_TOKEN_DENIED`; assert error KHÔNG chứa token/jti value. (AC6)
+- [x] **V** — Verify: backend `pytest backend/tests/automation/test_automation_action_token.py` xanh; client `npm run lint` + `typecheck` + test mới + full suite không giảm (baseline 172).
 
 > **D1 (defer):** KHÔNG consume token / mark `used_at` (4.6 khi action execute — verify jti + used_at null + set used_at). KHÔNG self-comment HTTP POST (4.6). KHÔNG IPC/UI wire `automation:start` (4.6). KHÔNG `job_actions` insert (4.6). KHÔNG cache token safeStorage (optional, defer 4.6 nếu cần). KHÔNG state machine transition.
 
@@ -184,22 +184,51 @@ async requestActionToken({ actionType }) {
 
 ### Agent Model Used
 
-_TBD_
+GPT-5 Codex
 
 ### Debug Log References
 
-_TBD_
+- Backend targeted red/green: `cd backend && PHASE3_TEST_DATABASE_URL=postgresql://admin:adminpassword@localhost:5433/phase3_test venv/bin/pytest tests/automation/test_automation_action_token.py -q` → `6 passed, 3 warnings`.
+- Backend Phase 3 regression: `cd backend && PHASE3_TEST_DATABASE_URL=postgresql://admin:adminpassword@localhost:5433/phase3_test venv/bin/pytest tests/automation/ -q` → `41 passed, 1 warning`.
+- Client focused: `cd automation-desktop && npx playwright test tests/unit/action-token-client.spec.ts --reporter=line` → `3 passed`.
+- Client lint: `cd automation-desktop && npm run lint` → `0 errors` (Node module-type warning only).
+- Client typecheck: `cd automation-desktop && npm run typecheck` → `0 errors`.
+- Client unit+integration: `cd automation-desktop && npx playwright test tests/unit tests/integration --reporter=line` → `175 passed`.
+- Diff hygiene: `git diff --check` → pass.
 
 ### Completion Notes List
 
-_TBD_
+- Implemented backend `phase3.action_tokens` model + Alembic migration with `jti` primary/unique key, FK to `phase3.license_activations`, timestamps, and `used_at` reserved for 4.6 consume flow.
+- Added `POST /api/v1/automation/action/token` with separate 60/min action-token rate limiter, Vietnamese ErrorEnvelope mapping, active-license/HWID/action allowlist verification, and HS256 JWT claim issuance using `settings.JWT_SECRET`.
+- Added backend Postgres/Alembic tests for table existence, success JWT claims/DB persistence, invalid/revoked/expired/HWID/action deny paths, rate limit, and unique jti issuance.
+- Added automation-desktop action token response schema and `createActionTokenClient` DI wrapper returning token/jti in memory only; offline maps to `ACTION_TOKEN_OFFLINE`, server deny maps to `ACTION_TOKEN_DENIED` without carrying backend details that may contain secrets.
+- Added client unit tests for success, offline block, server deny, and token/jti no-leak behavior.
+- Fixed Electron SQLCipher integration harness to unset inherited `ELECTRON_RUN_AS_NODE=1` when spawning Electron; this restored existing integration specs during full suite validation without changing app business logic.
 
 ### File List
 
-_TBD_
+- `_bmad-output/implementation-artifacts/4-5-lay-per-action-server-token.md`
+- `_bmad-output/implementation-artifacts/sprint-status-phase3.yaml`
+- `automation-desktop/src/main/license/action-token-client.ts`
+- `automation-desktop/src/main/license/index.ts`
+- `automation-desktop/src/shared/api-client/http-client.ts`
+- `automation-desktop/tests/integration/automation-job-repo.spec.ts`
+- `automation-desktop/tests/integration/fingerprint-service.spec.ts`
+- `automation-desktop/tests/unit/action-token-client.spec.ts`
+- `backend/alembic/env.py`
+- `backend/alembic/versions/20260603_01_phase3_action_tokens.py`
+- `backend/app/api/automation.py`
+- `backend/app/models/automation/__init__.py`
+- `backend/app/models/automation/action_token.py`
+- `backend/app/schemas/automation/__init__.py`
+- `backend/app/schemas/automation/action_token.py`
+- `backend/app/services/automation/action_token.py`
+- `backend/tests/automation/conftest.py`
+- `backend/tests/automation/test_automation_action_token.py`
 
 ### Change Log
 
 | Date | Version | Description | Author |
 |---|---|---|---|
+| 2026-06-03 | 1.0 | Implemented per-action server token backend/client with Postgres migration, tests, and validation harness fix for Electron spawn env | Codex |
 | 2026-06-03 | 0.1 | Story created (bmad-create-story) — per-action server token JWT HS256, client+backend, DB jti-UNIQUE anti-reuse | Luisphan |

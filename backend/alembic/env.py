@@ -7,6 +7,7 @@ from sqlalchemy import engine_from_config, pool
 from app.core.config import settings
 from app.core.database import Base
 from app.models import models  # noqa: F401
+from app.models.automation import action_token as automation_action_token_models  # noqa: F401
 from app.models.automation import license as automation_license_models  # noqa: F401
 
 config = context.config

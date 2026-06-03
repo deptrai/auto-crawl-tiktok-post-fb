@@ -42,6 +42,7 @@ test('[P0] automation job repository persists and resumes state in real SQLCiphe
     await execFileAsync(electronBin, [fixture.entry], {
       env: {
         ...process.env,
+        ELECTRON_RUN_AS_NODE: undefined,
         AUTOMATION_JOB_SMOKE_RESULT_PATH: fixture.resultPath
       },
       timeout: 30_000

@@ -13,6 +13,7 @@ from app.api.auth import require_authenticated_user
 from app.api.deps import RoleChecker
 from app.core.database import get_db
 from app.models.models import User
+from app.schemas.automation.action_token import ActionTokenRequest, ActionTokenResponse
 from app.schemas.automation.license import (
     AdminLicenseResponse,
     LicenseActivateRequest,
@@ -22,6 +23,7 @@ from app.schemas.automation.license import (
     LicenseCreateRequest,
     LicenseRevokeResponse,
 )
+from app.services.automation.action_token import ActionTokenError, issue_action_token
 from app.services.automation.license import (
     LicenseActivationError,
     _admin_license_response,
@@ -40,6 +42,9 @@ _STATUS_BY_CODE = {
     "LICENSE_REVOKED": 403,
     "LICENSE_HWID_MISMATCH": 409,
     "LICENSE_INVALID": 422,
+    "LICENSE_EXPIRED": 403,
+    "ACTION_NOT_ALLOWED": 403,
+    "ACTION_TOKEN_DB_ERROR": 500,
     "LICENSE_DB_ERROR": 500,
     "LICENSE_KEY_COLLISION": 500,
     "RATE_LIMITED": 429,
@@ -83,10 +88,12 @@ class ActivationRateLimiter:
 
 
 _activation_rate_limiter = ActivationRateLimiter()
+_action_token_rate_limiter = ActivationRateLimiter(max_attempts=60, window_seconds=60)
 
 
 def reset_activation_rate_limiter() -> None:
     _activation_rate_limiter.reset()
+    _action_token_rate_limiter.reset()
 
 
 def _client_ip(request: Request) -> str:
@@ -117,6 +124,36 @@ def activate_license_endpoint(
         return _error_response(
             "LICENSE_DB_ERROR",
             "Không thể kích hoạt license do lỗi cơ sở dữ liệu.",
+            retryable=True,
+        )
+
+
+@router.post("/action/token", response_model=ActionTokenResponse)
+def issue_action_token_endpoint(
+    request_body: ActionTokenRequest,
+    request: Request,
+    db: Session = Depends(get_db),
+) -> ActionTokenResponse | JSONResponse:
+    if not _action_token_rate_limiter.allow(_client_ip(request), request_body.key):
+        return _error_response(
+            "RATE_LIMITED",
+            "Bạn đã yêu cầu token hành động quá nhiều lần. Vui lòng chờ một lúc rồi thử lại.",
+            retryable=True,
+        )
+
+    try:
+        return issue_action_token(
+            db,
+            key=request_body.key,
+            hwid=request_body.hwid,
+            action_type=request_body.action_type,
+        )
+    except ActionTokenError as exc:
+        return _error_response(exc.code, exc.message, exc.retryable)
+    except SQLAlchemyError:
+        return _error_response(
+            "ACTION_TOKEN_DB_ERROR",
+            "Không thể cấp token hành động do lỗi cơ sở dữ liệu.",
             retryable=True,
         )
 

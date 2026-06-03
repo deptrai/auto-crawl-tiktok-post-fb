@@ -17,6 +17,14 @@ export const BackendLicenseCheckResponseSchema = z.object({
 
 export type BackendLicenseCheckResponse = z.infer<typeof BackendLicenseCheckResponseSchema>
 
+export const BackendActionTokenResponseSchema = z.object({
+  token: z.string().min(1),
+  jti: z.string().min(1),
+  expires_at: z.string().datetime({ offset: true })
+})
+
+export type BackendActionTokenResponse = z.infer<typeof BackendActionTokenResponseSchema>
+
 export class BackendHttpError extends Error {
   code: string
   retryable: boolean

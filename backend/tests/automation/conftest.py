@@ -44,7 +44,10 @@ def _reset_postgres_database(database_url: str) -> None:
                     "IF to_regclass('public.alembic_version') IS NOT NULL THEN "
                     "UPDATE public.alembic_version "
                     "SET version_num = '58dc46872d17' "
-                    "WHERE version_num = '20260602_01_phase3_license_init'; "
+                    "WHERE version_num IN ("
+                    "'20260602_01_phase3_license_init', "
+                    "'20260603_01_phase3_action_tokens'"
+                    "); "
                     "END IF; "
                     "END $$;"
                 )
@@ -63,7 +66,10 @@ def _run_alembic_upgrade(database_url: str) -> None:
 def _truncate_phase3_tables(engine: Engine) -> None:
     with engine.begin() as connection:
         connection.execute(
-            text("TRUNCATE TABLE phase3.license_activations, phase3.licenses RESTART IDENTITY CASCADE")
+            text(
+                "TRUNCATE TABLE phase3.action_tokens, phase3.license_activations, phase3.licenses "
+                "RESTART IDENTITY CASCADE"
+            )
         )
 
 

@@ -51,6 +51,7 @@ test('[P0] fingerprint service persists, self-heals, and round-trips metadata in
     await execFileAsync(electronBin, [fixture.entry], {
       env: {
         ...process.env,
+        ELECTRON_RUN_AS_NODE: undefined,
         FINGERPRINT_SMOKE_RESULT_PATH: fixture.resultPath
       },
       timeout: 30_000
