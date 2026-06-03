@@ -78,6 +78,12 @@ test('[P0] content template UI creates, edits, deletes, and protects final templ
     await expect(defaultRow.getByRole('button', { name: 'Xóa' })).toBeDisabled()
 
     await window.getByTestId('content-template-label-input').fill('Khen nhẹ')
+    await expect(window.getByTestId('content-template-placeholder-hint')).toContainText('{uid}')
+    await expect(window.getByTestId('content-template-placeholder-hint')).toContainText('{name}')
+    await window.getByTestId('content-template-body-input').fill('Chào {name} ({uid})')
+    await expect(window.getByTestId('content-template-preview')).toContainText(
+      'Chào Nguyễn Văn A (100012345678)'
+    )
     await window.getByTestId('content-template-body-input').fill('Bài viết rất hay')
     await window.getByTestId('content-template-create-button').click()
     await expect(window.getByTestId('content-templates-list')).toContainText('Khen nhẹ')
@@ -85,6 +91,16 @@ test('[P0] content template UI creates, edits, deletes, and protects final templ
 
     const createdRow = window.locator('.template-row', { hasText: 'Khen nhẹ' })
     await createdRow.getByRole('button', { name: 'Sửa' }).click()
+    await expect(window.getByTestId('content-template-edit-placeholder-hint')).toContainText(
+      '{uid}'
+    )
+    await expect(window.getByTestId('content-template-edit-placeholder-hint')).toContainText(
+      '{name}'
+    )
+    await window.locator('.template-edit-form textarea').fill('Chào {name} ({uid})')
+    await expect(window.getByTestId('content-template-edit-preview')).toContainText(
+      'Chào Nguyễn Văn A (100012345678)'
+    )
     await window.locator('.template-edit-form textarea').fill('Bài viết quá ổn')
     await window.locator('.template-edit-form').getByRole('button', { name: 'Lưu' }).click()
     await expect(window.getByTestId('content-templates-list')).toContainText('Bài viết quá ổn')

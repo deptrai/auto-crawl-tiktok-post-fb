@@ -1,11 +1,23 @@
 import { useEffect, useState } from 'react'
 import type { ContentTemplateSummary } from '../../../shared/ipc-schemas'
 import {
+  CONTENT_TEMPLATE_PLACEHOLDERS,
+  renderContentTemplate,
+  type ContentTemplateVars
+} from '../../../shared/content-template-render'
+import {
   createContentTemplate,
   deleteContentTemplate,
   listContentTemplates,
   updateContentTemplate
 } from '../api/content-template-api'
+
+const SAMPLE_TEMPLATE_VARS: Required<ContentTemplateVars> = {
+  uid: '100012345678',
+  name: 'Nguyễn Văn A'
+}
+
+const placeholderHint = `Placeholder hỗ trợ: ${CONTENT_TEMPLATE_PLACEHOLDERS.join(', ')}`
 
 export function ContentTemplatesView(): React.JSX.Element {
   const [templates, setTemplates] = useState<ContentTemplateSummary[]>([])
@@ -18,6 +30,8 @@ export function ContentTemplatesView(): React.JSX.Element {
   const [editLabel, setEditLabel] = useState('')
   const [editBody, setEditBody] = useState('')
   const [rowBusyId, setRowBusyId] = useState<string | null>(null)
+  const createPreview = body.trim() ? renderContentTemplate(body, SAMPLE_TEMPLATE_VARS) : ''
+  const editPreview = editBody.trim() ? renderContentTemplate(editBody, SAMPLE_TEMPLATE_VARS) : ''
 
   async function refreshTemplates(): Promise<void> {
     try {
@@ -172,7 +186,19 @@ export function ContentTemplatesView(): React.JSX.Element {
             rows={3}
             onChange={(e) => setBody(e.target.value)}
           />
+          <span
+            className="template-placeholder-hint"
+            data-testid="content-template-placeholder-hint"
+          >
+            {placeholderHint}
+          </span>
         </label>
+        {createPreview ? (
+          <div className="template-preview" data-testid="content-template-preview">
+            <span>Xem trước</span>
+            <p>{createPreview}</p>
+          </div>
+        ) : null}
         <button
           data-testid="content-template-create-button"
           className="primary-button"
@@ -217,6 +243,18 @@ export function ContentTemplatesView(): React.JSX.Element {
                       rows={3}
                       onChange={(e) => setEditBody(e.target.value)}
                     />
+                    <span
+                      className="template-placeholder-hint"
+                      data-testid="content-template-edit-placeholder-hint"
+                    >
+                      {placeholderHint}
+                    </span>
+                    {editPreview ? (
+                      <div className="template-preview" data-testid="content-template-edit-preview">
+                        <span>Xem trước</span>
+                        <p>{editPreview}</p>
+                      </div>
+                    ) : null}
                     <div className="profile-row-actions">
                       <button
                         className="profile-row-button primary-row-action"

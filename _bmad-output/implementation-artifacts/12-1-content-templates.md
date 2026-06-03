@@ -1,6 +1,6 @@
 # Story 12.1: Content Templates — Placeholder `{uid}`/`{name}` (net-new bổ sung 4.6b)
 
-Status: ready-for-dev
+Status: review
 
 Epic: 12 — Mass Messenger Seeding (Phase 3.4 Growth) · Story: 12.1 · ID: 12.1
 
@@ -30,16 +30,16 @@ So that automation seeding chọn ngẫu nhiên template rồi cá nhân hóa t�
 ## Tasks / Subtasks
 
 ### Render util (net-new core)
-- [ ] **T1** — `src/shared/content-template-render.ts`: `export type ContentTemplateVars = { uid?: string; name?: string }`; `export const CONTENT_TEMPLATE_PLACEHOLDERS = ['{uid}', '{name}'] as const`; `export function renderContentTemplate(body: string, vars: ContentTemplateVars): string` — replaceAll `{uid}`/`{name}` (thiếu → `''`); token khác giữ nguyên. Pure, no side-effect, no import electron. (AC1)
-- [ ] **T2** — `tests/unit/content-template-render.spec.ts`: cases — both placeholders replaced; multiple occurrences (`'{name} {name}'`); missing var → empty string; unknown token `{foo}` untouched; empty body → `''`; no-placeholder body unchanged; adjacent `{uid}{name}`. (AC5)
+- [x] **T1** — `src/shared/content-template-render.ts`: `export type ContentTemplateVars = { uid?: string; name?: string }`; `export const CONTENT_TEMPLATE_PLACEHOLDERS = ['{uid}', '{name}'] as const`; `export function renderContentTemplate(body: string, vars: ContentTemplateVars): string` — replaceAll `{uid}`/`{name}` (thiếu → `''`); token khác giữ nguyên. Pure, no side-effect, no import electron. (AC1)
+- [x] **T2** — `tests/unit/content-template-render.spec.ts`: cases — both placeholders replaced; multiple occurrences (`'{name} {name}'`); missing var → empty string; unknown token `{foo}` untouched; empty body → `''`; no-placeholder body unchanged; adjacent `{uid}{name}`. (AC5)
 
 ### UI hint + preview (net-new surface)
-- [ ] **T3** — `src/renderer/src/views/ContentTemplatesView.tsx`: thêm hint placeholder (từ `CONTENT_TEMPLATE_PLACEHOLDERS`) cạnh ô body (cả create + edit form); live preview `renderContentTemplate(body, SAMPLE_VARS)` với testid `content-template-preview` (+ edit variant). Import render util từ `../../../shared/content-template-render`. (AC2)
-- [ ] **T4** — `src/renderer/src/assets/main.css`: style cho hint + preview block (nhẹ, theo pattern hiện có). (AC2)
-- [ ] **T5** — `tests/e2e/content-templates.spec.ts` (extend, KHÔNG file mới trừ khi cần): gõ body `'Chào {name} ({uid})'` → assert preview hiển thị `'Chào Nguyễn Văn A (100012345678)'`; hint chứa `{uid}` và `{name}`. Reuse harness e2e content-templates sẵn có. (AC5)
+- [x] **T3** — `src/renderer/src/views/ContentTemplatesView.tsx`: thêm hint placeholder (từ `CONTENT_TEMPLATE_PLACEHOLDERS`) cạnh ô body (cả create + edit form); live preview `renderContentTemplate(body, SAMPLE_VARS)` với testid `content-template-preview` (+ edit variant). Import render util từ `../../../shared/content-template-render`. (AC2)
+- [x] **T4** — `src/renderer/src/assets/main.css`: style cho hint + preview block (nhẹ, theo pattern hiện có). (AC2)
+- [x] **T5** — `tests/e2e/content-templates.spec.ts` (extend, KHÔNG file mới trừ khi cần): gõ body `'Chào {name} ({uid})'` → assert preview hiển thị `'Chào Nguyễn Văn A (100012345678)'`; hint chứa `{uid}` và `{name}`. Reuse harness e2e content-templates sẵn có. (AC5)
 
 ### Verify
-- [ ] **V** — `cd automation-desktop && npm run typecheck` + `npm run lint` (0 errors kể cả test mới) + `npx playwright test tests/unit tests/integration tests/e2e --reporter=line` (≥ baseline 218). Pre-commit secret guard (placeholder/body = user content, KHÔNG secret — OK). (AC5)
+- [x] **V** — `cd automation-desktop && npm run typecheck` + `npm run lint` (0 errors kể cả test mới) + `npx playwright test tests/unit tests/integration tests/e2e --reporter=line` (≥ baseline 218). Pre-commit secret guard (placeholder/body = user content, KHÔNG secret — OK). (AC5)
 
 > **D1 (defer):** placeholder mở rộng (`{firstname}`, `{custom1}`...) + escape literal `\{uid\}` nếu cần → Epic 12 sau hoặc khi 12.2 yêu cầu. Live-preview với target THẬT (uid/name từ list) → 12.3 Target List. Wire render vào seeding flow → 12.2.
 
@@ -135,8 +135,44 @@ export function renderContentTemplate(body: string, vars: ContentTemplateVars): 
 ## Dev Agent Record
 ### Agent Model Used
 
+GPT-5 Codex
+
 ### Debug Log References
+
+- 2026-06-04: Sprint status hiện có key cũ `12-1-upload-len-youtube-shorts` ở `review`; story active `12-1-content-templates` không có key sprint riêng, nên tracking status trong story file.
+- 2026-06-04: Red phase: `npx playwright test tests/unit/content-template-render.spec.ts tests/e2e/content-templates.spec.ts --reporter=line` fail do chưa có `src/shared/content-template-render.ts`.
+- 2026-06-04: Green subset: `npm run build && npx playwright test tests/unit/content-template-render.spec.ts tests/e2e/content-templates.spec.ts --reporter=line` → 8 passed.
+- 2026-06-04: Lint: `npm run lint` → exit 0, còn 1 warning existing `phase3-security/no-direct-logger` trong `electron-bootstrap.ts`.
+- 2026-06-04: Full validation: `npm run build && npx playwright test tests/unit tests/integration tests/e2e --reporter=line` → 246 passed.
 
 ### Completion Notes List
 
+- Added shared pure renderer `renderContentTemplate` plus `CONTENT_TEMPLATE_PLACEHOLDERS` for `{uid}` and `{name}` without Electron/main imports.
+- Added create/edit template placeholder hint sourced from `CONTENT_TEMPLATE_PLACEHOLDERS`, and live preview rendered with sample UID/name values.
+- Kept content template CRUD, IPC channels, DB schema, and self-comment orchestration unchanged per AC3/AC4.
+- Added render unit coverage for replacement, missing vars, unknown tokens, empty body, unchanged body, and adjacent placeholders; extended existing content-template E2E to assert hint + preview.
+
 ### File List
+
+Story 12.1 files:
+
+- `automation-desktop/src/shared/content-template-render.ts` — new shared placeholder renderer.
+- `automation-desktop/src/renderer/src/views/ContentTemplatesView.tsx` — placeholder hint + live preview for create/edit forms.
+- `automation-desktop/src/renderer/src/assets/main.css` — hint/preview styling.
+- `automation-desktop/tests/unit/content-template-render.spec.ts` — pure render unit tests.
+- `automation-desktop/tests/e2e/content-templates.spec.ts` — E2E coverage for hint + preview.
+- `_bmad-output/implementation-artifacts/12-1-content-templates.md` — story status/tasks/dev record updates.
+
+Pre-existing worktree files also modified/formatted during validation, not part of Story 12.1 AC scope:
+
+- `automation-desktop/src/main/adapters/electron-bootstrap.ts`
+- `automation-desktop/src/main/automation/own-post-target-resolver.ts`
+- `automation-desktop/src/main/automation/playwright-runner.ts`
+- `automation-desktop/tests/integration/login-smoke.spec.ts`
+- `automation-desktop/tests/unit/cookie.spec.ts`
+- `automation-desktop/tests/unit/own-post-target-resolver.spec.ts`
+- `automation-desktop/tests/unit/playwright-runner.spec.ts`
+
+### Change Log
+
+- 2026-06-04: Implemented Story 12.1 placeholder render utility, UI hint/live preview, unit/E2E coverage, and marked story ready for review.
