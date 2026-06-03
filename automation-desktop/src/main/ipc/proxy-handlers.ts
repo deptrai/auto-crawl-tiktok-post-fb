@@ -3,11 +3,14 @@ import {
   ProxyConfigGetResponseSchema,
   ProxyConfigSetRequestSchema,
   ProxyConfigSetResponseSchema,
+  ProxyHealthRequestSchema,
+  ProxyHealthResponseSchema,
   ProxyRotateRequestSchema,
   ProxyRotateResponseSchema,
   type IpcErrorResponse,
   type ProxyConfigGetResponse,
   type ProxyConfigSetResponse,
+  type ProxyHealthResponse,
   type ProxyRotateResponse
 } from '../../shared/ipc-schemas'
 import { ProxyServiceError, type ProxyService } from '../proxy'
@@ -79,6 +82,19 @@ export function registerProxyHandlers(ipcMain: IpcMainLike, service: ProxyServic
       })
     } catch (error) {
       return ProxyRotateResponseSchema.parse(normalizeError(error))
+    }
+  })
+
+  ipcMain.handle('phase3:proxy:health', async (_event, request): Promise<ProxyHealthResponse> => {
+    const parsedRequest = ProxyHealthRequestSchema.safeParse(request)
+    if (!parsedRequest.success)
+      return ProxyHealthResponseSchema.parse(parseError(parsedRequest.error.flatten()))
+
+    try {
+      const health = await service.getHealth()
+      return ProxyHealthResponseSchema.parse({ ok: true, health })
+    } catch (error) {
+      return ProxyHealthResponseSchema.parse(normalizeError(error))
     }
   })
 }

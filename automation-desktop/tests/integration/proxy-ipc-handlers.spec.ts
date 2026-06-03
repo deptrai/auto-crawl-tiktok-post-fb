@@ -21,6 +21,7 @@ function createService(overrides: Partial<ProxyService> = {}): ProxyService {
     configGet: async () => ({ configured: true }),
     configSet: async () => undefined,
     rotate: async () => ({ host: '1.2.3.4', port: 8080, username: 'user', password: 'pass' }),
+    getHealth: async () => ({ state: 'healthy', configured: true }),
     ...overrides
   }
 }
@@ -124,4 +125,39 @@ test('[P0] proxy IPC rotate maps provider failure to retryable ErrorEnvelope', a
   const err = (response as { error: { code: string; retryable: boolean; message: string } }).error
   expect(err.code).toBe('PROXY_UNAVAILABLE')
   expect(err.retryable).toBe(true)
+})
+
+test('[P1] proxy IPC health returns public health without secrets', async () => {
+  const fakeIpc = new FakeIpcMain()
+  registerProxyHandlers(
+    fakeIpc,
+    createService({
+      getHealth: async () => ({
+        state: 'quarantined',
+        configured: true,
+        cooldownRemainingMs: 12_000
+      })
+    })
+  )
+
+  const response = await fakeIpc.invoke('phase3:proxy:health', {})
+
+  expect(response).toEqual({
+    ok: true,
+    health: { state: 'quarantined', configured: true, cooldownRemainingMs: 12_000 }
+  })
+  expect(JSON.stringify(response)).not.toMatch(/KEY|apiKey|username|password|proxyfb\.api_key/i)
+})
+
+test('[P1] proxy IPC health rejects unexpected payload with ErrorEnvelope', async () => {
+  const fakeIpc = new FakeIpcMain()
+  registerProxyHandlers(fakeIpc, createService())
+
+  const response = await fakeIpc.invoke('phase3:proxy:health', { provider: 'proxyfb' })
+
+  expect((response as { ok: boolean }).ok).toBe(false)
+  const err = (response as { error: { code: string; retryable: boolean; message: string } }).error
+  expect(err.code).toBe('VALIDATION_ERROR')
+  expect(err.retryable).toBe(false)
+  expect(err.message).toBe('Dữ liệu yêu cầu không hợp lệ')
 })

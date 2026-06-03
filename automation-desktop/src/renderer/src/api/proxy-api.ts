@@ -1,6 +1,8 @@
 import type {
   ProxyConfigGetResponse,
   ProxyConfigSetResponse,
+  ProxyHealthResponse,
+  ProxyHealthStatus,
   ProxyRotateResponse,
   PublicProxyInfo
 } from '../../../shared/ipc-schemas'
@@ -38,4 +40,14 @@ export async function rotateProxy(): Promise<PublicProxyInfo> {
   >('phase3:proxy:rotate', {})
   assertOk(response)
   return response.proxy
+}
+
+export async function getProxyHealth(): Promise<ProxyHealthStatus> {
+  const response = await window.api.ipc.call<
+    'phase3:proxy:health',
+    Record<string, never>,
+    ProxyHealthResponse
+  >('phase3:proxy:health', {})
+  assertOk(response)
+  return response.health
 }

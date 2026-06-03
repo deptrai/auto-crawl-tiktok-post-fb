@@ -1,5 +1,5 @@
 # generated: 2026-06-02
-# last_updated: 2026-06-03 (Epic 1+2 done; 3.1 done; 3.2 ready-for-dev — circuit breaker + RETRY_POLICY infra; telemetry proxy_error defer Epic 6; Epic 3 in-progress)
+# last_updated: 2026-06-03 (Epic 1+2 done; 3.1+3.2 done — proxy provider + circuit breaker; Epic 3 in-progress, 3.3 next (bind per session))
 # project: auto-crawl-tiktok-post-fb (Phase 3 — Facebook Cookie-Based Automation Desktop)
 # project_key: NOKEY
 # tracking_system: file-system
@@ -70,7 +70,7 @@ development_status:
   # Epic 3: Quản lý Proxy (Proxy Management)
   epic-3: in-progress
   3-1-tich-hop-proxy-provider-proxyfb: done
-  3-2-health-check-proxy-circuit-breaker: ready-for-dev
+  3-2-health-check-proxy-circuit-breaker: done
   3-3-bind-proxy-rieng-moi-profile-session: backlog
   epic-3-retrospective: optional
 

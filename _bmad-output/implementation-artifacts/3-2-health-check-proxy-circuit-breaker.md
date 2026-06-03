@@ -1,6 +1,9 @@
 # Story 3.2: Health-check proxy + circuit breaker
 
-Status: ready-for-dev
+Status: done
+
+<!-- Review patches applied (2026-06-03): P1 wrap upsertConfig best-effort; P2 "Healthy"→"Bình thường" + health-null state + handleSave health try/catch + e2e text; P3 getHealth OPEN→quarantined kể cả cooldown=0. Lint/Typecheck/123 tests PASS. -->
+
 
 <!-- Phase 3 story (Epic 3 — Proxy Management, story 2/3). Sources: epics-phase3.md#Story-3.2 (L328-339), prd-phase3.md#FR25, architecture.md (retry RETRY_POLICY L1661-1663, circuit breaker L1299, proxy_error enum L1368/L1558). ⚠️ automation-desktop/ — 25 rules CLAUDE.md. Previous: 3.1 done (proxyfb provider, proxy_configs table, ProxyService.rotate). -->
 
@@ -24,14 +27,26 @@ so that khi proxyfb down, automation KHÔNG fail hàng loạt mà chờ provider
 
 ## Tasks / Subtasks
 
-- [ ] **Task 1: CircuitBreaker** (AC: #1) — `src/main/proxy/circuit-breaker.ts` class + injected `now`. Export. KHÔNG import electron.
-- [ ] **Task 2: proxy-repo** (AC: #3) — `src/main/db/repositories/proxy-repo.ts` getConfig/upsertConfig, prepared stmt. Mirror profile-repo pattern.
-- [ ] **Task 3: shared/retry.ts** (AC: #5) — RETRY_POLICY map + computeBackoffMs + isRetryable. Import `Phase3ChannelName` từ ipc-schemas.
-- [ ] **Task 4: ProxyService wrap breaker** (AC: #2,#4) — deps thêm `repo: ProxyRepository`, `clock?: () => number`, `breakerConfig?`, `onProxyError?`. `rotate` wrap breaker + persist proxy_configs. Thêm `getHealth(): Promise<{state, configured, cooldownRemainingMs?}>`. Interface + impl. `index.ts` barrel export CircuitBreaker + types.
-- [ ] **Task 5: IPC health** (AC: #4) — `ipc-schemas/proxy.ts` thêm `ProxyHealthRequest/Response` schema; `index.ts` registry; `proxy-handlers.ts` handler `phase3:proxy:health` (reuse normalizeError).
-- [ ] **Task 6: Bootstrap** (AC: #2) — `electron-bootstrap.ts`: tạo `proxyRepo = createProxyRepository(db)`; truyền vào `createProxyService({ storage, providers, repo: proxyRepo, clock: () => Date.now() })`.
-- [ ] **Task 7: Renderer** (AC: #6) — `proxy-api.ts` thêm `getProxyHealth()`; `ProxyView.tsx` health indicator (load mount + sau Test). tiếng Việt, testid `proxy-health-status`.
-- [ ] **Task 8: Tests** (AC: #7) — circuit-breaker.spec, retry.spec, proxy-service.spec (mở rộng), proxy-ipc-handlers.spec (health). Real-DB: mở rộng `runProxySchemaSmoke` verify upsert proxy_configs (enabled/last_rotated_at) nếu có sẵn smoke.
+- [x] **Task 1: CircuitBreaker** (AC: #1) — `src/main/proxy/circuit-breaker.ts` class + injected `now`. Export. KHÔNG import electron.
+- [x] **Task 2: proxy-repo** (AC: #3) — `src/main/db/repositories/proxy-repo.ts` getConfig/upsertConfig, prepared stmt. Mirror profile-repo pattern.
+- [x] **Task 3: shared/retry.ts** (AC: #5) — RETRY_POLICY map + computeBackoffMs + isRetryable. Import `Phase3ChannelName` từ ipc-schemas.
+- [x] **Task 4: ProxyService wrap breaker** (AC: #2,#4) — deps thêm `repo: ProxyRepository`, `clock?: () => number`, `breakerConfig?`, `onProxyError?`. `rotate` wrap breaker + persist proxy_configs. Thêm `getHealth(): Promise<{state, configured, cooldownRemainingMs?}>`. Interface + impl. `index.ts` barrel export CircuitBreaker + types.
+- [x] **Task 5: IPC health** (AC: #4) — `ipc-schemas/proxy.ts` thêm `ProxyHealthRequest/Response` schema; `index.ts` registry; `proxy-handlers.ts` handler `phase3:proxy:health` (reuse normalizeError).
+- [x] **Task 6: Bootstrap** (AC: #2) — `electron-bootstrap.ts`: tạo `proxyRepo = createProxyRepository(db)`; truyền vào `createProxyService({ storage, providers, repo: proxyRepo, clock: () => Date.now() })`.
+- [x] **Task 7: Renderer** (AC: #6) — `proxy-api.ts` thêm `getProxyHealth()`; `ProxyView.tsx` health indicator (load mount + sau Test). tiếng Việt, testid `proxy-health-status`.
+- [x] **Task 8: Tests** (AC: #7) — circuit-breaker.spec, retry.spec, proxy-service.spec (mở rộng), proxy-ipc-handlers.spec (health). Real-DB: mở rộng `runProxySchemaSmoke` verify upsert proxy_configs (enabled/last_rotated_at) nếu có sẵn smoke.
+
+### Review Findings (2026-06-03 — bmad-code-review, 3 reviewers)
+
+> Diff: `17ba0ae`→working-tree. **Lint ✅ · Typecheck ✅ · 123 tests PASS.** E2E chưa exec. Scorecard: AC1✅ AC2✅ AC3✅ AC4⚠️ AC5✅ AC6⚠️ AC7✅ — scope sạch (passive-only, telemetry hook-only, no bind/pool). **Không có Critical/High thực** — breaker logic đúng spec.
+
+**Patch:**
+
+- [x] [Review][Patch][Med] `rotate()`: `repo.upsertConfig` (success line 108 + `quarantineProvider` line 69) KHÔNG wrap try/catch → nếu DB throw: success path mất proxy đã fetch (caller nhận DB error thay proxy); fail path ghi đè `PROXY_UNAVAILABLE` thành raw DB error. Fix: wrap cả 2 upsert best-effort (try/catch, không override result/error chính) [proxy-service.ts:68-76,105-122]
+- [x] [Review][Patch][Med] ProxyView health text: `"Healthy"` (tiếng Anh) → tiếng Việt "Bình thường" (AC6 + rule #15); khi `health===null` (load lỗi) đừng hiển thị "Bình thường" giả → show "Đang kiểm tra"/"Không rõ"; `handleSave` wrap health-refresh trong try/catch riêng (đừng để lỗi refresh ghi đè save-success — như handleTest đã làm) [ProxyView.tsx:108, handleSave]
+- [x] [Review][Patch][Low] `getHealth` boundary: khi breaker OPEN + cooldown vừa hết (`cooldownRemainingMs===0`) hoặc HALF_OPEN → hiện báo "healthy" sớm dù chưa có trial success. Fix: derive theo `breaker.getState().state` (OPEN→quarantined kể cả =0; CLOSED→healthy). + reset `failureCount` khi breaker chuyển OPEN (getState báo count phình to qua nhiều cycle) [proxy-service.ts:125-135, circuit-breaker.ts recordFailure]
+
+**Dismissed (false-positive / documented / intentional):** `canRequest()` mutate OPEN→HALF_OPEN trong predicate (Blind "Critical" — đây là STANDARD lazy-half-open CB pattern; rotate luôn record sau; getHealth dùng getState không canRequest → không misuse); concurrent HALF_OPEN cho 2 trial (chấp nhận; single-flight = mối lo 3.3); `PROXY_QUARANTINED` trong retryableCodes (khớp AC5 spec; consumer=Epic 4 sẽ xử cooldown); provider data-error (FORMAT/PORT) trip breaker (Dev Notes quyết "mọi throw=1 failure"); restart DB enabled=0 vs in-memory CLOSED mismatch (Dev Notes documented-accepted; getConfig dành cho 3.3); no live-countdown polling (AC6 không yêu cầu); enabled int≠0/1 (chỉ code này ghi); smoke hardcoded date (SQLite TEXT verbatim); lastRotatedAt null (column KHÔNG NOT NULL — verified); test-coverage gaps concurrent/threshold=1/getConfig-undefined (Low — 5 breaker transition ĐÃ phủ qua 3 test).
 
 ## Dev Notes
 
@@ -121,9 +136,52 @@ class CircuitBreaker {
 ## Dev Agent Record
 
 ### Agent Model Used
+Codex GPT-5
 
 ### Debug Log References
+- RED Task 1-3: `npx playwright test tests/unit/circuit-breaker.spec.ts tests/unit/retry.spec.ts tests/integration/proxy-repo.spec.ts --reporter=line` failed initially because `circuit-breaker.ts`, `retry.ts`, and `proxy-repo.ts` did not exist.
+- Task 1-3 GREEN: `npm rebuild better-sqlite3-multiple-ciphers && npx playwright test tests/integration/proxy-repo.spec.ts --reporter=line` -> 1 passed after rebuilding native module for Node ABI.
+- Task 4 RED/GREEN: `npx playwright test tests/unit/proxy-service.spec.ts --reporter=line` -> RED on missing quarantine/repo writes, then GREEN 8 passed after wrapping `ProxyService.rotate`.
+- Task 5 RED/GREEN: `npx playwright test tests/integration/proxy-ipc-handlers.spec.ts tests/integration/proxy-ipc-contract.spec.ts --reporter=line` -> RED on missing health channel/registry, then GREEN 11 passed.
+- Task 6 smoke adjustment: rewrote `proxy-repo.spec.ts` to use Electron smoke because direct Node SQLCipher native ABI conflicts with Electron-based integration smoke tests.
+- Targeted Story 3.2 suite: `npm rebuild better-sqlite3-multiple-ciphers && npx playwright test tests/unit/circuit-breaker.spec.ts tests/unit/retry.spec.ts tests/unit/proxy-service.spec.ts tests/integration/proxy-repo.spec.ts tests/integration/proxy-ipc-handlers.spec.ts tests/integration/proxy-ipc-contract.spec.ts tests/integration/db-schema.spec.ts --reporter=line` -> 26 passed.
+- E2E proxy: `npx electron-rebuild -f -w better-sqlite3-multiple-ciphers && npx electron-vite build && npx playwright test tests/e2e/proxy.spec.ts --reporter=line` -> 2 passed.
+- Quality: `npm run typecheck` -> passed; `npm run lint` -> passed (existing module-type warning only for local eslint rule file).
+- Full non-E2E regression: `npx playwright test tests/unit tests/integration tests/api tests/component --reporter=line` -> 123 passed.
+- Full E2E regression: `npx playwright test tests/e2e --reporter=line` -> 18 passed.
 
 ### Completion Notes List
+- Implemented pure `CircuitBreaker` with injected clock, CLOSED/OPEN/HALF_OPEN states, deterministic cooldown transition, and reset/reopen semantics.
+- Added centralized `RETRY_POLICY`, `computeBackoffMs`, and `isRetryable` helpers for `phase3:proxy:rotate` without adding inline retry behavior to services.
+- Added `ProxyRepository` for `proxy_configs` get/upsert with boolean mapping and Electron smoke validation for real SQLCipher writes.
+- Wrapped `ProxyService.rotate` with passive circuit breaker behavior: successful rotate records success and persists `enabled=1` + ISO `lastRotatedAt`; repeated provider failures open quarantine, persist `enabled=0`, call `onProxyError`, and block provider calls during cooldown with `PROXY_QUARANTINED`.
+- Added `ProxyService.getHealth()` and IPC `phase3:proxy:health` with strict request schema, public health-only response, registry entry, and Vietnamese ErrorEnvelope handling.
+- Wired `proxyRepo` and injected clock into Electron bootstrap; extended proxy schema smoke to verify repository upsert/read.
+- Added renderer `getProxyHealth()` and `ProxyView` health indicator (`proxy-health-status`) that shows `Healthy` or `Tạm ngừng (còn Ns)`, refreshes on mount, after save, and after proxy test success/failure.
+- Added E2E coverage for health indicator happy path and quarantine UI after repeated provider failures, while preserving no-secret display assertions.
 
 ### File List
+- automation-desktop/src/main/proxy/circuit-breaker.ts
+- automation-desktop/src/main/proxy/proxy-service.ts
+- automation-desktop/src/main/proxy/index.ts
+- automation-desktop/src/main/db/repositories/proxy-repo.ts
+- automation-desktop/src/main/adapters/electron-bootstrap.ts
+- automation-desktop/src/main/ipc/proxy-handlers.ts
+- automation-desktop/src/shared/retry.ts
+- automation-desktop/src/shared/ipc-schemas/proxy.ts
+- automation-desktop/src/shared/ipc-schemas/index.ts
+- automation-desktop/src/renderer/src/api/proxy-api.ts
+- automation-desktop/src/renderer/src/views/ProxyView.tsx
+- automation-desktop/src/renderer/src/assets/main.css
+- automation-desktop/tests/unit/circuit-breaker.spec.ts
+- automation-desktop/tests/unit/retry.spec.ts
+- automation-desktop/tests/unit/proxy-service.spec.ts
+- automation-desktop/tests/integration/proxy-repo.spec.ts
+- automation-desktop/tests/integration/proxy-ipc-handlers.spec.ts
+- automation-desktop/tests/integration/proxy-ipc-contract.spec.ts
+- automation-desktop/tests/e2e/proxy.spec.ts
+- _bmad-output/implementation-artifacts/3-2-health-check-proxy-circuit-breaker.md
+- _bmad-output/implementation-artifacts/sprint-status-phase3.yaml
+
+### Change Log
+- 2026-06-03: Implemented Story 3.2 proxy health-check/circuit-breaker, proxy config repository writes, retry policy infra, health IPC, ProxyView health indicator, and full unit/integration/E2E coverage.

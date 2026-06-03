@@ -52,12 +52,16 @@ import {
   ProxyConfigGetResponseSchema,
   ProxyConfigSetRequestSchema,
   ProxyConfigSetResponseSchema,
+  ProxyHealthRequestSchema,
+  ProxyHealthResponseSchema,
   ProxyRotateRequestSchema,
   ProxyRotateResponseSchema,
   type ProxyConfigGetRequest,
   type ProxyConfigGetResponse,
   type ProxyConfigSetRequest,
   type ProxyConfigSetResponse,
+  type ProxyHealthRequest,
+  type ProxyHealthResponse,
   type ProxyRotateRequest,
   type ProxyRotateResponse
 } from './proxy'
@@ -139,7 +143,12 @@ export const channelRegistry = [
     channel: 'phase3:proxy:rotate',
     requestSchema: ProxyRotateRequestSchema,
     responseSchema: ProxyRotateResponseSchema
-  } satisfies ChannelRegistryEntry<ProxyRotateRequest, ProxyRotateResponse>
+  } satisfies ChannelRegistryEntry<ProxyRotateRequest, ProxyRotateResponse>,
+  {
+    channel: 'phase3:proxy:health',
+    requestSchema: ProxyHealthRequestSchema,
+    responseSchema: ProxyHealthResponseSchema
+  } satisfies ChannelRegistryEntry<ProxyHealthRequest, ProxyHealthResponse>
 ] as const satisfies ReadonlyArray<ChannelRegistryEntry>
 
 export * from './common'

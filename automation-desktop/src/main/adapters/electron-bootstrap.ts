@@ -4,6 +4,7 @@ import icon from '../../../resources/icon.png?asset'
 import { openEncryptedDatabase } from '../db/client'
 import { createSettingsRepository, type SettingsRepository } from '../db/repositories/settings-repo'
 import { createProfileRepository, type ProfileRepository } from '../db/repositories/profile-repo'
+import { createProxyRepository, type ProxyRepository } from '../db/repositories/proxy-repo'
 import {
   createFetchLicenseBackendClient,
   createLicenseService,
@@ -36,6 +37,7 @@ interface BootstrapDeps {
   }
   repos: {
     profile: ProfileRepository
+    proxy: ProxyRepository
   }
   workers: {
     licenseChecker: LicenseChecker
@@ -81,6 +83,7 @@ function initializeDeps(): BootstrapDeps {
 
   const settings = createSettingsRepository(db)
   const profileRepo = createProfileRepository(db)
+  const proxyRepo = createProxyRepository(db)
   const smokeHwid = app.isPackaged ? undefined : process.env['PHASE3_HWID_SMOKE_VALUE']
   const services = {
     settings,
@@ -101,11 +104,14 @@ function initializeDeps(): BootstrapDeps {
       storage: adapters.storage,
       providers: {
         proxyfb: new ProxyfbProvider({ baseUrl: readProxyfbBaseUrl() })
-      }
+      },
+      repo: proxyRepo,
+      clock: () => Date.now()
     })
   }
   const repos = {
-    profile: profileRepo
+    profile: profileRepo,
+    proxy: proxyRepo
   }
   const workers = {
     licenseChecker: createLicenseChecker(services.license, { onStatus: publishLicenseStatus })
@@ -237,7 +243,7 @@ function runProfileRepoSmoke(db: BootstrapDeps['db'], repo: ProfileRepository): 
   process.env['PHASE3_PROFILE_REPO_SMOKE_RESULT'] = result
 }
 
-function runProxySchemaSmoke(db: BootstrapDeps['db']): void {
+function runProxySchemaSmoke(db: BootstrapDeps['db'], repo: ProxyRepository): void {
   if (app.isPackaged) return
   if (process.env['PHASE3_PROXY_SCHEMA_SMOKE'] !== '1') return
 
@@ -249,6 +255,22 @@ function runProxySchemaSmoke(db: BootstrapDeps['db']): void {
       .map((row) => row.name)
     if (columns.join(',') !== 'provider,enabled,last_rotated_at') {
       throw new Error(`unexpected columns: ${columns.join(',')}`)
+    }
+    repo.upsertConfig('proxyfb-smoke', {
+      enabled: false,
+      lastRotatedAt: '2026-06-03T00:00:00.000Z'
+    })
+    const disabled = repo.getConfig('proxyfb-smoke')
+    if (disabled?.enabled !== false || disabled.lastRotatedAt !== '2026-06-03T00:00:00.000Z') {
+      throw new Error('proxy config disabled upsert failed')
+    }
+    repo.upsertConfig('proxyfb-smoke', {
+      enabled: true,
+      lastRotatedAt: '2026-06-03T00:01:00.000Z'
+    })
+    const enabled = repo.getConfig('proxyfb-smoke')
+    if (enabled?.enabled !== true || enabled.lastRotatedAt !== '2026-06-03T00:01:00.000Z') {
+      throw new Error('proxy config enabled upsert failed')
     }
   } catch (error) {
     result = `fail:${error instanceof Error ? error.message : String(error)}`
@@ -307,7 +329,7 @@ export async function bootstrapApplication(): Promise<void> {
   runDatabaseSmoke(deps.db)
   runSettingsSmoke(deps.services.settings)
   runProfileRepoSmoke(deps.db, deps.repos.profile)
-  runProxySchemaSmoke(deps.db)
+  runProxySchemaSmoke(deps.db, deps.repos.proxy)
   await runSafeStorageSmoke(deps.adapters.storage)
 
   // Init order: db -> adapters -> services -> ipc -> window -> background workers

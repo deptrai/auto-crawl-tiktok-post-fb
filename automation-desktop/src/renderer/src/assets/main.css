@@ -310,6 +310,27 @@ h1 {
   font-weight: 800;
 }
 
+.proxy-health {
+  display: inline-flex;
+  margin: 10px 0 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.proxy-health-ok {
+  border: 1px solid rgba(130, 220, 166, 0.36);
+  color: #bff5c8;
+  background: rgba(76, 214, 119, 0.14);
+}
+
+.proxy-health-warning {
+  border: 1px solid rgba(255, 204, 122, 0.36);
+  color: #ffe2ad;
+  background: rgba(255, 141, 66, 0.14);
+}
+
 .failed-list,
 .imported-profiles {
   margin-top: 16px;

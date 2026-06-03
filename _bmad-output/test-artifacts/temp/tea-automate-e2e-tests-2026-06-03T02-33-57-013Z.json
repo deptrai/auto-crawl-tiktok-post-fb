@@ -1,0 +1,10 @@
+{
+  "success": true,
+  "subagent": "e2e-tests",
+  "tests": [],
+  "fixture_needs": [],
+  "knowledge_fragments_used": ["fixture-architecture", "network-first", "selector-resilience", "playwright-cli"],
+  "test_count": 0,
+  "priority_coverage": { "P0": 0, "P1": 0, "P2": 0, "P3": 0 },
+  "summary": "No additional E2E tests generated because Story 3.2 already has Healthy and quarantine UI E2E coverage."
+}

@@ -1,0 +1,20 @@
+{
+  "detected_stack": "fullstack",
+  "active_scope": "automation-desktop",
+  "timestamp": "2026-06-03T02-33-57-013Z",
+  "total_tests": 2,
+  "api_tests": 0,
+  "e2e_tests": 0,
+  "backend_tests": 2,
+  "fixtures_created": 0,
+  "api_test_files": 0,
+  "e2e_test_files": 0,
+  "backend_test_files": 2,
+  "priority_coverage": { "P0": 0, "P1": 2, "P2": 0, "P3": 0 },
+  "subagent_execution": "SEQUENTIAL (fallback: runtime subagent/agent-team launch tools unavailable)",
+  "performance_gain": "baseline (no parallel speedup)",
+  "generated_files": [
+    "automation-desktop/tests/unit/proxy-service.spec.ts",
+    "automation-desktop/tests/integration/proxy-ipc-contract.spec.ts"
+  ]
+}

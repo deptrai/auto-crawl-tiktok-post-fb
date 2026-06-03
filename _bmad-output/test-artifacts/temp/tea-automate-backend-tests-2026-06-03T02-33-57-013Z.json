@@ -1,0 +1,25 @@
+{
+  "subagentType": "backend",
+  "testsGenerated": [
+    {
+      "file": "automation-desktop/tests/unit/proxy-service.spec.ts",
+      "description": "Added P1 getHealth unconfigured edge-case test.",
+      "priority_coverage": { "P0": 0, "P1": 1, "P2": 0, "P3": 0 }
+    },
+    {
+      "file": "automation-desktop/tests/integration/proxy-ipc-contract.spec.ts",
+      "description": "Added P1 health response public-only schema test.",
+      "priority_coverage": { "P0": 0, "P1": 1, "P2": 0, "P3": 0 }
+    }
+  ],
+  "coverageSummary": {
+    "totalTests": 2,
+    "testLevels": ["unit", "integration"],
+    "fixtureNeeds": []
+  },
+  "status": "complete",
+  "success": true,
+  "subagent": "backend-tests",
+  "knowledge_fragments_used": ["test-levels-framework", "test-priorities-matrix"],
+  "summary": "Generated 2 selective P1 Story 3.2 tests for health configured=false and no-secret health schema hardening."
+}

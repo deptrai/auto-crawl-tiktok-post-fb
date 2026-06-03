@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { getProxyConfig, rotateProxy, setProxyConfig } from '../api/proxy-api'
+import { getProxyConfig, getProxyHealth, rotateProxy, setProxyConfig } from '../api/proxy-api'
+import type { ProxyHealthStatus } from '../../../shared/ipc-schemas'
 
 export function ProxyView(): React.JSX.Element {
   const [apiKey, setApiKey] = useState('')
@@ -9,15 +10,18 @@ export function ProxyView(): React.JSX.Element {
   const [testing, setTesting] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [testResult, setTestResult] = useState<string | null>(null)
+  const [health, setHealth] = useState<ProxyHealthStatus | null>(null)
+  const [loadingHealth, setLoadingHealth] = useState(true)
 
   useEffect(() => {
     let cancelled = false
 
-    async function loadConfig(): Promise<void> {
+    async function loadInitialState(): Promise<void> {
       try {
-        const config = await getProxyConfig()
+        const [config, proxyHealth] = await Promise.all([getProxyConfig(), getProxyHealth()])
         if (!cancelled) {
           setConfigured(config.configured)
+          setHealth(proxyHealth)
           setError(null)
         }
       } catch (err) {
@@ -25,11 +29,14 @@ export function ProxyView(): React.JSX.Element {
           setError(err instanceof Error ? err.message : 'Không thể đọc cấu hình proxy.')
         }
       } finally {
-        if (!cancelled) setLoadingConfig(false)
+        if (!cancelled) {
+          setLoadingConfig(false)
+          setLoadingHealth(false)
+        }
       }
     }
 
-    void loadConfig()
+    void loadInitialState()
     return () => {
       cancelled = true
     }
@@ -46,6 +53,11 @@ export function ProxyView(): React.JSX.Element {
       await setProxyConfig(trimmed)
       setConfigured(true)
       setApiKey('')
+      try {
+        setHealth(await getProxyHealth())
+      } catch {
+        // health refresh lỗi KHÔNG nên che giấu việc save thành công
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể lưu API key proxyfb.')
     } finally {
@@ -63,12 +75,22 @@ export function ProxyView(): React.JSX.Element {
       const proxy = await rotateProxy()
       setConfigured(true)
       setTestResult(`${proxy.host}:${proxy.port}`)
+      setHealth(await getProxyHealth())
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể test proxy.')
+      try {
+        setHealth(await getProxyHealth())
+      } catch {
+        // Keep the user-facing proxy error visible when health refresh also fails.
+      }
     } finally {
       setTesting(false)
     }
   }
+
+  const cooldownSeconds = health?.cooldownRemainingMs
+    ? Math.ceil(health.cooldownRemainingMs / 1_000)
+    : 0
 
   return (
     <section className="proxy-panel" data-testid="proxy-view" aria-labelledby="proxy-title">
@@ -78,6 +100,18 @@ export function ProxyView(): React.JSX.Element {
           <h2 id="proxy-title">proxyfb</h2>
           <p className="proxy-http-warning" data-testid="proxy-http-warning">
             proxyfb dùng kết nối HTTP (không mã hóa transport). Chỉ dùng mạng tin cậy.
+          </p>
+          <p
+            className={`proxy-health ${health && health.state !== 'quarantined' ? 'proxy-health-ok' : 'proxy-health-warning'}`}
+            data-testid="proxy-health-status"
+          >
+            {loadingHealth
+              ? 'Đang kiểm tra proxy...'
+              : !health
+                ? 'Không rõ trạng thái'
+                : health.state === 'quarantined'
+                  ? `Tạm ngừng (còn ${cooldownSeconds}s)`
+                  : 'Bình thường'}
           </p>
           <p className="profiles-list-subtitle">
             {loadingConfig

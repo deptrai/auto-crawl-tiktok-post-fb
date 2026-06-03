@@ -15,6 +15,8 @@ export const ProxyRotateRequestSchema = z
   })
   .strict()
 
+export const ProxyHealthRequestSchema = z.object({}).strict()
+
 export const PublicProxyInfoSchema = z.object({
   host: z.string().min(1),
   port: z.number().int().positive().max(65535)
@@ -49,10 +51,29 @@ export const ProxyRotateResponseSchema = z.union([
   IpcErrorResponseSchema
 ])
 
+export const ProxyHealthStatusSchema = z.object({
+  state: z.enum(['healthy', 'quarantined']),
+  configured: z.boolean(),
+  cooldownRemainingMs: z.number().int().nonnegative().optional()
+})
+
+export const ProxyHealthSuccessResponseSchema = z.object({
+  ok: z.literal(true),
+  health: ProxyHealthStatusSchema
+})
+
+export const ProxyHealthResponseSchema = z.union([
+  ProxyHealthSuccessResponseSchema,
+  IpcErrorResponseSchema
+])
+
 export type ProxyConfigGetRequest = z.infer<typeof ProxyConfigGetRequestSchema>
 export type ProxyConfigGetResponse = z.infer<typeof ProxyConfigGetResponseSchema>
 export type ProxyConfigSetRequest = z.infer<typeof ProxyConfigSetRequestSchema>
 export type ProxyConfigSetResponse = z.infer<typeof ProxyConfigSetResponseSchema>
 export type ProxyRotateRequest = z.infer<typeof ProxyRotateRequestSchema>
 export type ProxyRotateResponse = z.infer<typeof ProxyRotateResponseSchema>
+export type ProxyHealthRequest = z.infer<typeof ProxyHealthRequestSchema>
+export type ProxyHealthResponse = z.infer<typeof ProxyHealthResponseSchema>
+export type ProxyHealthStatus = z.infer<typeof ProxyHealthStatusSchema>
 export type PublicProxyInfo = z.infer<typeof PublicProxyInfoSchema>

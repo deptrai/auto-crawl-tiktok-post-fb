@@ -2,7 +2,10 @@ import { test, expect } from '@playwright/test'
 import { registerProxyHandlers } from '../../src/main/ipc/proxy-handlers'
 import type { ProxyService } from '../../src/main/proxy'
 import { channelRegistry } from '../../src/shared/ipc-schemas'
-import { ProxyRotateResponseSchema } from '../../src/shared/ipc-schemas/proxy'
+import {
+  ProxyHealthResponseSchema,
+  ProxyRotateResponseSchema
+} from '../../src/shared/ipc-schemas/proxy'
 
 type IpcHandler = (_event: unknown, request: unknown) => Promise<unknown>
 
@@ -23,6 +26,7 @@ function createService(overrides: Partial<ProxyService> = {}): ProxyService {
     configGet: async () => ({ configured: true }),
     configSet: async () => undefined,
     rotate: async () => ({ host: '1.2.3.4', port: 8080, username: 'user', password: 'pass' }),
+    getHealth: async () => ({ state: 'healthy', configured: true }),
     ...overrides
   }
 }
@@ -69,6 +73,7 @@ test('[P1] proxy IPC schemas are registered and rotate response remains public-o
   expect(proxyEntries.map((entry) => entry.channel).sort()).toEqual([
     'phase3:proxy:config-get',
     'phase3:proxy:config-set',
+    'phase3:proxy:health',
     'phase3:proxy:rotate'
   ])
 
@@ -79,4 +84,24 @@ test('[P1] proxy IPC schemas are registered and rotate response remains public-o
 
   expect(parsed).toEqual({ ok: true, proxy: { host: '1.2.3.4', port: 8080 } })
   expect(JSON.stringify(parsed)).not.toMatch(/user|pass|username|password/i)
+})
+
+test('[P1] proxy health response schema remains public-only', () => {
+  const parsed = ProxyHealthResponseSchema.parse({
+    ok: true,
+    health: {
+      state: 'quarantined',
+      configured: true,
+      cooldownRemainingMs: 12_000,
+      apiKey: 'KEY-SECRET',
+      username: 'proxy-user',
+      password: 'proxy-pass'
+    }
+  })
+
+  expect(parsed).toEqual({
+    ok: true,
+    health: { state: 'quarantined', configured: true, cooldownRemainingMs: 12_000 }
+  })
+  expect(JSON.stringify(parsed)).not.toMatch(/KEY|apiKey|user|pass|username|password/i)
 })
