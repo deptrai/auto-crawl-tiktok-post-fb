@@ -11,14 +11,12 @@ import {
   listProxyAssignments,
   releaseProxyForProfile
 } from '../api/proxy-api'
-import { getSetting, setSetting } from '../api/settings-api'
 import { BulkActionBar } from '../components/BulkActionBar'
 import { EmptyState } from '../components/EmptyState'
 import { StatusPill, type StatusPillVariant } from '../components/StatusPill'
 import type { StatusCounts } from '../components/StatusCounter'
 import { Toast, type ToastVariant } from '../components/Toast'
-
-const AUTOMATION_BROWSER_HEADLESS_SETTING = 'automation_browser_headless'
+import type { ConsoleView } from '../components/Sidebar'
 
 const STATUS_LABELS: Record<string, { label: string; variant: StatusPillVariant }> = {
   idle: { label: 'Nhàn rỗi', variant: 'idle' },
@@ -66,6 +64,17 @@ interface ScopedError {
   message: string
 }
 
+interface RowContextMenuState {
+  profileId: string
+  x: number
+  y: number
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+}
+
 function getStatusBadge(status: string): { label: string; variant: StatusPillVariant } {
   return STATUS_LABELS[status] ?? { label: 'Không xác định', variant: 'neutral' }
 }
@@ -111,8 +120,18 @@ function summarizeBatch(statuses: AutomationRowStatus[], total: number): ToastSt
 }
 
 export function ProfilesView({
+  activeView,
+  automationBrowserHeadless,
+  automationBrowserModeSaving,
+  onAutomationBrowserHeadlessChange,
+  settingsError,
   onStatusCountsChange
 }: {
+  activeView: ConsoleView
+  automationBrowserHeadless: boolean
+  automationBrowserModeSaving: boolean
+  onAutomationBrowserHeadlessChange: (next: boolean) => void
+  settingsError: string | null
   onStatusCountsChange?: (counts: StatusCounts) => void
 }): React.JSX.Element {
   const [text, setText] = useState('')
@@ -134,8 +153,6 @@ export function ProfilesView({
   const [proxyError, setProxyError] = useState<ScopedError | null>(null)
   const [automationTarget, setAutomationTarget] = useState('')
   const [automationTargetWarning, setAutomationTargetWarning] = useState<string | null>(null)
-  const [automationBrowserHeadless, setAutomationBrowserHeadless] = useState(false)
-  const [automationBrowserModeSaving, setAutomationBrowserModeSaving] = useState(false)
   const [automationBusyId, setAutomationBusyId] = useState<string | null>(null)
   const [bulkRunning, setBulkRunning] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
@@ -145,6 +162,8 @@ export function ProfilesView({
   const [automationError, setAutomationError] = useState<ScopedError | null>(null)
   const [trackedBatches, setTrackedBatches] = useState<BatchTracker[]>([])
   const [bulkToast, setBulkToast] = useState<ToastState | null>(null)
+  const [contextMenu, setContextMenu] = useState<RowContextMenuState | null>(null)
+  const tableWrapRef = useRef<HTMLDivElement | null>(null)
   const listInFlightRef = useRef(false)
   const listCancelledRef = useRef(false)
   const pendingRefreshRef = useRef(false)
@@ -225,38 +244,6 @@ export function ProfilesView({
       window.clearInterval(interval)
     }
   }, [refreshProfiles])
-
-  useEffect(() => {
-    let cancelled = false
-    void getSetting(AUTOMATION_BROWSER_HEADLESS_SETTING)
-      .then((value) => {
-        if (!cancelled) setAutomationBrowserHeadless(value === 'true')
-      })
-      .catch(() => undefined)
-
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
-  async function handleAutomationBrowserModeChange(nextHeadless: boolean): Promise<void> {
-    if (automationBrowserModeSaving) return
-    const previous = automationBrowserHeadless
-    setAutomationBrowserHeadless(nextHeadless)
-    setAutomationBrowserModeSaving(true)
-    setAutomationError(null)
-    try {
-      await setSetting(AUTOMATION_BROWSER_HEADLESS_SETTING, String(nextHeadless))
-    } catch (err) {
-      setAutomationBrowserHeadless(previous)
-      setAutomationError({
-        profileId: null,
-        message: err instanceof Error ? err.message : 'Không thể lưu chế độ trình duyệt.'
-      })
-    } finally {
-      setAutomationBrowserModeSaving(false)
-    }
-  }
 
   async function handleImport(): Promise<void> {
     if (!text.trim() || importing) return
@@ -424,11 +411,14 @@ export function ProfilesView({
     })
   }
 
-  function toggleSelectAll(selected: boolean): void {
-    setSelectedIds(selected ? new Set(profiles.map((profile) => profile.id)) : new Set())
-  }
+  const toggleSelectAll = useCallback(
+    (selected: boolean): void => {
+      setSelectedIds(selected ? new Set(profiles.map((profile) => profile.id)) : new Set())
+    },
+    [profiles]
+  )
 
-  async function handleBulkSelfComment(): Promise<void> {
+  const handleBulkSelfComment = useCallback(async (): Promise<void> => {
     if (bulkRunning || selectedIds.size === 0) return
 
     const selectedProfiles = profiles.filter((profile) => selectedIds.has(profile.id))
@@ -487,7 +477,7 @@ export function ProfilesView({
     } finally {
       setBulkRunning(false)
     }
-  }
+  }, [automationTarget, bulkRunning, profiles, selectedIds])
 
   useEffect(() => {
     const active = Object.entries(automationStatuses).filter(
@@ -569,12 +559,81 @@ export function ProfilesView({
     return () => window.clearTimeout(timer)
   }, [bulkToast])
 
+  useEffect(() => {
+    if (activeView !== 'profiles') return undefined
+
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (isEditableTarget(event.target)) return
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
+        const activeElement = document.activeElement
+        if (activeElement && tableWrapRef.current?.contains(activeElement)) {
+          event.preventDefault()
+          toggleSelectAll(true)
+        }
+        return
+      }
+
+      if (event.key === '/' && !event.ctrlKey && !event.metaKey && !event.altKey) {
+        event.preventDefault()
+        const targetInput = document.querySelector<HTMLInputElement>(
+          '[data-testid="bulk-target-input"]'
+        )
+        ;(
+          targetInput ??
+          document.querySelector<HTMLInputElement>('[data-testid="automation-target-input"]')
+        )?.focus()
+        return
+      }
+
+      if (event.key === 'Enter' && selectedIds.size > 0 && !bulkRunning) {
+        const targetWarning = getTargetValidationMessage(automationTarget)
+        if (!targetWarning) {
+          event.preventDefault()
+          void handleBulkSelfComment()
+        }
+      }
+    }
+
+    window.addEventListener('keydown', handleKeyDown, true)
+    return () => window.removeEventListener('keydown', handleKeyDown, true)
+  }, [
+    activeView,
+    automationTarget,
+    bulkRunning,
+    handleBulkSelfComment,
+    selectedIds,
+    toggleSelectAll
+  ])
+
+  useEffect(() => {
+    if (!contextMenu) return undefined
+
+    function closeMenu(): void {
+      setContextMenu(null)
+    }
+
+    function handleKeyDown(event: KeyboardEvent): void {
+      if (event.key === 'Escape') closeMenu()
+    }
+
+    window.addEventListener('pointerdown', closeMenu)
+    window.addEventListener('keydown', handleKeyDown)
+    return () => {
+      window.removeEventListener('pointerdown', closeMenu)
+      window.removeEventListener('keydown', handleKeyDown)
+    }
+  }, [contextMenu])
+
   const selectedCount = selectedIds.size
   const allProfilesSelected =
     profiles.length > 0 && profiles.every((profile) => selectedIds.has(profile.id))
   // Chọn một phần → checkbox header ở trạng thái indeterminate (chuẩn UX data table).
   const someProfilesSelected =
     !allProfilesSelected && profiles.some((profile) => selectedIds.has(profile.id))
+  const contextMenuProfile = contextMenu
+    ? profiles.find((profile) => profile.id === contextMenu.profileId)
+    : null
 
   return (
     <div className="profiles-view" data-testid="profiles-view">
@@ -747,7 +806,7 @@ export function ProfilesView({
                 checked={automationBrowserHeadless}
                 disabled={automationBrowserModeSaving || Boolean(automationBusyId)}
                 onChange={(e) => {
-                  void handleAutomationBrowserModeChange(e.target.checked)
+                  onAutomationBrowserHeadlessChange(e.target.checked)
                 }}
               />
               <span>Chạy ẩn trình duyệt</span>
@@ -758,6 +817,12 @@ export function ProfilesView({
         {automationError?.profileId === null ? (
           <p className="error-message list-error" data-testid="automation-error">
             {automationError.message}
+          </p>
+        ) : null}
+
+        {settingsError ? (
+          <p className="error-message list-error" data-testid="automation-settings-error">
+            {settingsError}
           </p>
         ) : null}
 
@@ -777,7 +842,12 @@ export function ProfilesView({
         ) : null}
 
         {profiles.length > 0 ? (
-          <div className="data-table-wrap">
+          <div
+            className="data-table-wrap"
+            ref={tableWrapRef}
+            tabIndex={0}
+            aria-label="Bảng profile"
+          >
             <table className="data-table profiles-list" data-testid="profiles-list">
               <thead>
                 <tr>
@@ -796,9 +866,15 @@ export function ProfilesView({
                   </th>
                   <th scope="col">UID</th>
                   <th scope="col">Tên hiển thị</th>
-                  <th scope="col">Trạng thái</th>
-                  <th scope="col">Proxy</th>
-                  <th scope="col">Job</th>
+                  <th scope="col" title="Trạng thái đăng nhập/automation hiện tại của profile">
+                    Trạng thái
+                  </th>
+                  <th scope="col" title="Proxy riêng đang được gán cho profile này">
+                    Proxy
+                  </th>
+                  <th scope="col" title="Job automation gần nhất của profile">
+                    Job
+                  </th>
                   <th scope="col">Actions</th>
                 </tr>
               </thead>
@@ -819,6 +895,14 @@ export function ProfilesView({
                       key={profile.id}
                       className="profile-list-row"
                       data-testid={`profile-row-${profile.uid}`}
+                      onContextMenu={(event) => {
+                        event.preventDefault()
+                        setContextMenu({
+                          profileId: profile.id,
+                          x: Math.max(8, Math.min(event.clientX, window.innerWidth - 220)),
+                          y: Math.max(8, Math.min(event.clientY, window.innerHeight - 230))
+                        })
+                      }}
                     >
                       <td className="select-column">
                         <input
@@ -1053,6 +1137,90 @@ export function ProfilesView({
                 })}
               </tbody>
             </table>
+            {contextMenuProfile ? (
+              <div
+                className="profile-context-menu"
+                data-testid="profile-context-menu"
+                role="menu"
+                style={{ left: contextMenu?.x ?? 0, top: contextMenu?.y ?? 0 }}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                {(() => {
+                  const profile = contextMenuProfile
+                  const automationStatus = automationStatuses[profile.id]
+                  const automationRunning =
+                    automationBusyId === profile.id ||
+                    Boolean(
+                      automationStatus && !TERMINAL_AUTOMATION_STATES.has(automationStatus.state)
+                    )
+                  const isBusy = rowBusyId === profile.id
+
+                  return (
+                    <>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={automationRunning || Boolean(automationBusyId)}
+                        onClick={() => {
+                          setContextMenu(null)
+                          void handleStartSelfComment(profile)
+                        }}
+                      >
+                        Chạy self-comment
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={Boolean(proxyBusyId) || Boolean(proxyAssignments[profile.id])}
+                        onClick={() => {
+                          setContextMenu(null)
+                          void handleAcquireProxy(profile)
+                        }}
+                      >
+                        Gán proxy
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={Boolean(proxyBusyId) || !proxyAssignments[profile.id]}
+                        onClick={() => {
+                          setContextMenu(null)
+                          void handleReleaseProxy(profile)
+                        }}
+                      >
+                        Thả proxy
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={isBusy}
+                        onClick={() => {
+                          setContextMenu(null)
+                          startEdit(profile)
+                        }}
+                      >
+                        Sửa
+                      </button>
+                      <button
+                        type="button"
+                        role="menuitem"
+                        disabled={isBusy}
+                        className="danger-menu-action"
+                        onClick={() => {
+                          setContextMenu(null)
+                          setRowError(null)
+                          setEditingId(null)
+                          setEditName('')
+                          setConfirmDeleteId(profile.id)
+                        }}
+                      >
+                        Xóa
+                      </button>
+                    </>
+                  )
+                })()}
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -1062,7 +1230,7 @@ export function ProfilesView({
             disabled={bulkRunning}
             headless={automationBrowserHeadless}
             target={automationTarget}
-            onHeadlessChange={(next) => void handleAutomationBrowserModeChange(next)}
+            onHeadlessChange={onAutomationBrowserHeadlessChange}
             onRun={() => void handleBulkSelfComment()}
             onTargetChange={(next) => {
               setAutomationTarget(next)

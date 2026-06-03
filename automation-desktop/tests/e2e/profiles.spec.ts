@@ -350,6 +350,101 @@ test('[P0] UX polish supports copy, dashboard onboarding, select-all, toast summ
   }
 })
 
+test('[P0] power-user shortcuts context menu and settings stay in sync', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-power-user-'))
+  let app: ElectronApplication | null = null
+  let server: Server | null = null
+
+  try {
+    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'), {
+      PHASE3_AUTOMATION_STUB: '1'
+    })
+    app = launched.app
+    server = launched.server
+    const window = launched.window
+
+    const textarea = window.getByTestId('import-textarea')
+    await setTextareaValue(
+      textarea,
+      [
+        'uid_power_1|pass1|seed1|cookie_POWER_1|mail1@example.com|mailpass1',
+        'uid_power_2|pass2|seed2|cookie_POWER_2|mail2@example.com|mailpass2'
+      ].join('\n')
+    )
+    await window.getByTestId('import-button').click()
+    await expect(window.getByTestId('profile-row-uid_power_1')).toBeVisible({ timeout: 10_000 })
+
+    await window.locator('.data-table-wrap').focus()
+    await window.keyboard.press('Control+A')
+    await expect(window.getByTestId('profile-select-uid_power_1')).toBeChecked()
+    await expect(window.getByTestId('profile-select-uid_power_2')).toBeChecked()
+
+    await window.keyboard.press('/')
+    await expect(window.getByTestId('bulk-target-input')).toBeFocused()
+    await window.getByTestId('bulk-target-input').fill('https://www.facebook.com/me/posts/power')
+    await window.locator('.data-table-wrap').focus()
+    await window.keyboard.press('Enter')
+    await expect(window.getByTestId('bulk-action-bar')).toHaveCount(0, { timeout: 10_000 })
+    await expect(window.getByTestId('profile-automation-status-uid_power_1')).toContainText(
+      'Đang xếp hàng',
+      { timeout: 10_000 }
+    )
+
+    await window.getByTestId('profile-row-uid_power_1').click({ button: 'right' })
+    await expect(window.getByTestId('profile-context-menu')).toBeVisible()
+    await expect(window.getByRole('menuitem', { name: 'Thả proxy' })).toBeDisabled()
+    await window.keyboard.press('Escape')
+    await expect(window.getByTestId('profile-context-menu')).toHaveCount(0)
+
+    await window.getByTestId('profile-row-uid_power_1').click({ button: 'right' })
+    await window.getByRole('menuitem', { name: 'Sửa' }).click()
+    await expect(window.getByTestId('profile-edit-input-uid_power_1')).toBeVisible()
+    await window.getByTestId('profile-edit-cancel-uid_power_1').click()
+
+    await window.getByTestId('profile-row-uid_power_1').click({ button: 'right' })
+    await window.getByRole('menuitem', { name: 'Xóa' }).click()
+    await expect(window.getByTestId('profile-delete-confirm-uid_power_1')).toBeVisible()
+
+    await expect(
+      window.getByTestId('profiles-list').locator('th[title*="Job automation"]')
+    ).toHaveCount(1)
+    await expect(
+      window.getByTestId('profiles-list').locator('th[title*="Proxy riêng"]')
+    ).toHaveCount(1)
+    await expect(
+      window.getByTestId('profiles-list').locator('th[title*="Trạng thái đăng nhập"]')
+    ).toHaveCount(1)
+
+    await window.getByTestId('nav-settings').click()
+    await expect(window.getByTestId('settings-view')).toBeVisible()
+    await expect(window.getByTestId('settings-shortcuts')).toContainText('Ctrl/Cmd+A')
+    await window.getByTestId('settings-headless-toggle').check()
+    await expect
+      .poll(() =>
+        window.evaluate(() =>
+          window.api.ipc.call('phase3:settings:get', { key: 'automation_browser_headless' })
+        )
+      )
+      .toEqual({ ok: true, value: 'true' })
+
+    await window.getByTestId('nav-profiles').click()
+    await expect(window.getByTestId('automation-browser-headless-toggle')).toBeChecked()
+    await window.getByTestId('automation-browser-headless-toggle').uncheck()
+    await window.getByTestId('nav-settings').click()
+    await expect(window.getByTestId('settings-headless-toggle')).not.toBeChecked()
+
+    await window.setViewportSize({ width: 900, height: 760 })
+    await expect(window.getByTestId('sidebar-toggle')).toHaveAttribute('aria-expanded', 'false')
+    await window.getByTestId('sidebar-toggle').focus()
+    await window.keyboard.press('Enter')
+    await expect(window.getByTestId('sidebar-toggle')).toHaveAttribute('aria-expanded', 'true')
+  } finally {
+    if (app) await app.close()
+    await closeServer(server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('[P0] profile row can visibly acquire and release a unique proxy assignment', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-proxy-assign-'))
   const proxyfb = await startProxyfbServer()

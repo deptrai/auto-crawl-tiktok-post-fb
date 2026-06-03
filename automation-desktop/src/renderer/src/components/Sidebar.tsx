@@ -20,12 +20,14 @@ function licenseText(status: LicensePublicStatus | null, offlineGrace: boolean):
 
 export function Sidebar({
   activeView,
+  expanded,
   licenseStatus,
   offlineGrace,
   onNavigate,
   onToggleSidebar
 }: {
   activeView: ConsoleView
+  expanded: boolean
   licenseStatus: LicensePublicStatus | null
   offlineGrace: boolean
   onNavigate: (view: ConsoleView) => void
@@ -44,6 +46,7 @@ export function Sidebar({
           data-testid="sidebar-toggle"
           type="button"
           aria-label="Thu gọn hoặc mở rộng sidebar"
+          aria-expanded={expanded}
           onClick={onToggleSidebar}
         >
           ☰

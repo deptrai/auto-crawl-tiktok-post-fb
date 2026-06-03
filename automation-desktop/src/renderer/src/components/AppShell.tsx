@@ -36,6 +36,7 @@ export function AppShell({
     >
       <Sidebar
         activeView={activeView}
+        expanded={sidebarExpanded}
         licenseStatus={licenseStatus}
         offlineGrace={offlineGrace}
         onNavigate={onNavigate}

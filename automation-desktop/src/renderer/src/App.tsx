@@ -14,6 +14,8 @@ import { StatusCounter } from './components/StatusCounter'
 import type { ConsoleView } from './components/Sidebar'
 import type { StatusCounts } from './components/StatusCounter'
 
+const AUTOMATION_BROWSER_HEADLESS_SETTING = 'automation_browser_headless'
+
 type GateState =
   | 'loading'
   | 'needs-eula'
@@ -36,6 +38,44 @@ function MainShell({
     checkpoint: 0,
     error: 0
   })
+  const [automationBrowserHeadless, setAutomationBrowserHeadless] = useState(false)
+  const [automationBrowserModeSaving, setAutomationBrowserModeSaving] = useState(false)
+  const [settingsError, setSettingsError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    void getSetting(AUTOMATION_BROWSER_HEADLESS_SETTING)
+      .then((value) => {
+        if (!cancelled) setAutomationBrowserHeadless(value === 'true')
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setSettingsError(
+            err instanceof Error ? err.message : 'Không thể đọc cài đặt trình duyệt.'
+          )
+        }
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  async function handleAutomationBrowserModeChange(nextHeadless: boolean): Promise<void> {
+    if (automationBrowserModeSaving) return
+    const previous = automationBrowserHeadless
+    setAutomationBrowserHeadless(nextHeadless)
+    setAutomationBrowserModeSaving(true)
+    setSettingsError(null)
+    try {
+      await setSetting(AUTOMATION_BROWSER_HEADLESS_SETTING, String(nextHeadless))
+    } catch (err) {
+      setAutomationBrowserHeadless(previous)
+      setSettingsError(err instanceof Error ? err.message : 'Không thể lưu chế độ trình duyệt.')
+    } finally {
+      setAutomationBrowserModeSaving(false)
+    }
+  }
 
   // Các view phụ render có điều kiện. ProfilesView KHÔNG render ở đây — nó được giữ
   // mounted liên tục (ẩn bằng `hidden`) để job polling + selection không mất khi đổi tab.
@@ -99,7 +139,52 @@ function MainShell({
         <section className="settings-panel" data-testid="settings-view">
           <p className="eyebrow">Cài đặt</p>
           <h2>Thiết lập vận hành</h2>
-          <p className="profiles-list-subtitle">Các cài đặt nâng cao sẽ được nối ở story sau.</p>
+          <div className="settings-grid">
+            <div className="settings-row">
+              <div>
+                <strong>Chế độ trình duyệt mặc định</strong>
+                <p className="profiles-list-subtitle">
+                  Áp dụng cho self-comment từng profile và bulk-run.
+                </p>
+              </div>
+              <label className="settings-toggle" htmlFor="settings-headless-toggle">
+                <input
+                  id="settings-headless-toggle"
+                  data-testid="settings-headless-toggle"
+                  type="checkbox"
+                  checked={automationBrowserHeadless}
+                  disabled={automationBrowserModeSaving}
+                  onChange={(event) => {
+                    void handleAutomationBrowserModeChange(event.target.checked)
+                  }}
+                />
+                <span>Chạy ẩn trình duyệt</span>
+              </label>
+            </div>
+            <div className="settings-row settings-row-disabled" aria-disabled="true">
+              <div>
+                <strong>Telemetry opt-in</strong>
+                <p className="profiles-list-subtitle">Sắp có.</p>
+              </div>
+              <label className="settings-toggle" htmlFor="settings-telemetry-toggle">
+                <input
+                  id="settings-telemetry-toggle"
+                  data-testid="settings-telemetry-toggle"
+                  type="checkbox"
+                  disabled
+                />
+                <span>Gửi dữ liệu ẩn danh</span>
+              </label>
+            </div>
+          </div>
+          {settingsError ? (
+            <p className="error-message list-error" data-testid="settings-error">
+              {settingsError}
+            </p>
+          ) : null}
+          <p className="settings-shortcuts" data-testid="settings-shortcuts">
+            Shortcuts: Ctrl/Cmd+A chọn tất cả trong bảng, Enter chạy bulk khi đã chọn, / focus URL.
+          </p>
         </section>
       )
     }
@@ -124,7 +209,14 @@ function MainShell({
       {/* Giữ ProfilesView luôn mounted: poll job (1s) + danh sách (5s) + selection vẫn
           duy trì khi operator chuyển sang tab khác rồi quay lại giữa batch. */}
       <div hidden={activeView !== 'profiles'}>
-        <ProfilesView onStatusCountsChange={setProfileCounts} />
+        <ProfilesView
+          activeView={activeView}
+          automationBrowserHeadless={automationBrowserHeadless}
+          automationBrowserModeSaving={automationBrowserModeSaving}
+          onAutomationBrowserHeadlessChange={(next) => void handleAutomationBrowserModeChange(next)}
+          onStatusCountsChange={setProfileCounts}
+          settingsError={settingsError}
+        />
       </div>
     </AppShell>
   )
