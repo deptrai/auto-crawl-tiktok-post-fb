@@ -8,7 +8,12 @@ export interface StatusPillProps {
 
 export function StatusPill({ label, variant, title }: StatusPillProps): React.JSX.Element {
   return (
-    <span className={`status-pill status-pill-${variant}`} title={title ?? label}>
+    <span
+      className={`status-pill status-pill-${variant}`}
+      title={title ?? label}
+      role="img"
+      aria-label={`Trạng thái: ${label}`}
+    >
       <span className="status-pill-dot" aria-hidden="true" />
       <span>{label}</span>
     </span>

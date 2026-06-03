@@ -15,6 +15,7 @@ test('[P0] security baseline enforces hardened BrowserWindow webPreferences', ()
   expect(options.webPreferences?.sandbox).toBe(true)
   expect(options.webPreferences?.contextIsolation).toBe(true)
   expect(options.webPreferences?.nodeIntegration).toBe(false)
+  expect(options.minWidth).toBeGreaterThanOrEqual(880)
 })
 
 test('[P0] registerCspHeaders injects CSP header', () => {

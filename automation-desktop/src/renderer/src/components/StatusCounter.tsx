@@ -13,8 +13,10 @@ const COUNTER_ITEMS: Array<{ key: keyof StatusCounts; label: string }> = [
 ]
 
 export function StatusCounter({ counts }: { counts: StatusCounts }): React.JSX.Element {
+  const summary = `Nhàn rỗi ${counts.idle}, đang chạy ${counts.running}, checkpoint ${counts.checkpoint}, lỗi ${counts.error}`
+
   return (
-    <div className="status-counter" data-testid="topbar-status-counter" aria-live="polite">
+    <div className="status-counter" data-testid="topbar-status-counter" aria-label={summary}>
       {COUNTER_ITEMS.map((item) => (
         <span className={`status-counter-item status-counter-${item.key}`} key={item.key}>
           <span className="status-counter-dot" aria-hidden="true" />

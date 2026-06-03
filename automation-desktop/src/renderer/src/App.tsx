@@ -9,6 +9,8 @@ import { ContentTemplatesView } from './views/ContentTemplatesView'
 import { ProfilesView } from './views/ProfilesView'
 import { ProxyView } from './views/ProxyView'
 import { AppShell } from './components/AppShell'
+import { EmptyState } from './components/EmptyState'
+import { StatusCounter } from './components/StatusCounter'
 import type { ConsoleView } from './components/Sidebar'
 import type { StatusCounts } from './components/StatusCounter'
 
@@ -39,13 +41,54 @@ function MainShell({
   // mounted liên tục (ẩn bằng `hidden`) để job polling + selection không mất khi đổi tab.
   function renderSecondaryView(): React.JSX.Element | null {
     if (activeView === 'dashboard') {
+      const totalProfiles = Object.values(profileCounts).reduce((sum, value) => sum + value, 0)
+
       return (
         <section className="dashboard-panel" data-testid="dashboard-view">
-          <p className="eyebrow">Tổng quan</p>
-          <h2>Đội tài khoản</h2>
-          <p className="profiles-list-subtitle">
-            Chọn tab Profiles để import, gán proxy và chạy self-comment hàng loạt.
-          </p>
+          {totalProfiles === 0 ? (
+            <div className="dashboard-onboarding" data-testid="dashboard-onboarding">
+              <EmptyState
+                icon="①"
+                title="Cấu hình proxy"
+                description="Lưu API key proxyfb trước để mỗi profile có proxy riêng khi chạy."
+                testId="dashboard-step-proxy"
+                action={{
+                  label: 'Mở Proxy',
+                  testId: 'dashboard-proxy-cta',
+                  onClick: () => setActiveView('proxy')
+                }}
+              />
+              <EmptyState
+                icon="②"
+                title="Import profile"
+                description="Dán danh sách profile hoặc JSON cookie export để tạo đội tài khoản."
+                testId="dashboard-step-import"
+                action={{
+                  label: 'Mở Profiles',
+                  testId: 'dashboard-import-cta',
+                  onClick: () => setActiveView('profiles')
+                }}
+              />
+              <EmptyState
+                icon="③"
+                title="Chạy self-comment"
+                description="Chọn nhiều profile, nhập URL post đích rồi chạy batch có theo dõi trạng thái."
+                testId="dashboard-step-run"
+              />
+            </div>
+          ) : (
+            <div className="dashboard-summary" data-testid="dashboard-summary">
+              <p className="eyebrow">Tổng quan</p>
+              <h2>Đội tài khoản</h2>
+              <StatusCounter counts={profileCounts} />
+              <p className="profiles-list-subtitle">
+                License:{' '}
+                {licenseStatus?.active
+                  ? `còn ${licenseStatus.daysRemaining ?? 0} ngày`
+                  : 'chưa kích hoạt'}
+              </p>
+            </div>
+          )}
         </section>
       )
     }

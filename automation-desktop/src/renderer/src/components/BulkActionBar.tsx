@@ -20,6 +20,7 @@ export function BulkActionBar({
   onTargetChange: (target: string) => void
 }): React.JSX.Element {
   const [templates, setTemplates] = useState<ContentTemplateSummary[]>([])
+  const [selectedTemplate, setSelectedTemplate] = useState('random')
 
   useEffect(() => {
     let cancelled = false
@@ -46,6 +47,8 @@ export function BulkActionBar({
         <input
           id="bulk-target-input"
           data-testid="bulk-target-input"
+          type="url"
+          autoComplete="off"
           value={target}
           placeholder="https://www.facebook.com/.../posts/..."
           onChange={(event) => onTargetChange(event.target.value)}
@@ -53,7 +56,12 @@ export function BulkActionBar({
       </label>
       <label className="bulk-field" htmlFor="bulk-template-select">
         Template
-        <select id="bulk-template-select" data-testid="bulk-template-select" defaultValue="random">
+        <select
+          id="bulk-template-select"
+          data-testid="bulk-template-select"
+          value={selectedTemplate}
+          onChange={(event) => setSelectedTemplate(event.target.value)}
+        >
           <option value="random">Random tất cả</option>
           {templates.map((template) => (
             <option

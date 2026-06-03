@@ -13,8 +13,10 @@ import {
 } from '../api/proxy-api'
 import { getSetting, setSetting } from '../api/settings-api'
 import { BulkActionBar } from '../components/BulkActionBar'
+import { EmptyState } from '../components/EmptyState'
 import { StatusPill, type StatusPillVariant } from '../components/StatusPill'
 import type { StatusCounts } from '../components/StatusCounter'
+import { Toast, type ToastVariant } from '../components/Toast'
 
 const AUTOMATION_BROWSER_HEADLESS_SETTING = 'automation_browser_headless'
 
@@ -49,6 +51,21 @@ interface AutomationRowStatus {
   message?: string
 }
 
+interface BatchTracker {
+  id: number
+  profileIds: string[]
+}
+
+interface ToastState {
+  message: string
+  variant: ToastVariant
+}
+
+interface ScopedError {
+  profileId: string | null
+  message: string
+}
+
 function getStatusBadge(status: string): { label: string; variant: StatusPillVariant } {
   return STATUS_LABELS[status] ?? { label: 'Không xác định', variant: 'neutral' }
 }
@@ -73,6 +90,26 @@ function countProfileStatuses(profiles: ProfileSummary[]): StatusCounts {
   )
 }
 
+function getTargetValidationMessage(target: string): string | null {
+  return target.length > 0 && !target.trim()
+    ? 'URL post chỉ có khoảng trắng. Hãy nhập URL hợp lệ hoặc xóa trống để dùng feed.'
+    : null
+}
+
+function summarizeBatch(statuses: AutomationRowStatus[], total: number): ToastState {
+  const completed = statuses.filter((status) => status.state === 'DONE').length
+  const checkpoints = statuses.filter((status) => status.state === 'CHECKPOINT_BLOCKED').length
+  const errors = statuses.filter(
+    (status) => status.state === 'FAILED' || status.state === 'CANCELLED'
+  ).length
+  const variant: ToastVariant = errors > 0 ? 'error' : checkpoints > 0 ? 'warning' : 'success'
+
+  return {
+    variant,
+    message: `${completed}/${total} hoàn tất · ${checkpoints} checkpoint · ${errors} lỗi`
+  }
+}
+
 export function ProfilesView({
   onStatusCountsChange
 }: {
@@ -94,8 +131,9 @@ export function ProfilesView({
     {}
   )
   const [proxyBusyId, setProxyBusyId] = useState<string | null>(null)
-  const [proxyError, setProxyError] = useState<string | null>(null)
+  const [proxyError, setProxyError] = useState<ScopedError | null>(null)
   const [automationTarget, setAutomationTarget] = useState('')
+  const [automationTargetWarning, setAutomationTargetWarning] = useState<string | null>(null)
   const [automationBrowserHeadless, setAutomationBrowserHeadless] = useState(false)
   const [automationBrowserModeSaving, setAutomationBrowserModeSaving] = useState(false)
   const [automationBusyId, setAutomationBusyId] = useState<string | null>(null)
@@ -104,10 +142,13 @@ export function ProfilesView({
   const [automationStatuses, setAutomationStatuses] = useState<Record<string, AutomationRowStatus>>(
     {}
   )
-  const [automationError, setAutomationError] = useState<string | null>(null)
+  const [automationError, setAutomationError] = useState<ScopedError | null>(null)
+  const [trackedBatches, setTrackedBatches] = useState<BatchTracker[]>([])
+  const [bulkToast, setBulkToast] = useState<ToastState | null>(null)
   const listInFlightRef = useRef(false)
   const listCancelledRef = useRef(false)
   const pendingRefreshRef = useRef(false)
+  const batchIdRef = useRef(0)
 
   useEffect(() => {
     onStatusCountsChange?.(countProfileStatuses(profiles))
@@ -155,7 +196,10 @@ export function ProfilesView({
       )
       setProxyError(null)
     } catch (err) {
-      setProxyError(err instanceof Error ? err.message : 'Không thể tải proxy đã gán.')
+      setProxyError({
+        profileId: null,
+        message: err instanceof Error ? err.message : 'Không thể tải proxy đã gán.'
+      })
     }
   }, [])
 
@@ -205,7 +249,10 @@ export function ProfilesView({
       await setSetting(AUTOMATION_BROWSER_HEADLESS_SETTING, String(nextHeadless))
     } catch (err) {
       setAutomationBrowserHeadless(previous)
-      setAutomationError(err instanceof Error ? err.message : 'Không thể lưu chế độ trình duyệt.')
+      setAutomationError({
+        profileId: null,
+        message: err instanceof Error ? err.message : 'Không thể lưu chế độ trình duyệt.'
+      })
     } finally {
       setAutomationBrowserModeSaving(false)
     }
@@ -295,7 +342,10 @@ export function ProfilesView({
       const assignment = await acquireProxyForProfile(profile.id)
       setProxyAssignments((current) => ({ ...current, [profile.id]: assignment }))
     } catch (err) {
-      setProxyError(err instanceof Error ? err.message : 'Không thể gán proxy riêng.')
+      setProxyError({
+        profileId: profile.id,
+        message: err instanceof Error ? err.message : 'Không thể gán proxy riêng.'
+      })
     } finally {
       setProxyBusyId(null)
     }
@@ -314,7 +364,10 @@ export function ProfilesView({
         return next
       })
     } catch (err) {
-      setProxyError(err instanceof Error ? err.message : 'Không thể thả proxy riêng.')
+      setProxyError({
+        profileId: profile.id,
+        message: err instanceof Error ? err.message : 'Không thể thả proxy riêng.'
+      })
     } finally {
       setProxyBusyId(null)
     }
@@ -325,6 +378,12 @@ export function ProfilesView({
 
     setAutomationBusyId(profile.id)
     setAutomationError(null)
+    const targetWarning = getTargetValidationMessage(automationTarget)
+    setAutomationTargetWarning(targetWarning)
+    if (targetWarning) {
+      setAutomationBusyId(null)
+      return
+    }
     try {
       const target = automationTarget.trim()
       const { jobId } = await startSelfComment({
@@ -336,7 +395,10 @@ export function ProfilesView({
         [profile.id]: { jobId, state: 'PENDING' }
       }))
     } catch (err) {
-      setAutomationError(err instanceof Error ? err.message : 'Không thể chạy self-comment.')
+      setAutomationError({
+        profileId: profile.id,
+        message: err instanceof Error ? err.message : 'Không thể chạy self-comment.'
+      })
     } finally {
       setAutomationBusyId(null)
     }
@@ -363,6 +425,12 @@ export function ProfilesView({
 
     setBulkRunning(true)
     setAutomationError(null)
+    const targetWarning = getTargetValidationMessage(automationTarget)
+    setAutomationTargetWarning(targetWarning)
+    if (targetWarning) {
+      setBulkRunning(false)
+      return
+    }
     const target = automationTarget.trim()
     const enqueuedIds: string[] = []
     const failures: string[] = []
@@ -393,9 +461,17 @@ export function ProfilesView({
         return next
       })
       if (failures.length > 0) {
-        setAutomationError(
-          `Không enqueue được ${failures.length} profile: ${failures.join(', ')}. Đã giữ lại để thử lại.`
-        )
+        setAutomationError({
+          profileId: null,
+          message: `Không enqueue được ${failures.length} profile: ${failures.join(', ')}. Đã giữ lại để thử lại.`
+        })
+      }
+      if (enqueuedIds.length > 0) {
+        batchIdRef.current += 1
+        setTrackedBatches((current) => [
+          ...current,
+          { id: batchIdRef.current, profileIds: enqueuedIds }
+        ])
       }
     } finally {
       setBulkRunning(false)
@@ -428,9 +504,10 @@ export function ProfilesView({
           })
           .catch((err) => {
             if (!cancelled) {
-              setAutomationError(
-                err instanceof Error ? err.message : 'Không thể đọc trạng thái automation.'
-              )
+              setAutomationError({
+                profileId,
+                message: err instanceof Error ? err.message : 'Không thể đọc trạng thái automation.'
+              })
             }
           })
       }
@@ -441,6 +518,41 @@ export function ProfilesView({
       window.clearInterval(timer)
     }
   }, [automationStatuses])
+
+  useEffect(() => {
+    if (trackedBatches.length === 0) return undefined
+
+    const completedBatches: BatchTracker[] = []
+    let nextToast: ToastState | null = null
+    for (const batch of trackedBatches) {
+      const statuses = batch.profileIds.map((profileId) => automationStatuses[profileId])
+      if (
+        statuses.every(
+          (status): status is AutomationRowStatus =>
+            Boolean(status) && TERMINAL_AUTOMATION_STATES.has(status.state)
+        )
+      ) {
+        completedBatches.push(batch)
+        nextToast = summarizeBatch(statuses, batch.profileIds.length)
+      }
+    }
+
+    if (completedBatches.length === 0 || !nextToast) return undefined
+
+    const timer = window.setTimeout(() => {
+      const completedIds = new Set(completedBatches.map((batch) => batch.id))
+      setBulkToast(nextToast)
+      setTrackedBatches((current) => current.filter((batch) => !completedIds.has(batch.id)))
+    }, 0)
+
+    return () => window.clearTimeout(timer)
+  }, [automationStatuses, trackedBatches])
+
+  useEffect(() => {
+    if (!bulkToast) return undefined
+    const timer = window.setTimeout(() => setBulkToast(null), 5_000)
+    return () => window.clearTimeout(timer)
+  }, [bulkToast])
 
   const selectedCount = selectedIds.size
   const allProfilesSelected =
@@ -579,9 +691,12 @@ export function ProfilesView({
         ) : null}
 
         {!listLoading && !listError && profiles.length === 0 ? (
-          <p className="profiles-empty" data-testid="profiles-list-empty">
-            Chưa có profile nào.
-          </p>
+          <EmptyState
+            icon="②"
+            title="Chưa có profile nào."
+            description="Import profile để bắt đầu gán proxy và chạy self-comment hàng loạt."
+            testId="profiles-list-empty"
+          />
         ) : null}
 
         {profiles.length > 0 ? (
@@ -594,9 +709,18 @@ export function ProfilesView({
                 className="license-input"
                 value={automationTarget}
                 placeholder="https://www.facebook.com/.../posts/..."
-                onChange={(e) => setAutomationTarget(e.target.value)}
+                autoComplete="off"
+                onChange={(e) => {
+                  setAutomationTarget(e.target.value)
+                  setAutomationTargetWarning(getTargetValidationMessage(e.target.value))
+                }}
               />
             </label>
+            {automationTargetWarning ? (
+              <p className="warning-banner target-warning" data-testid="automation-target-warning">
+                {automationTargetWarning}
+              </p>
+            ) : null}
             <p className="profiles-list-subtitle">
               Nếu bỏ trống, app sẽ thử vào profile feed của tài khoản và dùng selector tạm.
             </p>
@@ -616,10 +740,25 @@ export function ProfilesView({
           </div>
         ) : null}
 
-        {automationError ? (
+        {automationError?.profileId === null ? (
           <p className="error-message list-error" data-testid="automation-error">
-            {automationError}
+            {automationError.message}
           </p>
+        ) : null}
+
+        {proxyError?.profileId === null ? (
+          <p className="error-message list-error" data-testid="profile-proxy-error">
+            {proxyError.message}
+          </p>
+        ) : null}
+
+        {bulkToast ? (
+          <Toast
+            message={bulkToast.message}
+            variant={bulkToast.variant}
+            testId="bulk-summary-toast"
+            onDismiss={() => setBulkToast(null)}
+          />
         ) : null}
 
         {profiles.length > 0 ? (
@@ -771,12 +910,12 @@ export function ProfilesView({
                             </button>
                           </div>
                         </div>
-                        {proxyError ? (
+                        {proxyError?.profileId === profile.id ? (
                           <p
                             className="error-message profile-row-error"
                             data-testid="profile-proxy-error"
                           >
-                            {proxyError}
+                            {proxyError.message}
                           </p>
                         ) : null}
                       </td>
@@ -888,6 +1027,11 @@ export function ProfilesView({
                         {rowError && (isEditing || isConfirmingDelete) ? (
                           <p className="error-message profile-row-error">{rowError}</p>
                         ) : null}
+                        {automationError?.profileId === profile.id ? (
+                          <p className="error-message profile-row-error">
+                            {automationError.message}
+                          </p>
+                        ) : null}
                       </td>
                     </tr>
                   )
@@ -905,7 +1049,10 @@ export function ProfilesView({
             target={automationTarget}
             onHeadlessChange={(next) => void handleAutomationBrowserModeChange(next)}
             onRun={() => void handleBulkSelfComment()}
-            onTargetChange={setAutomationTarget}
+            onTargetChange={(next) => {
+              setAutomationTarget(next)
+              setAutomationTargetWarning(getTargetValidationMessage(next))
+            }}
           />
         ) : null}
       </section>

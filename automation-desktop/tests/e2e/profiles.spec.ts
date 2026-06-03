@@ -251,6 +251,105 @@ test('[P0] operator console renders sidebar table and bulk self-comment enqueue 
   }
 })
 
+test('[P0] UX polish supports copy, dashboard onboarding, select-all, toast summary, and breakpoints', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-ux-polish-'))
+  let app: ElectronApplication | null = null
+  let server: Server | null = null
+
+  try {
+    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'), {
+      PHASE3_AUTOMATION_STUB: '1'
+    })
+    app = launched.app
+    server = launched.server
+    const window = launched.window
+
+    await expect(window.getByTestId('app-shell')).toBeVisible({ timeout: 10_000 })
+    await expect
+      .poll(() => window.evaluate(() => getComputedStyle(document.body).userSelect))
+      .not.toBe('none')
+
+    await window.getByTestId('nav-dashboard').click()
+    await expect(window.getByTestId('dashboard-onboarding')).toBeVisible()
+    await expect(window.getByTestId('dashboard-step-proxy')).toContainText('Cấu hình proxy')
+    await window.getByTestId('dashboard-import-cta').click()
+    await expect(window.getByTestId('nav-profiles')).toHaveAttribute('aria-current', 'page')
+
+    const textarea = window.getByTestId('import-textarea')
+    await setTextareaValue(
+      textarea,
+      [
+        'uid_copy_1|pass1|seed1|cookie_COPY_1|mail1@example.com|mailpass1',
+        'uid_copy_2|pass2|seed2|cookie_COPY_2|mail2@example.com|mailpass2'
+      ].join('\n')
+    )
+    await window.getByTestId('import-button').click()
+    await expect(window.getByTestId('profile-row-uid_copy_1')).toBeVisible({ timeout: 10_000 })
+
+    await expect(
+      window.evaluate(() => {
+        const uidCell = document.querySelector(
+          '[data-testid="profile-row-uid_copy_1"] .profile-list-uid'
+        )
+        if (!uidCell?.firstChild) return ''
+        const range = document.createRange()
+        range.selectNodeContents(uidCell)
+        const selection = window.getSelection()
+        selection?.removeAllRanges()
+        selection?.addRange(range)
+        return selection?.toString() ?? ''
+      })
+    ).resolves.toBe('uid_copy_1')
+
+    const selectAll = window.getByTestId('profiles-select-all')
+    await selectAll.check()
+    await expect(window.getByTestId('profile-select-uid_copy_1')).toBeChecked()
+    await expect(window.getByTestId('profile-select-uid_copy_2')).toBeChecked()
+    await expect(window.getByTestId('bulk-template-select')).toHaveValue('random')
+    await expect(window.getByTestId('bulk-target-input')).toHaveAttribute('autocomplete', 'off')
+
+    await window
+      .getByTestId('bulk-target-input')
+      .fill('https://www.facebook.com/me/posts/ux-polish')
+    await window.getByTestId('bulk-run-button').click()
+    await expect(window.getByTestId('bulk-summary-toast')).toContainText('0/2 hoàn tất', {
+      timeout: 15_000
+    })
+    await expect(window.getByTestId('bulk-summary-toast')).toContainText('2 lỗi')
+
+    await expect(
+      window.getByTestId('profile-automation-status-uid_copy_1').getByRole('img')
+    ).toHaveAttribute('aria-label', /Trạng thái:/)
+    await expect(window.getByTestId('topbar-status-counter')).toHaveAttribute(
+      'aria-label',
+      /Nhàn rỗi/
+    )
+
+    await window.setViewportSize({ width: 1024, height: 760 })
+    await expect
+      .poll(() =>
+        window.evaluate(
+          () => getComputedStyle(document.querySelector('.app-shell')!).gridTemplateColumns
+        )
+      )
+      .toContain('64px')
+
+    await window.setViewportSize({ width: 900, height: 760 })
+    await expect(window.getByTestId('sidebar-toggle')).toBeVisible()
+    await expect
+      .poll(() =>
+        window.evaluate(
+          () => getComputedStyle(document.querySelector('.app-shell')!).gridTemplateColumns
+        )
+      )
+      .toContain('64px')
+  } finally {
+    if (app) await app.close()
+    await closeServer(server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('[P0] profile row can visibly acquire and release a unique proxy assignment', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-proxy-assign-'))
   const proxyfb = await startProxyfbServer()

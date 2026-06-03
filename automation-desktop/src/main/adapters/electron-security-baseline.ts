@@ -10,6 +10,7 @@ const DEV_CSP_VALUE =
 export function buildMainWindowOptions(): BrowserWindowConstructorOptions {
   return {
     width: 900,
+    minWidth: 880,
     height: 670,
     show: false,
     autoHideMenuBar: true,

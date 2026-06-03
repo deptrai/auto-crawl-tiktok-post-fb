@@ -13,19 +13,23 @@ const NAV_ITEMS: Array<{ id: ConsoleView; label: string }> = [
 function licenseText(status: LicensePublicStatus | null, offlineGrace: boolean): string {
   if (offlineGrace) return 'Offline grace'
   if (status?.active) return `License active: còn ${status.daysRemaining ?? 0} ngày`
-  return 'License active'
+  if (status?.gate === 'expired-readonly') return 'Chỉ đọc'
+  if (status?.gate === 'locked') return 'Đã khóa'
+  return 'Chưa kích hoạt'
 }
 
 export function Sidebar({
   activeView,
   licenseStatus,
   offlineGrace,
-  onNavigate
+  onNavigate,
+  onToggleSidebar
 }: {
   activeView: ConsoleView
   licenseStatus: LicensePublicStatus | null
   offlineGrace: boolean
   onNavigate: (view: ConsoleView) => void
+  onToggleSidebar: () => void
 }): React.JSX.Element {
   return (
     <aside className="sidebar" data-testid="sidebar">
@@ -35,6 +39,15 @@ export function Sidebar({
           <strong>Phase 3</strong>
           <span>Automation</span>
         </div>
+        <button
+          className="sidebar-toggle"
+          data-testid="sidebar-toggle"
+          type="button"
+          aria-label="Thu gọn hoặc mở rộng sidebar"
+          onClick={onToggleSidebar}
+        >
+          ☰
+        </button>
       </div>
 
       <nav className="sidebar-nav" data-testid="sidebar-nav" aria-label="Điều hướng console">
@@ -45,10 +58,12 @@ export function Sidebar({
             type="button"
             key={item.id}
             aria-current={activeView === item.id ? 'page' : undefined}
+            aria-label={item.label}
+            title={item.label}
             onClick={() => onNavigate(item.id)}
           >
             <span className="nav-item-indicator" aria-hidden="true" />
-            {item.label}
+            <span className="nav-item-label">{item.label}</span>
           </button>
         ))}
       </nav>

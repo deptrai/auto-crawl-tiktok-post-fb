@@ -11,6 +11,7 @@ import {
   listContentTemplates,
   updateContentTemplate
 } from '../api/content-template-api'
+import { EmptyState } from '../components/EmptyState'
 
 const SAMPLE_TEMPLATE_VARS: Required<ContentTemplateVars> = {
   uid: '100012345678',
@@ -154,9 +155,12 @@ export function ContentTemplatesView(): React.JSX.Element {
       ) : null}
 
       {!loading && !error && templates.length === 0 ? (
-        <p className="profiles-empty" data-testid="content-templates-empty">
-          Chưa có template nào.
-        </p>
+        <EmptyState
+          icon="✎"
+          title="Chưa có template nào."
+          description="Thêm ít nhất một template để self-comment có nội dung random."
+          testId="content-templates-empty"
+        />
       ) : null}
 
       <div className="template-form" data-testid="content-template-form">
