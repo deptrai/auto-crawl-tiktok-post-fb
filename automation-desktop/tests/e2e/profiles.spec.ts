@@ -78,6 +78,25 @@ function closeServer(server: Server | null): Promise<void> {
   })
 }
 
+function startProxyfbServer(): Promise<{ server: Server; url: string; paths: string[] }> {
+  const paths: string[] = []
+  let count = 0
+  const server = createServer((req, res) => {
+    paths.push(req.url ?? '')
+    count += 1
+    const host = count === 1 ? '10.44.55.1' : '10.44.55.2'
+    res.writeHead(200, { 'Content-Type': 'application/json' })
+    res.end(JSON.stringify({ success: 'True', proxy: `${host}:9090:proxy-user:proxy-pass` }))
+  })
+
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      const addr = server.address() as { port: number }
+      resolve({ server, url: `http://127.0.0.1:${addr.port}/api`, paths })
+    })
+  })
+}
+
 async function setTextareaValue(textarea: Locator, value: string): Promise<void> {
   await textarea.evaluate((node, nextValue) => {
     const textareaNode = node as HTMLTextAreaElement
@@ -174,6 +193,58 @@ test('[P0] import two profiles shows summary with 2 imported and clears textarea
   } finally {
     if (app) await app.close()
     await closeServer(server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('[P0] profile row can visibly acquire and release a unique proxy assignment', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-proxy-assign-'))
+  const proxyfb = await startProxyfbServer()
+  let app: ElectronApplication | null = null
+  let server: Server | null = null
+
+  try {
+    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'), {
+      PHASE3_PROXYFB_BASE_URL: proxyfb.url
+    })
+    app = launched.app
+    server = launched.server
+    const window = launched.window
+
+    const textarea = window.getByTestId('import-textarea')
+    await setTextareaValue(
+      textarea,
+      ['uid_proxy_1|pass1|seed1|cookiePROXY1|p1@mail.com|mailpass1'].join('\n')
+    )
+    await window.getByTestId('import-button').click()
+    await expect(window.getByTestId('profile-row-uid_proxy_1')).toBeVisible({ timeout: 10_000 })
+    await expect(window.getByTestId('profile-proxy-empty-uid_proxy_1')).toContainText('Chưa gán')
+
+    await window.getByTestId('proxy-api-key-input').fill('KEY-PROXY-ASSIGN')
+    await window.getByTestId('proxy-save-button').click()
+    await expect(window.getByText('Đã cấu hình')).toBeVisible({ timeout: 10_000 })
+
+    await window.getByTestId('profile-proxy-acquire-uid_proxy_1').click()
+    await expect(window.getByTestId('profile-proxy-value-uid_proxy_1')).toContainText(
+      '10.44.55.1:9090',
+      { timeout: 10_000 }
+    )
+    await expect(window.getByTestId('profile-row-uid_proxy_1')).not.toContainText('proxy-user')
+    await expect(window.getByTestId('profile-row-uid_proxy_1')).not.toContainText('proxy-pass')
+    await expect(window.getByTestId('profile-row-uid_proxy_1')).not.toContainText(
+      'KEY-PROXY-ASSIGN'
+    )
+
+    await window.getByTestId('profile-proxy-release-uid_proxy_1').click()
+    await expect(window.getByTestId('profile-proxy-empty-uid_proxy_1')).toContainText('Chưa gán', {
+      timeout: 10_000
+    })
+
+    expect(proxyfb.paths.some((path) => path.includes('/api/changeProxy.php'))).toBe(true)
+  } finally {
+    if (app) await app.close()
+    await closeServer(server)
+    await closeServer(proxyfb.server)
     rmSync(dir, { recursive: true, force: true })
   }
 })

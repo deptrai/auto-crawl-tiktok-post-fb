@@ -3,10 +3,18 @@
   <head>
     <meta charset="UTF-8" />
     <title>Electron</title>
-    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
+    <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP
+      NOTE (security): 'unsafe-inline' in script-src is REQUIRED for the electron-vite
+      dev server (HMR injects inline scripts). This static meta cannot be dev-gated.
+      Production stays hardened: the main process injects a strict header CSP
+      (registerCspHeaders, allowDevRenderer:false) which is enforced IN PARALLEL with
+      this meta — the browser applies the intersection, so inline scripts are still
+      blocked in packaged builds. Do NOT "tighten" this meta to fix a perceived
+      weakness; doing so breaks dev HMR without improving production. See
+      src/main/adapters/electron-security-baseline.ts (DEV_CSP_VALUE vs CSP_VALUE). -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:"
     />
   </head>
 

@@ -1,5 +1,5 @@
 # generated: 2026-06-02
-# last_updated: 2026-06-03 (Epic 1+2 done; 3.1+3.2 done — proxy provider + circuit breaker; Epic 3 in-progress, 3.3 next (bind per session))
+# last_updated: 2026-06-03 (Epic 1+2 done; 3.1+3.2 done; 3.3 review — proxy-pool allocation (bind BrowserContext defer Epic 4); Epic 3 in-progress)
 # project: auto-crawl-tiktok-post-fb (Phase 3 — Facebook Cookie-Based Automation Desktop)
 # project_key: NOKEY
 # tracking_system: file-system
@@ -47,6 +47,7 @@ project: auto-crawl-tiktok-post-fb-phase3
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
+last_updated: 2026-06-03 (Epic 3 done; Epic 4 started — 4.1 ready-for-dev: fingerprint-generator deterministic per profile)
 
 development_status:
   # ===== Phase 3.0 MVP =====
@@ -71,12 +72,12 @@ development_status:
   epic-3: in-progress
   3-1-tich-hop-proxy-provider-proxyfb: done
   3-2-health-check-proxy-circuit-breaker: done
-  3-3-bind-proxy-rieng-moi-profile-session: backlog
+  3-3-bind-proxy-rieng-moi-profile-session: done
   epic-3-retrospective: optional
 
   # Epic 4: Lõi Automation Facebook — Self-Comment (Automation Core MVP)
-  epic-4: backlog
-  4-1-sinh-fingerprint-diversified-per-profile: backlog
+  epic-4: in-progress
+  4-1-sinh-fingerprint-diversified-per-profile: ready-for-dev
   4-2-state-machine-cho-automation-job: backlog
   4-3-login-cookie-xu-ly-2fa-checkpoint: backlog
   4-4-trich-xuat-csrf-token-qua-http: backlog

@@ -423,6 +423,29 @@ h1 {
   align-items: center;
 }
 
+.profile-proxy-assignment {
+  display: grid;
+  min-width: 210px;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid rgba(130, 220, 166, 0.24);
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(76, 214, 119, 0.14), rgba(69, 126, 255, 0.1));
+}
+
+.profile-proxy-label {
+  color: #9fb5c8;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.profile-proxy-assignment strong {
+  color: #d7ffdf;
+  font-size: 14px;
+}
+
 .profile-row-actions,
 .profile-edit-form {
   display: flex;
@@ -544,6 +567,11 @@ h1 {
 
   .profile-row-side,
   .profile-edit-input {
+    width: 100%;
+  }
+
+  .profile-proxy-assignment {
+    min-width: 0;
     width: 100%;
   }
 

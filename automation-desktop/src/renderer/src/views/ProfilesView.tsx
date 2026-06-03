@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { ImportResult, ProfileSummary } from '../../../shared/ipc-schemas'
+import type {
+  ImportResult,
+  ProfileSummary,
+  ProxyAssignmentSummary
+} from '../../../shared/ipc-schemas'
 import { deleteProfile, importBulkProfiles, listProfiles, updateProfile } from '../api/profile-api'
+import {
+  acquireProxyForProfile,
+  listProxyAssignments,
+  releaseProxyForProfile
+} from '../api/proxy-api'
 
 const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   idle: { label: 'Nhàn rỗi', className: 'status-idle' },
@@ -26,6 +35,11 @@ export function ProfilesView(): React.JSX.Element {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [rowBusyId, setRowBusyId] = useState<string | null>(null)
   const [rowError, setRowError] = useState<string | null>(null)
+  const [proxyAssignments, setProxyAssignments] = useState<Record<string, ProxyAssignmentSummary>>(
+    {}
+  )
+  const [proxyBusyId, setProxyBusyId] = useState<string | null>(null)
+  const [proxyError, setProxyError] = useState<string | null>(null)
   const listInFlightRef = useRef(false)
   const listCancelledRef = useRef(false)
   const pendingRefreshRef = useRef(false)
@@ -63,6 +77,25 @@ export function ProfilesView(): React.JSX.Element {
 
     listInFlightRef.current = false
   }, [])
+
+  const refreshProxyAssignments = useCallback(async (): Promise<void> => {
+    try {
+      const assignments = await listProxyAssignments()
+      setProxyAssignments(
+        Object.fromEntries(assignments.map((assignment) => [assignment.profileId, assignment]))
+      )
+      setProxyError(null)
+    } catch (err) {
+      setProxyError(err instanceof Error ? err.message : 'Không thể tải proxy đã gán.')
+    }
+  }, [])
+
+  useEffect(() => {
+    const initialProxyLoad = window.setTimeout(() => {
+      void refreshProxyAssignments()
+    }, 0)
+    return () => window.clearTimeout(initialProxyLoad)
+  }, [refreshProxyAssignments])
 
   useEffect(() => {
     listCancelledRef.current = false
@@ -140,6 +173,40 @@ export function ProfilesView(): React.JSX.Element {
       setRowError(err instanceof Error ? err.message : 'Không thể xóa profile.')
     } finally {
       setRowBusyId(null)
+    }
+  }
+
+  async function handleAcquireProxy(profile: ProfileSummary): Promise<void> {
+    if (proxyBusyId) return
+
+    setProxyBusyId(profile.id)
+    setProxyError(null)
+    try {
+      const assignment = await acquireProxyForProfile(profile.id)
+      setProxyAssignments((current) => ({ ...current, [profile.id]: assignment }))
+    } catch (err) {
+      setProxyError(err instanceof Error ? err.message : 'Không thể gán proxy riêng.')
+    } finally {
+      setProxyBusyId(null)
+    }
+  }
+
+  async function handleReleaseProxy(profile: ProfileSummary): Promise<void> {
+    if (proxyBusyId) return
+
+    setProxyBusyId(profile.id)
+    setProxyError(null)
+    try {
+      await releaseProxyForProfile(profile.id)
+      setProxyAssignments((current) => {
+        const next = { ...current }
+        delete next[profile.id]
+        return next
+      })
+    } catch (err) {
+      setProxyError(err instanceof Error ? err.message : 'Không thể thả proxy riêng.')
+    } finally {
+      setProxyBusyId(null)
     }
   }
 
@@ -336,6 +403,45 @@ export function ProfilesView(): React.JSX.Element {
                   </div>
                   <div className="profile-row-side">
                     <span className={`status-badge ${badge.className}`}>{badge.label}</span>
+                    <div
+                      className="profile-proxy-assignment"
+                      data-testid={`profile-proxy-${profile.uid}`}
+                    >
+                      <span className="profile-proxy-label">Proxy riêng</span>
+                      {proxyAssignments[profile.id] ? (
+                        <strong data-testid={`profile-proxy-value-${profile.uid}`}>
+                          {proxyAssignments[profile.id].host}:{proxyAssignments[profile.id].port}
+                        </strong>
+                      ) : (
+                        <span data-testid={`profile-proxy-empty-${profile.uid}`}>Chưa gán</span>
+                      )}
+                      <div className="profile-row-actions">
+                        <button
+                          data-testid={`profile-proxy-acquire-${profile.uid}`}
+                          className="profile-row-button primary-row-action"
+                          type="button"
+                          disabled={Boolean(proxyBusyId) || Boolean(proxyAssignments[profile.id])}
+                          onClick={(e) => {
+                            ;(e.currentTarget as HTMLButtonElement).disabled = true
+                            void handleAcquireProxy(profile)
+                          }}
+                        >
+                          {proxyBusyId === profile.id ? 'Đang gán...' : 'Gán proxy'}
+                        </button>
+                        <button
+                          data-testid={`profile-proxy-release-${profile.uid}`}
+                          className="profile-row-button"
+                          type="button"
+                          disabled={Boolean(proxyBusyId) || !proxyAssignments[profile.id]}
+                          onClick={(e) => {
+                            ;(e.currentTarget as HTMLButtonElement).disabled = true
+                            void handleReleaseProxy(profile)
+                          }}
+                        >
+                          Thả proxy
+                        </button>
+                      </div>
+                    </div>
                     <div className="profile-row-actions">
                       <button
                         data-testid={`profile-edit-${profile.uid}`}
@@ -395,6 +501,14 @@ export function ProfilesView(): React.JSX.Element {
                   ) : null}
                   {rowError && (isEditing || isConfirmingDelete) ? (
                     <p className="error-message profile-row-error">{rowError}</p>
+                  ) : null}
+                  {proxyError ? (
+                    <p
+                      className="error-message profile-row-error"
+                      data-testid="profile-proxy-error"
+                    >
+                      {proxyError}
+                    </p>
                   ) : null}
                 </li>
               )

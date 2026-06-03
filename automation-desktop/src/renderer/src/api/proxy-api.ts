@@ -1,8 +1,12 @@
 import type {
   ProxyConfigGetResponse,
   ProxyConfigSetResponse,
+  ProxyAssignmentSummary,
   ProxyHealthResponse,
   ProxyHealthStatus,
+  ProxyPoolAcquireResponse,
+  ProxyPoolListResponse,
+  ProxyPoolReleaseResponse,
   ProxyRotateResponse,
   PublicProxyInfo
 } from '../../../shared/ipc-schemas'
@@ -40,6 +44,35 @@ export async function rotateProxy(): Promise<PublicProxyInfo> {
   >('phase3:proxy:rotate', {})
   assertOk(response)
   return response.proxy
+}
+
+export async function acquireProxyForProfile(profileId: string): Promise<ProxyAssignmentSummary> {
+  const response = await window.api.ipc.call<
+    'phase3:proxy-pool:acquire',
+    { profileId: string },
+    ProxyPoolAcquireResponse
+  >('phase3:proxy-pool:acquire', { profileId })
+  assertOk(response)
+  return response.assignment
+}
+
+export async function releaseProxyForProfile(profileId: string): Promise<void> {
+  const response = await window.api.ipc.call<
+    'phase3:proxy-pool:release',
+    { profileId: string },
+    ProxyPoolReleaseResponse
+  >('phase3:proxy-pool:release', { profileId })
+  assertOk(response)
+}
+
+export async function listProxyAssignments(): Promise<ProxyAssignmentSummary[]> {
+  const response = await window.api.ipc.call<
+    'phase3:proxy-pool:list',
+    Record<string, never>,
+    ProxyPoolListResponse
+  >('phase3:proxy-pool:list', {})
+  assertOk(response)
+  return response.assignments
 }
 
 export async function getProxyHealth(): Promise<ProxyHealthStatus> {

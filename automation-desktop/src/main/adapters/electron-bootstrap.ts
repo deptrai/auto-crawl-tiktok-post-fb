@@ -12,7 +12,13 @@ import {
   type LicenseStatus
 } from '../license/license-service'
 import { createProfileService, type ProfileService } from '../profile/profile-service'
-import { createProxyService, ProxyfbProvider, type ProxyService } from '../proxy'
+import {
+  createProxyPool,
+  createProxyService,
+  ProxyfbProvider,
+  type ProxyPool,
+  type ProxyService
+} from '../proxy'
 import {
   registerLicenseHandlers,
   registerProfileHandlers,
@@ -34,6 +40,7 @@ interface BootstrapDeps {
     license: LicenseService
     profile: ProfileService
     proxy: ProxyService
+    proxyPool: ProxyPool
   }
   repos: {
     profile: ProfileRepository
@@ -85,6 +92,14 @@ function initializeDeps(): BootstrapDeps {
   const profileRepo = createProfileRepository(db)
   const proxyRepo = createProxyRepository(db)
   const smokeHwid = app.isPackaged ? undefined : process.env['PHASE3_HWID_SMOKE_VALUE']
+  const proxyService = createProxyService({
+    storage: adapters.storage,
+    providers: {
+      proxyfb: new ProxyfbProvider({ baseUrl: readProxyfbBaseUrl() })
+    },
+    repo: proxyRepo,
+    clock: () => Date.now()
+  })
   const services = {
     settings,
     license: createLicenseService({
@@ -100,14 +115,8 @@ function initializeDeps(): BootstrapDeps {
       storage: adapters.storage,
       importDelayMs: readProfileImportDelayMs()
     }),
-    proxy: createProxyService({
-      storage: adapters.storage,
-      providers: {
-        proxyfb: new ProxyfbProvider({ baseUrl: readProxyfbBaseUrl() })
-      },
-      repo: proxyRepo,
-      clock: () => Date.now()
-    })
+    proxy: proxyService,
+    proxyPool: createProxyPool({ proxyService })
   }
   const repos = {
     profile: profileRepo,
@@ -323,7 +332,7 @@ function createWindow(): BrowserWindow {
 export async function bootstrapApplication(): Promise<void> {
   app.setAppUserModelId('com.electron')
   configureUserDataPath()
-  registerCspHeaders(session.defaultSession)
+  registerCspHeaders(session.defaultSession, { allowDevRenderer: !app.isPackaged })
 
   const deps = initializeDeps()
   runDatabaseSmoke(deps.db)
@@ -339,7 +348,12 @@ export async function bootstrapApplication(): Promise<void> {
   registerSettingsHandlers(ipcMain, deps.services.settings)
   registerLicenseHandlers(ipcMain, deps.services.license)
   registerProfileHandlers(ipcMain, deps.services.profile)
-  registerProxyHandlers(ipcMain, deps.services.proxy)
+  registerProxyHandlers(
+    ipcMain,
+    deps.services.proxy,
+    deps.services.proxyPool,
+    (profileId) => deps.repos.profile.getProfileById(profileId) !== undefined
+  )
   registerShellHandlers(ipcMain, async (url) => {
     if (!app.isPackaged && process.env['PHASE3_EXTERNAL_OPEN_SMOKE']) {
       ;(globalThis as DbSmokeGlobal).__PHASE3_EXTERNAL_OPEN_URL__ = url

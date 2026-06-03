@@ -54,6 +54,12 @@ import {
   ProxyConfigSetResponseSchema,
   ProxyHealthRequestSchema,
   ProxyHealthResponseSchema,
+  ProxyPoolAcquireRequestSchema,
+  ProxyPoolAcquireResponseSchema,
+  ProxyPoolListRequestSchema,
+  ProxyPoolListResponseSchema,
+  ProxyPoolReleaseRequestSchema,
+  ProxyPoolReleaseResponseSchema,
   ProxyRotateRequestSchema,
   ProxyRotateResponseSchema,
   type ProxyConfigGetRequest,
@@ -62,6 +68,12 @@ import {
   type ProxyConfigSetResponse,
   type ProxyHealthRequest,
   type ProxyHealthResponse,
+  type ProxyPoolAcquireRequest,
+  type ProxyPoolAcquireResponse,
+  type ProxyPoolListRequest,
+  type ProxyPoolListResponse,
+  type ProxyPoolReleaseRequest,
+  type ProxyPoolReleaseResponse,
   type ProxyRotateRequest,
   type ProxyRotateResponse
 } from './proxy'
@@ -148,7 +160,22 @@ export const channelRegistry = [
     channel: 'phase3:proxy:health',
     requestSchema: ProxyHealthRequestSchema,
     responseSchema: ProxyHealthResponseSchema
-  } satisfies ChannelRegistryEntry<ProxyHealthRequest, ProxyHealthResponse>
+  } satisfies ChannelRegistryEntry<ProxyHealthRequest, ProxyHealthResponse>,
+  {
+    channel: 'phase3:proxy-pool:acquire',
+    requestSchema: ProxyPoolAcquireRequestSchema,
+    responseSchema: ProxyPoolAcquireResponseSchema
+  } satisfies ChannelRegistryEntry<ProxyPoolAcquireRequest, ProxyPoolAcquireResponse>,
+  {
+    channel: 'phase3:proxy-pool:release',
+    requestSchema: ProxyPoolReleaseRequestSchema,
+    responseSchema: ProxyPoolReleaseResponseSchema
+  } satisfies ChannelRegistryEntry<ProxyPoolReleaseRequest, ProxyPoolReleaseResponse>,
+  {
+    channel: 'phase3:proxy-pool:list',
+    requestSchema: ProxyPoolListRequestSchema,
+    responseSchema: ProxyPoolListResponseSchema
+  } satisfies ChannelRegistryEntry<ProxyPoolListRequest, ProxyPoolListResponse>
 ] as const satisfies ReadonlyArray<ChannelRegistryEntry>
 
 export * from './common'
