@@ -65,7 +65,11 @@ function createMemoryRepo(): ProfileRepository & {
     },
     getProfileById: (id) => profiles.get(id) as never,
     listProfiles: () => [...profiles.values()] as never,
-    countProfiles: () => profiles.size
+    countProfiles: () => profiles.size,
+    getMetadata: (profileId, key) => metadata.get(`${profileId}:${key}`),
+    setMetadata: (profileId, key, value) => {
+      metadata.set(`${profileId}:${key}`, value)
+    }
   }
 }
 

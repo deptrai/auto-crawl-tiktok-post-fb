@@ -30,6 +30,8 @@ export interface ProfileRepository {
   deleteProfile(id: string): void
   listProfiles(): ProfileRow[]
   countProfiles(): number
+  getMetadata(profileId: string, key: string): string | undefined
+  setMetadata(profileId: string, key: string, value: string): void
 }
 
 export function createProfileRepository(db: Database.Database): ProfileRepository {
@@ -43,6 +45,9 @@ export function createProfileRepository(db: Database.Database): ProfileRepositor
     `INSERT INTO profile_metadata(profile_id, key, value)
      VALUES (?, ?, ?)
      ON CONFLICT(profile_id, key) DO UPDATE SET value = excluded.value`
+  )
+  const stmtGetMeta = db.prepare<[string, string], { value: string }>(
+    'SELECT value FROM profile_metadata WHERE profile_id = ? AND key = ?'
   )
   const stmtDelete = db.prepare<[string]>('DELETE FROM profiles WHERE id = ?')
   const stmtUpdateDisplayName = db.prepare<[string, string]>(
@@ -110,6 +115,14 @@ export function createProfileRepository(db: Database.Database): ProfileRepositor
 
     countProfiles() {
       return stmtCount.get()?.c ?? 0
+    },
+
+    getMetadata(profileId, key) {
+      return stmtGetMeta.get(profileId, key)?.value
+    },
+
+    setMetadata(profileId, key, value) {
+      stmtSetMeta.run(profileId, key, value)
     }
   }
 }

@@ -1,6 +1,6 @@
 # Story 4.1: Sinh fingerprint diversified per profile
 
-Status: ready-for-dev
+Status: review
 
 Epic: 4 — Lõi Automation Facebook (Self-Comment MVP) · Story: 4.1 · ID: 4.1
 
@@ -22,14 +22,14 @@ So that Facebook khó mass-detect tài khoản theo cohort (cùng UA/viewport/ti
 
 ## Tasks / Subtasks
 
-- [ ] **T1** — `src/shared/types/fingerprint.ts`: định nghĩa `Fingerprint` interface + `FingerprintSchema` (zod) — reusable cho 4.3 (Playwright apply) + IPC tương lai. (AC1, AC6)
-- [ ] **T2** — `src/main/automation/fingerprint-generator.ts`: PRNG deterministic (hash `profileId` → seed → mulberry32) + `generateFingerprint(profileId: string): Fingerprint` pure. Pool: UA, viewport, timezone, fonts, WebGL. (AC1, AC2, AC3, AC6)
-- [ ] **T3** — Mở rộng `profile-repo.ts`: thêm `getMetadata(profileId, key): string | undefined` + `setMetadata(profileId, key, value): void` (tái dùng `stmtSetMeta` ON CONFLICT). (AC4)
-- [ ] **T3b** — 🔴 **MUST**: cập nhật full-mock `createMemoryRepo()` ở `tests/unit/profile-service.spec.ts` — thêm impl in-memory cho `getMetadata`/`setMetadata`, nếu không **typecheck FAIL** (mock thiếu method của interface). Verify bằng `npm run typecheck` ngay sau T3. (M5)
-- [ ] **T4** — `src/main/automation/fingerprint-service.ts`: `createFingerprintService(deps: { profileRepo: Pick<ProfileRepository, 'getMetadata' | 'setMetadata'> })` → `ensureFingerprint(profileId): Fingerprint` (get-or-create + self-heal qua `FingerprintSchema.safeParse`). **Dùng `Pick<>`** để mock test chỉ cần 2 method (giống `proxy-pool` dùng `Pick<ProxyService,'rotate'>`). (AC4, AC5)
-- [ ] **T5** — `src/main/automation/index.ts`: barrel export generator + service + types. (rule #21) → để 4.3 import + wire vào bootstrap khi có consumer.
-- [ ] **T6** — Tests: `tests/unit/fingerprint-generator.spec.ts` (AC2/AC3/AC6) + `tests/integration/fingerprint-service.spec.ts` (AC4/AC5). (AC7)
-- [ ] **T7** — Verify: `npm run lint` + `npm run typecheck` (gồm mock đã sửa T3b) + chạy 2 file test mới PASS + chạy `profile-service.spec.ts` (regression mock). (AC7)
+- [x] **T1** — `src/shared/types/fingerprint.ts`: định nghĩa `Fingerprint` interface + `FingerprintSchema` (zod) — reusable cho 4.3 (Playwright apply) + IPC tương lai. (AC1, AC6)
+- [x] **T2** — `src/main/automation/fingerprint-generator.ts`: PRNG deterministic (hash `profileId` → seed → mulberry32) + `generateFingerprint(profileId: string): Fingerprint` pure. Pool: UA, viewport, timezone, fonts, WebGL. (AC1, AC2, AC3, AC6)
+- [x] **T3** — Mở rộng `profile-repo.ts`: thêm `getMetadata(profileId, key): string | undefined` + `setMetadata(profileId, key, value): void` (tái dùng `stmtSetMeta` ON CONFLICT). (AC4)
+- [x] **T3b** — 🔴 **MUST**: cập nhật full-mock `createMemoryRepo()` ở `tests/unit/profile-service.spec.ts` — thêm impl in-memory cho `getMetadata`/`setMetadata`, nếu không **typecheck FAIL** (mock thiếu method của interface). Verify bằng `npm run typecheck` ngay sau T3. (M5)
+- [x] **T4** — `src/main/automation/fingerprint-service.ts`: `createFingerprintService(deps: { profileRepo: Pick<ProfileRepository, 'getMetadata' | 'setMetadata'> })` → `ensureFingerprint(profileId): Fingerprint` (get-or-create + self-heal qua `FingerprintSchema.safeParse`). **Dùng `Pick<>`** để mock test chỉ cần 2 method (giống `proxy-pool` dùng `Pick<ProxyService,'rotate'>`). (AC4, AC5)
+- [x] **T5** — `src/main/automation/index.ts`: barrel export generator + service + types. (rule #21) → để 4.3 import + wire vào bootstrap khi có consumer.
+- [x] **T6** — Tests: `tests/unit/fingerprint-generator.spec.ts` (AC2/AC3/AC6) + `tests/integration/fingerprint-service.spec.ts` (AC4/AC5). (AC7)
+- [x] **T7** — Verify: `npm run lint` + `npm run typecheck` (gồm mock đã sửa T3b) + chạy 2 file test mới PASS + chạy `profile-service.spec.ts` (regression mock). (AC7)
 
 > **D1 (defer):** KHÔNG wire `fingerprint-service` vào `electron-bootstrap.ts` ở 4.1 — KHÁC `proxyPool` (3.3 có IPC handler nên reachable), fingerprint 4.1 **không có consumer** (no IPC/automation) → wire = dead weight + đụng file security-sensitive vô ích. Epic **4.3** sẽ import từ barrel + wire khi `playwright-runner` thực sự gọi `ensureFingerprint`.
 
@@ -215,19 +215,41 @@ Fingerprint KHÔNG phải secret (không cookie/password/2FA). Lưu plaintext `p
 
 ### Agent Model Used
 
-_TBD_
+GPT-5 Codex
 
 ### Debug Log References
 
-_TBD_
+- Early G1 verification after T3/T3b: `npm run typecheck` PASS.
+- Targeted Story 4.1 + mock regression: `npx playwright test tests/unit/fingerprint-generator.spec.ts tests/integration/fingerprint-service.spec.ts tests/unit/profile-service.spec.ts --reporter=line` PASS `23/23`.
+- Lint: `npm run lint` PASS `0 errors` (existing module-type warning only).
+- Typecheck: `npm run typecheck` PASS.
+- Full non-E2E regression: `npx playwright test tests/unit tests/integration tests/api tests/component --reporter=line` PASS `146/146`.
+- Full E2E regression after build: `npm run build && PHASE3_USER_DATA_PATH="$(mktemp -d)" npx playwright test tests/e2e --workers=1 --reporter=line` PASS `19/19`.
+- Purity grep: `grep -rE "Math.random|Date.now|crypto\." src/main/automation/` returned no matches.
 
 ### Completion Notes List
 
-_TBD_
+- Added `Fingerprint` + `FingerprintSchema` with `version: FINGERPRINT_VERSION` guard for future self-heal migrations.
+- Implemented deterministic `generateFingerprint(profileId)` using cyrb53-style seed + mulberry32, curated Chrome-on-Windows UA pool, desktop viewport pool, VN/SEA timezone pool, fixed-draw font subset, and final `webglNoise` draw.
+- Extended `ProfileRepository` with `getMetadata`/`setMetadata` only; existing import/edit/delete behavior unchanged.
+- Updated `createMemoryRepo()` in `profile-service.spec.ts` immediately and verified typecheck to satisfy G1.
+- Added `createFingerprintService({ profileRepo: Pick<...> })` with get-or-create persistence and corrupt/version-invalid self-heal.
+- Exported automation barrel for Epic 4.3 consumption without wiring bootstrap, IPC, UI, Playwright, proxy, or license.
+- Added deterministic/diversification/field/schema unit tests and Electron-runtime SQLCipher integration fixture for real repo/service persistence without native ABI rebuild churn.
 
 ### File List
 
-_TBD_
+- automation-desktop/src/shared/types/fingerprint.ts
+- automation-desktop/src/main/automation/fingerprint-generator.ts
+- automation-desktop/src/main/automation/fingerprint-service.ts
+- automation-desktop/src/main/automation/index.ts
+- automation-desktop/src/main/db/repositories/profile-repo.ts
+- automation-desktop/tests/unit/profile-service.spec.ts
+- automation-desktop/tests/unit/fingerprint-generator.spec.ts
+- automation-desktop/tests/integration/fingerprint-service.spec.ts
+- automation-desktop/tests/fixtures/fingerprint-service-electron-entry.ts
+- _bmad-output/implementation-artifacts/4-1-sinh-fingerprint-diversified-per-profile.md
+- _bmad-output/implementation-artifacts/sprint-status-phase3.yaml
 
 ### Change Log
 
@@ -235,3 +257,4 @@ _TBD_
 |---|---|---|---|
 | 2026-06-03 | 0.1 | Story created (bmad-create-story) — fingerprint-generator deterministic per profile | Luisphan |
 | 2026-06-03 | 0.2 | Story review patches: M5 (mock `createMemoryRepo` + `Pick<>` deps), M1 (fonts fixed rng-draw), M4 (test id cố định), M2 (`version` field forward-compat), M3 (clarify AC2 byte-for-byte vs zod re-parse), D1 (defer bootstrap wiring → 4.3) | Luisphan |
+| 2026-06-03 | 1.0 | Implemented deterministic fingerprint generator/service, profile metadata repository methods, and full AC7 test coverage; moved to review | Codex |
