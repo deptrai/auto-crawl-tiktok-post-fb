@@ -1,0 +1,31 @@
+{
+  "subagentType": "backend",
+  "testsGenerated": [
+    {
+      "file": "automation-desktop/tests/integration/proxy-ipc-contract.spec.ts",
+      "content": "import { test, expect } from '@playwright/test'\nimport { registerProxyHandlers } from '../../src/main/ipc/proxy-handlers'\nimport type { ProxyService } from '../../src/main/proxy'\nimport { channelRegistry } from '../../src/shared/ipc-schemas'\nimport { ProxyRotateResponseSchema } from '../../src/shared/ipc-schemas/proxy'\n\ntype IpcHandler = (_event: unknown, request: unknown) => Promise<unknown>\n\nclass FakeIpcMain {\n  readonly handlers = new Map<string, IpcHandler>()\n  handle(channel: string, handler: IpcHandler): void {\n    this.handlers.set(channel, handler)\n  }\n  async invoke(channel: string, request: unknown): Promise<unknown> {\n    const handler = this.handlers.get(channel)\n    if (!handler) throw new Error(`Missing handler: ${channel}`)\n    return handler({}, request)\n  }\n}\n\nfunction createService(overrides: Partial<ProxyService> = {}): ProxyService {\n  return {\n    configGet: async () => ({ configured: true }),\n    configSet: async () => undefined,\n    rotate: async () => ({ host: '1.2.3.4', port: 8080, username: 'user', password: 'pass' }),\n    ...overrides\n  }\n}\n\nfunction expectValidationError(response: unknown): void {\n  expect((response as { ok: boolean }).ok).toBe(false)\n  const err = (response as { error: { code: string; retryable: boolean; message: string } }).error\n  expect(err.code).toBe('VALIDATION_ERROR')\n  expect(err.retryable).toBe(false)\n  expect(err.message).toBe('Dữ liệu yêu cầu không hợp lệ')\n}\n\ntest('[P1] proxy IPC config-get rejects unexpected payload fields', async () => {\n  const fakeIpc = new FakeIpcMain()\n  registerProxyHandlers(fakeIpc, createService())\n\n  const response = await fakeIpc.invoke('phase3:proxy:config-get', { apiKey: 'SHOULD-NOT-BE-HERE' })\n\n  expectValidationError(response)\n})\n\ntest('[P1] proxy IPC rotate rejects empty profileId before calling service', async () => {\n  const fakeIpc = new FakeIpcMain()\n  const rotateCalls: Array<string | undefined> = []\n  registerProxyHandlers(\n    fakeIpc,\n    createService({\n      rotate: async (profileId) => {\n        rotateCalls.push(profileId)\n        return { host: '1.2.3.4', port: 8080, username: 'user', password: 'pass' }\n      }\n    })\n  )\n\n  const response = await fakeIpc.invoke('phase3:proxy:rotate', { profileId: '' })\n\n  expectValidationError(response)\n  expect(rotateCalls).toEqual([])\n})\n\ntest('[P1] proxy IPC schemas are registered and rotate response remains public-only', () => {\n  const proxyEntries = channelRegistry.filter((entry) => entry.channel.startsWith('phase3:proxy:'))\n\n  expect(proxyEntries.map((entry) => entry.channel).sort()).toEqual([\n    'phase3:proxy:config-get',\n    'phase3:proxy:config-set',\n    'phase3:proxy:rotate'\n  ])\n\n  const parsed = ProxyRotateResponseSchema.parse({\n    ok: true,\n    proxy: { host: '1.2.3.4', port: 8080, username: 'user', password: 'pass' }\n  })\n\n  expect(parsed).toEqual({ ok: true, proxy: { host: '1.2.3.4', port: 8080 } })\n  expect(JSON.stringify(parsed)).not.toMatch(/user|pass|username|password/i)\n})\n",
+      "description": "Focused integration tests for Story 3.1 proxy IPC strict schemas and public-only registry contract.",
+      "priority_coverage": {
+        "P0": 0,
+        "P1": 3,
+        "P2": 0,
+        "P3": 0
+      }
+    }
+  ],
+  "coverageSummary": {
+    "totalTests": 3,
+    "testLevels": [
+      "integration"
+    ],
+    "fixtureNeeds": []
+  },
+  "status": "complete",
+  "success": true,
+  "subagent": "backend-tests",
+  "knowledge_fragments_used": [
+    "test-levels-framework",
+    "test-priorities-matrix"
+  ],
+  "summary": "Generated 3 focused P1 IPC integration tests for Story 3.1 proxy contract validation."
+}

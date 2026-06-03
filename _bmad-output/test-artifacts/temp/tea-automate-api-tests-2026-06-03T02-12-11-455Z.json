@@ -1,0 +1,12 @@
+{
+  "success": true,
+  "subagent": "api-tests",
+  "tests": [],
+  "fixture_needs": [],
+  "knowledge_fragments_used": ["api-request", "data-factories"],
+  "provider_scrutiny": "not_applicable",
+  "provider_files_read": [],
+  "test_count": 0,
+  "priority_coverage": { "P0": 0, "P1": 0, "P2": 0, "P3": 0 },
+  "summary": "No API endpoint tests generated because Step 2 selected IPC integration contract coverage only for Story 3.1."
+}
