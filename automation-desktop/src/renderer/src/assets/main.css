@@ -251,6 +251,7 @@ h1 {
 
 .import-result,
 .profiles-list-section,
+.templates-panel,
 .proxy-panel {
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 22px;
@@ -260,9 +261,83 @@ h1 {
 
 .result-summary,
 .profiles-list-section h2,
+.templates-panel h2,
 .proxy-panel h2 {
   margin: 0;
   font-size: 22px;
+}
+
+.template-form,
+.automation-target-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.template-field-label {
+  margin: 0;
+}
+
+.template-body-input {
+  min-height: 92px;
+}
+
+.template-list {
+  display: grid;
+  gap: 10px;
+  padding: 0;
+  margin: 18px 0 0;
+  list-style: none;
+}
+
+.template-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  align-items: flex-start;
+  justify-content: space-between;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.template-content {
+  display: grid;
+  flex: 1 1 320px;
+  gap: 8px;
+}
+
+.template-content strong {
+  color: #fff7e9;
+}
+
+.template-content p {
+  margin: 0;
+  color: #d8d0c2;
+  line-height: 1.5;
+}
+
+.template-edit-form {
+  display: grid;
+  width: 100%;
+  gap: 10px;
+}
+
+.template-edit-body {
+  min-height: 86px;
+}
+
+.automation-row-status {
+  flex: 1 0 100%;
+  margin: 0;
+  border: 1px solid rgba(142, 203, 255, 0.28);
+  border-radius: 14px;
+  padding: 10px 12px;
+  color: #bfe0ff;
+  background: rgba(142, 203, 255, 0.1);
+  font-size: 13px;
+  font-weight: 800;
 }
 
 .proxy-form {
@@ -577,5 +652,9 @@ h1 {
 
   .proxy-actions {
     grid-template-columns: 1fr;
+  }
+
+  .template-row {
+    flex-direction: column;
   }
 }

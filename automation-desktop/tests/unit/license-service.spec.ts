@@ -67,9 +67,10 @@ test('[P1] license service persists activation id before public settings', async
   await service.activate('LIC-OK')
 
   expect(events[0]).toBe('storage:license.activation_id')
+  expect(events[1]).toBe('storage:license.key')
   // Gating key (last_success_check, which unlocks offline grace) is written
   // LAST so a partial failure fails safe; revoked='false' clears any stale lock.
-  expect(events.slice(1)).toEqual([
+  expect(events.slice(2)).toEqual([
     'setting:license.expires_at',
     'setting:license.rebind_count',
     'setting:license.revoked',
@@ -103,7 +104,12 @@ test('[P1] license service rolls back activation id when public settings fail', 
   })
 
   await expect(service.activate('LIC-OK')).rejects.toBeInstanceOf(LicenseServiceError)
-  expect(events).toEqual(['storage:license.activation_id', 'delete:license.activation_id'])
+  expect(events).toEqual([
+    'storage:license.activation_id',
+    'storage:license.key',
+    'delete:license.activation_id',
+    'delete:license.key'
+  ])
 })
 
 test('[P1] license service check stores last successful server check timestamp', async () => {

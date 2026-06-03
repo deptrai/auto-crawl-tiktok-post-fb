@@ -6,11 +6,38 @@ import { createSettingsRepository, type SettingsRepository } from '../db/reposit
 import { createProfileRepository, type ProfileRepository } from '../db/repositories/profile-repo'
 import { createProxyRepository, type ProxyRepository } from '../db/repositories/proxy-repo'
 import {
+  createAutomationJobRepository,
+  type AutomationJobRepository
+} from '../db/repositories/automation-job-repo'
+import {
+  createContentTemplateRepository,
+  type ContentTemplateRepository
+} from '../db/repositories/content-template-repo'
+import {
+  createJobActionRepository,
+  type JobActionRepository
+} from '../db/repositories/job-action-repo'
+import {
+  createFingerprintService,
+  createPlaywrightRunner,
+  createSelfCommentOrchestrator,
+  createStateMachine,
+  createTokenExtractor,
+  detectLoginState,
+  executeSelfComment,
+  generateTotp,
+  parseCookieHeader,
+  submitTwoFa,
+  type SelfCommentLoginResult,
+  type SelfCommentOrchestrator
+} from '../automation'
+import {
   createFetchLicenseBackendClient,
   createLicenseService,
   type LicenseService,
   type LicenseStatus
 } from '../license/license-service'
+import { createActionTokenClient } from '../license/action-token-client'
 import { createProfileService, type ProfileService } from '../profile/profile-service'
 import {
   createProxyPool,
@@ -21,6 +48,8 @@ import {
 } from '../proxy'
 import {
   registerLicenseHandlers,
+  registerAutomationHandlers,
+  registerContentTemplateHandlers,
   registerProfileHandlers,
   registerProxyHandlers,
   registerSettingsHandlers,
@@ -45,6 +74,13 @@ interface BootstrapDeps {
   repos: {
     profile: ProfileRepository
     proxy: ProxyRepository
+    automationJob: AutomationJobRepository
+    contentTemplate: ContentTemplateRepository
+    jobAction: JobActionRepository
+  }
+  automation: {
+    orchestrator: SelfCommentOrchestrator
+    stateMachine: ReturnType<typeof createStateMachine>
   }
   workers: {
     licenseChecker: LicenseChecker
@@ -73,6 +109,64 @@ function publishLicenseStatus(status: LicenseStatus): void {
   }
 }
 
+function profileSecretKey(profileId: string, field: 'cookie' | 'twofa'): string {
+  return `profile.${profileId}.${field}`
+}
+
+function createSelfCommentLoginAdapter(deps: {
+  storage: ElectronSafeStorage
+  profileRepo: ProfileRepository
+}): (jobId: string, profileId: string) => Promise<SelfCommentLoginResult> {
+  const runner = createPlaywrightRunner()
+  const fingerprintService = createFingerprintService({ profileRepo: deps.profileRepo })
+
+  return async (_jobId, profileId) => {
+    const rawCookie = await deps.storage.get(profileSecretKey(profileId, 'cookie'))
+    if (!rawCookie?.trim()) return { ok: false, code: 'LOGIN_FAILED' }
+
+    const sessionHandle = await runner.launchSession({
+      fingerprint: fingerprintService.ensureFingerprint(profileId),
+      cookies: parseCookieHeader(rawCookie)
+    })
+
+    const session = {
+      page: sessionHandle.page,
+      close: () => sessionHandle.close()
+    }
+
+    let state = await detectLoginState(sessionHandle.page)
+    if (state === 'TWO_FA_REQUIRED') {
+      const twoFa = await deps.storage.get(profileSecretKey(profileId, 'twofa'))
+      if (!twoFa?.trim()) return { ok: true, state, session }
+      try {
+        await submitTwoFa(sessionHandle.page, generateTotp(twoFa, Date.now()))
+        state = await detectLoginState(sessionHandle.page)
+      } catch {
+        return { ok: true, state: 'TWO_FA_REQUIRED', session }
+      }
+    }
+
+    if (state === 'LOGGED_IN') return { ok: true, state, session }
+    if (state === 'CHECKPOINT' || state === 'TWO_FA_REQUIRED') return { ok: true, state, session }
+    return { ok: false, code: 'LOGIN_FAILED', session }
+  }
+}
+
+function createStubSelfCommentOrchestrator(
+  stateMachine: ReturnType<typeof createStateMachine>
+): SelfCommentOrchestrator {
+  return {
+    async runSelfComment(jobId) {
+      stateMachine.transition(jobId, 'ACQUIRING_PROXY')
+      stateMachine.transition(jobId, 'LOGGING_IN')
+      stateMachine.transition(jobId, 'WARMING_UP')
+      stateMachine.transition(jobId, 'EXECUTING')
+      stateMachine.transition(jobId, 'DONE', { result: '{"outcome":"success"}' })
+      return { outcome: 'success' }
+    }
+  }
+}
+
 function initializeDeps(): BootstrapDeps {
   const dbPath = process.env['PHASE3_DB_PATH'] ?? join(app.getPath('userData'), 'phase3.db')
   let db: ReturnType<typeof openEncryptedDatabase>
@@ -91,6 +185,12 @@ function initializeDeps(): BootstrapDeps {
   const settings = createSettingsRepository(db)
   const profileRepo = createProfileRepository(db)
   const proxyRepo = createProxyRepository(db)
+  const automationJobRepo = createAutomationJobRepository(db)
+  const contentTemplateRepo = createContentTemplateRepository(db)
+  const jobActionRepo = createJobActionRepository(db)
+  const nowIso = (): string => new Date().toISOString()
+  const automationApiBaseUrl =
+    process.env['PHASE3_AUTOMATION_API_BASE_URL'] ?? 'http://localhost:8000'
   const smokeHwid = app.isPackaged ? undefined : process.env['PHASE3_HWID_SMOKE_VALUE']
   const proxyService = createProxyService({
     storage: adapters.storage,
@@ -105,9 +205,7 @@ function initializeDeps(): BootstrapDeps {
     license: createLicenseService({
       settings,
       storage: adapters.storage,
-      backendClient: createFetchLicenseBackendClient(
-        process.env['PHASE3_AUTOMATION_API_BASE_URL'] ?? 'http://localhost:8000'
-      ),
+      backendClient: createFetchLicenseBackendClient(automationApiBaseUrl),
       generateHwid: smokeHwid ? async () => smokeHwid : undefined
     }),
     profile: createProfileService({
@@ -120,13 +218,50 @@ function initializeDeps(): BootstrapDeps {
   }
   const repos = {
     profile: profileRepo,
-    proxy: proxyRepo
+    proxy: proxyRepo,
+    automationJob: automationJobRepo,
+    contentTemplate: contentTemplateRepo,
+    jobAction: jobActionRepo
+  }
+  contentTemplateRepo.seedDefaults(nowIso())
+  const stateMachine = createStateMachine({ repo: automationJobRepo, now: nowIso })
+  const actionTokenClient = createActionTokenClient({
+    baseUrl: automationApiBaseUrl,
+    getLicenseKey: async () => {
+      const key = await adapters.storage.get('license.key')
+      if (!key?.trim()) throw new Error('license key missing')
+      return key
+    },
+    generateHwid: smokeHwid ? async () => smokeHwid : undefined
+  })
+  const orchestrator =
+    !app.isPackaged && process.env['PHASE3_AUTOMATION_STUB'] === '1'
+      ? createStubSelfCommentOrchestrator(stateMachine)
+      : createSelfCommentOrchestrator({
+          stateMachine,
+          login: createSelfCommentLoginAdapter({ storage: adapters.storage, profileRepo }),
+          extractTokens: async (page) =>
+            createTokenExtractor({
+              fetchHtml: async () => page.content?.() ?? '',
+              onSelectorMiss: () => undefined
+            }).extract(),
+          actionTokenClient,
+          contentTemplates: contentTemplateRepo,
+          actionExecutor: { executeSelfComment },
+          jobActions: jobActionRepo,
+          now: nowIso,
+          nowMs: () => Date.now(),
+          rng: Math.random
+        })
+  const automation = {
+    orchestrator,
+    stateMachine
   }
   const workers = {
     licenseChecker: createLicenseChecker(services.license, { onStatus: publishLicenseStatus })
   }
 
-  return { db, services, repos, adapters, workers }
+  return { db, services, repos, automation, adapters, workers }
 }
 
 function configureUserDataPath(): void {
@@ -348,6 +483,13 @@ export async function bootstrapApplication(): Promise<void> {
   registerSettingsHandlers(ipcMain, deps.services.settings)
   registerLicenseHandlers(ipcMain, deps.services.license)
   registerProfileHandlers(ipcMain, deps.services.profile)
+  registerContentTemplateHandlers(ipcMain, deps.repos.contentTemplate)
+  registerAutomationHandlers(ipcMain, {
+    orchestrator: deps.automation.orchestrator,
+    stateMachine: deps.automation.stateMachine,
+    jobRepo: deps.repos.automationJob,
+    jobActions: deps.repos.jobAction
+  })
   registerProxyHandlers(
     ipcMain,
     deps.services.proxy,

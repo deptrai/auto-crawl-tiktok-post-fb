@@ -37,6 +37,28 @@ function runSmoke(): SmokeResult {
     assert(selected?.id === 'tpl-second', 'deterministic random did not pick expected row')
     checks.push('deterministic-random')
 
+    const created = repo.createTemplate({
+      label: 'Created',
+      body: 'Nội dung mới',
+      createdAt: '2026-06-03T00:00:02.000Z'
+    })
+    assert(created.id.length > 0, 'create did not assign id')
+    assert(repo.countTemplates() === 3, 'count after create mismatch')
+    checks.push('create-count')
+
+    const updated = repo.updateTemplate({
+      id: created.id,
+      label: 'Updated',
+      body: 'Nội dung đã sửa'
+    })
+    assert(updated?.label === 'Updated', 'update label mismatch')
+    assert(updated.body === 'Nội dung đã sửa', 'update body mismatch')
+    checks.push('update')
+
+    assert(repo.deleteTemplate(created.id) === 1, 'delete did not affect one row')
+    assert(repo.countTemplates() === 2, 'count after delete mismatch')
+    checks.push('delete')
+
     return { ok: true, checks }
   } catch (error) {
     return { ok: false, error: error instanceof Error ? error.message : String(error) }

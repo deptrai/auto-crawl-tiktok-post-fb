@@ -69,5 +69,6 @@ export {
   type SelfCommentLoginResult,
   type SelfCommentOrchestrator,
   type SelfCommentOrchestratorDeps,
+  type RunSelfCommentOptions,
   type SelfCommentSession
 } from './self-comment-orchestrator'

@@ -77,6 +77,34 @@ import {
   type ProxyRotateRequest,
   type ProxyRotateResponse
 } from './proxy'
+import {
+  ContentTemplateCreateRequestSchema,
+  ContentTemplateCreateResponseSchema,
+  ContentTemplateDeleteRequestSchema,
+  ContentTemplateDeleteResponseSchema,
+  ContentTemplateListRequestSchema,
+  ContentTemplateListResponseSchema,
+  ContentTemplateUpdateRequestSchema,
+  ContentTemplateUpdateResponseSchema,
+  type ContentTemplateCreateRequest,
+  type ContentTemplateCreateResponse,
+  type ContentTemplateDeleteRequest,
+  type ContentTemplateDeleteResponse,
+  type ContentTemplateListRequest,
+  type ContentTemplateListResponse,
+  type ContentTemplateUpdateRequest,
+  type ContentTemplateUpdateResponse
+} from './content-template'
+import {
+  AutomationStartRequestSchema,
+  AutomationStartResponseSchema,
+  AutomationStatusRequestSchema,
+  AutomationStatusResponseSchema,
+  type AutomationStartRequest,
+  type AutomationStartResponse,
+  type AutomationStatusRequest,
+  type AutomationStatusResponse
+} from './automation'
 
 export type Phase3ChannelName = `phase3:${string}:${string}`
 
@@ -175,7 +203,37 @@ export const channelRegistry = [
     channel: 'phase3:proxy-pool:list',
     requestSchema: ProxyPoolListRequestSchema,
     responseSchema: ProxyPoolListResponseSchema
-  } satisfies ChannelRegistryEntry<ProxyPoolListRequest, ProxyPoolListResponse>
+  } satisfies ChannelRegistryEntry<ProxyPoolListRequest, ProxyPoolListResponse>,
+  {
+    channel: 'phase3:content-template:list',
+    requestSchema: ContentTemplateListRequestSchema,
+    responseSchema: ContentTemplateListResponseSchema
+  } satisfies ChannelRegistryEntry<ContentTemplateListRequest, ContentTemplateListResponse>,
+  {
+    channel: 'phase3:content-template:create',
+    requestSchema: ContentTemplateCreateRequestSchema,
+    responseSchema: ContentTemplateCreateResponseSchema
+  } satisfies ChannelRegistryEntry<ContentTemplateCreateRequest, ContentTemplateCreateResponse>,
+  {
+    channel: 'phase3:content-template:update',
+    requestSchema: ContentTemplateUpdateRequestSchema,
+    responseSchema: ContentTemplateUpdateResponseSchema
+  } satisfies ChannelRegistryEntry<ContentTemplateUpdateRequest, ContentTemplateUpdateResponse>,
+  {
+    channel: 'phase3:content-template:delete',
+    requestSchema: ContentTemplateDeleteRequestSchema,
+    responseSchema: ContentTemplateDeleteResponseSchema
+  } satisfies ChannelRegistryEntry<ContentTemplateDeleteRequest, ContentTemplateDeleteResponse>,
+  {
+    channel: 'phase3:automation:start',
+    requestSchema: AutomationStartRequestSchema,
+    responseSchema: AutomationStartResponseSchema
+  } satisfies ChannelRegistryEntry<AutomationStartRequest, AutomationStartResponse>,
+  {
+    channel: 'phase3:automation:status',
+    requestSchema: AutomationStatusRequestSchema,
+    responseSchema: AutomationStatusResponseSchema
+  } satisfies ChannelRegistryEntry<AutomationStatusRequest, AutomationStatusResponse>
 ] as const satisfies ReadonlyArray<ChannelRegistryEntry>
 
 export * from './common'
@@ -184,3 +242,5 @@ export * from './shell'
 export * from './license'
 export * from './profile'
 export * from './proxy'
+export * from './content-template'
+export * from './automation'

@@ -47,7 +47,10 @@ test('[P0] content template repository seeds and selects deterministic random te
       timeout: 30_000
     })
     const result = JSON.parse(readFileSync(fixture.resultPath, 'utf8')) as RepoSmokeResult
-    expect(result).toEqual({ ok: true, checks: ['seed-default', 'list', 'deterministic-random'] })
+    expect(result).toEqual({
+      ok: true,
+      checks: ['seed-default', 'list', 'deterministic-random', 'create-count', 'update', 'delete']
+    })
   } finally {
     rmSync(fixture.dir, { recursive: true, force: true })
   }

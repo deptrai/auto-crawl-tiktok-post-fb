@@ -5,6 +5,7 @@ import type {
   ProxyAssignmentSummary
 } from '../../../shared/ipc-schemas'
 import { deleteProfile, importBulkProfiles, listProfiles, updateProfile } from '../api/profile-api'
+import { getAutomationStatus, startSelfComment } from '../api/automation-api'
 import {
   acquireProxyForProfile,
   listProxyAssignments,
@@ -16,6 +17,27 @@ const STATUS_LABELS: Record<string, { label: string; className: string }> = {
   running: { label: 'Đang chạy', className: 'status-running' },
   checkpoint: { label: 'Checkpoint', className: 'status-checkpoint' },
   error: { label: 'Lỗi', className: 'status-error' }
+}
+
+const AUTOMATION_STATE_LABELS: Record<string, string> = {
+  PENDING: 'Đang xếp hàng',
+  ACQUIRING_PROXY: 'Đang lấy proxy',
+  LOGGING_IN: 'Đang đăng nhập',
+  SOLVING_CHECKPOINT: 'Đang xử lý checkpoint',
+  WARMING_UP: 'Đang warmup',
+  EXECUTING: 'Đang bình luận',
+  DONE: 'Hoàn tất',
+  CHECKPOINT_BLOCKED: 'Bị checkpoint',
+  FAILED: 'Thất bại',
+  CANCELLED: 'Đã hủy'
+}
+
+const TERMINAL_AUTOMATION_STATES = new Set(['DONE', 'CHECKPOINT_BLOCKED', 'FAILED', 'CANCELLED'])
+
+interface AutomationRowStatus {
+  jobId: string
+  state: string
+  outcome?: string
 }
 
 function getStatusBadge(status: string): { label: string; className: string } {
@@ -40,6 +62,12 @@ export function ProfilesView(): React.JSX.Element {
   )
   const [proxyBusyId, setProxyBusyId] = useState<string | null>(null)
   const [proxyError, setProxyError] = useState<string | null>(null)
+  const [automationTarget, setAutomationTarget] = useState('')
+  const [automationBusyId, setAutomationBusyId] = useState<string | null>(null)
+  const [automationStatuses, setAutomationStatuses] = useState<Record<string, AutomationRowStatus>>(
+    {}
+  )
+  const [automationError, setAutomationError] = useState<string | null>(null)
   const listInFlightRef = useRef(false)
   const listCancelledRef = useRef(false)
   const pendingRefreshRef = useRef(false)
@@ -210,6 +238,61 @@ export function ProfilesView(): React.JSX.Element {
     }
   }
 
+  async function handleStartSelfComment(profile: ProfileSummary): Promise<void> {
+    if (automationBusyId) return
+
+    setAutomationBusyId(profile.id)
+    setAutomationError(null)
+    try {
+      const target = automationTarget.trim()
+      const { jobId } = await startSelfComment({
+        profileId: profile.id,
+        ...(target ? { target } : {})
+      })
+      setAutomationStatuses((current) => ({
+        ...current,
+        [profile.id]: { jobId, state: 'PENDING' }
+      }))
+    } catch (err) {
+      setAutomationError(err instanceof Error ? err.message : 'Không thể chạy self-comment.')
+    } finally {
+      setAutomationBusyId(null)
+    }
+  }
+
+  useEffect(() => {
+    const active = Object.entries(automationStatuses).filter(
+      ([, status]) => !TERMINAL_AUTOMATION_STATES.has(status.state)
+    )
+    if (active.length === 0) return undefined
+
+    let cancelled = false
+    const timer = window.setInterval(() => {
+      for (const [profileId, status] of active) {
+        void getAutomationStatus(status.jobId)
+          .then((next) => {
+            if (cancelled) return
+            setAutomationStatuses((current) => ({
+              ...current,
+              [profileId]: { jobId: status.jobId, state: next.state, outcome: next.outcome }
+            }))
+          })
+          .catch((err) => {
+            if (!cancelled) {
+              setAutomationError(
+                err instanceof Error ? err.message : 'Không thể đọc trạng thái automation.'
+              )
+            }
+          })
+      }
+    }, 1_000)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [automationStatuses])
+
   return (
     <div className="profiles-view" data-testid="profiles-view">
       <section className="import-panel" aria-labelledby="profiles-import-title">
@@ -346,12 +429,41 @@ export function ProfilesView(): React.JSX.Element {
         ) : null}
 
         {profiles.length > 0 ? (
+          <div className="automation-target-form" data-testid="automation-target-form">
+            <label className="field-label template-field-label" htmlFor="automation-target-url">
+              URL post đích (khuyến nghị)
+              <input
+                id="automation-target-url"
+                data-testid="automation-target-input"
+                className="license-input"
+                value={automationTarget}
+                placeholder="https://www.facebook.com/.../posts/..."
+                onChange={(e) => setAutomationTarget(e.target.value)}
+              />
+            </label>
+            <p className="profiles-list-subtitle">
+              Nếu bỏ trống, app sẽ thử vào profile feed của tài khoản và dùng selector tạm.
+            </p>
+          </div>
+        ) : null}
+
+        {automationError ? (
+          <p className="error-message list-error" data-testid="automation-error">
+            {automationError}
+          </p>
+        ) : null}
+
+        {profiles.length > 0 ? (
           <ul className="profiles-list" data-testid="profiles-list">
             {profiles.map((profile) => {
               const badge = getStatusBadge(profile.status)
               const isEditing = editingId === profile.id
               const isConfirmingDelete = confirmDeleteId === profile.id
               const isBusy = rowBusyId === profile.id
+              const automationStatus = automationStatuses[profile.id]
+              const automationRunning =
+                automationBusyId === profile.id ||
+                Boolean(automationStatus && !TERMINAL_AUTOMATION_STATES.has(automationStatus.state))
               return (
                 <li
                   key={profile.id}
@@ -445,6 +557,18 @@ export function ProfilesView(): React.JSX.Element {
                     </div>
                     <div className="profile-row-actions">
                       <button
+                        data-testid={`profile-self-comment-${profile.uid}`}
+                        className="profile-row-button primary-row-action"
+                        type="button"
+                        disabled={automationRunning || Boolean(automationBusyId)}
+                        onClick={(e) => {
+                          ;(e.currentTarget as HTMLButtonElement).disabled = true
+                          void handleStartSelfComment(profile)
+                        }}
+                      >
+                        {automationRunning ? 'Đang chạy...' : 'Chạy self-comment'}
+                      </button>
+                      <button
                         data-testid={`profile-edit-${profile.uid}`}
                         className="profile-row-button"
                         type="button"
@@ -502,6 +626,16 @@ export function ProfilesView(): React.JSX.Element {
                   ) : null}
                   {rowError && (isEditing || isConfirmingDelete) ? (
                     <p className="error-message profile-row-error">{rowError}</p>
+                  ) : null}
+                  {automationStatus ? (
+                    <p
+                      className="automation-row-status"
+                      data-testid={`profile-automation-status-${profile.uid}`}
+                    >
+                      Job {automationStatus.jobId}:{' '}
+                      {AUTOMATION_STATE_LABELS[automationStatus.state] ?? automationStatus.state}
+                      {automationStatus.outcome ? ` · ${automationStatus.outcome}` : ''}
+                    </p>
                   ) : null}
                   {proxyError ? (
                     <p

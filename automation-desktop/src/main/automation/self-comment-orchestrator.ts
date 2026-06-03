@@ -6,9 +6,21 @@ import type { SessionTokens } from './token-extractor'
 import type { AutomationStateMachine } from './state-machine'
 import { executeSelfComment, type ActionOutcome, type CommentPageLike } from './action-executor'
 
+const DEFAULT_OWN_FEED_URL = 'https://www.facebook.com/me'
+
 export interface SelfCommentSession {
-  page: CommentPageLike & { content?: () => Promise<string> }
+  page: CommentPageLike & {
+    content?: () => Promise<string>
+    goto?: (
+      url: string,
+      options?: { timeout?: number; waitUntil?: 'domcontentloaded' }
+    ) => Promise<unknown>
+  }
   close(): Promise<void>
+}
+
+export interface RunSelfCommentOptions {
+  target?: string
 }
 
 export type SelfCommentLoginResult =
@@ -31,13 +43,17 @@ export interface SelfCommentOrchestratorDeps {
   now: () => string
   nowMs: () => number
   rng: () => number
-  target?: string
+  navigate?: (page: SelfCommentSession['page'], target: string) => Promise<void>
   onActionOutcome?: (event: { outcome: ActionOutcome; durationMs: number }) => void
   onTransitionError?: (jobId: string, to: AutomationJobState, code: string) => void
 }
 
 export interface SelfCommentOrchestrator {
-  runSelfComment(jobId: string, profileId: string): Promise<{ outcome: ActionOutcome }>
+  runSelfComment(
+    jobId: string,
+    profileId: string,
+    options?: RunSelfCommentOptions
+  ): Promise<{ outcome: ActionOutcome }>
 }
 
 function transition(
@@ -57,12 +73,13 @@ function record(
   deps: SelfCommentOrchestratorDeps,
   jobId: string,
   outcome: ActionOutcome,
-  actionToken: ActionToken | null
+  actionToken: ActionToken | null,
+  target: string | null
 ): void {
   deps.jobActions.recordAction({
     jobId,
     actionType: 'comment',
-    target: deps.target ?? null,
+    target,
     actionTokenJti: actionToken?.jti ?? null,
     executedAt: deps.now(),
     outcome
@@ -73,14 +90,28 @@ function emit(deps: SelfCommentOrchestratorDeps, outcome: ActionOutcome, started
   deps.onActionOutcome?.({ outcome, durationMs: Math.max(0, deps.nowMs() - startedMs) })
 }
 
+async function navigateToTarget(
+  deps: SelfCommentOrchestratorDeps,
+  page: SelfCommentSession['page'],
+  target: string
+): Promise<void> {
+  if (deps.navigate) {
+    await deps.navigate(page, target)
+    return
+  }
+  if (!page.goto) throw new Error('Self-comment page cannot navigate')
+  await page.goto(target, { timeout: 30_000, waitUntil: 'domcontentloaded' })
+}
+
 export function createSelfCommentOrchestrator(
   deps: SelfCommentOrchestratorDeps
 ): SelfCommentOrchestrator {
   return {
-    async runSelfComment(jobId, profileId) {
+    async runSelfComment(jobId, profileId, options = {}) {
       const startedMs = deps.nowMs()
       let session: SelfCommentSession | undefined
       let actionToken: ActionToken | null = null
+      const target = options.target?.trim() || DEFAULT_OWN_FEED_URL
 
       try {
         transition(deps, jobId, 'ACQUIRING_PROXY')
@@ -90,13 +121,13 @@ export function createSelfCommentOrchestrator(
         session = loginResult.session
         if (!loginResult.ok || loginResult.state === 'LOGIN_FAILED') {
           transition(deps, jobId, 'FAILED')
-          record(deps, jobId, 'error', null)
+          record(deps, jobId, 'error', null, target)
           emit(deps, 'error', startedMs)
           return { outcome: 'error' }
         }
         if (loginResult.state === 'CHECKPOINT' || loginResult.state === 'TWO_FA_REQUIRED') {
           transition(deps, jobId, 'CHECKPOINT_BLOCKED')
-          record(deps, jobId, 'checkpoint', null)
+          record(deps, jobId, 'checkpoint', null, target)
           emit(deps, 'checkpoint', startedMs)
           return { outcome: 'checkpoint' }
         }
@@ -113,25 +144,26 @@ export function createSelfCommentOrchestrator(
         const template = deps.contentTemplates.getRandomTemplate(deps.rng)
         if (!template) {
           transition(deps, jobId, 'FAILED')
-          record(deps, jobId, 'error', null)
+          record(deps, jobId, 'error', null, target)
           emit(deps, 'error', startedMs)
           return { outcome: 'error' }
         }
 
         actionToken = await deps.actionTokenClient.requestActionToken({ actionType: 'comment' })
+        await navigateToTarget(deps, activeSession.page, target)
         transition(deps, jobId, 'EXECUTING')
         const outcome = await deps.actionExecutor.executeSelfComment({
           page: activeSession.page,
           content: template.body
         })
         await deps.actionTokenClient.consumeActionToken(actionToken.token).catch(() => undefined)
-        record(deps, jobId, outcome, actionToken)
+        record(deps, jobId, outcome, actionToken, target)
         emit(deps, outcome, startedMs)
         transition(deps, jobId, outcome === 'success' ? 'DONE' : 'FAILED')
         return { outcome }
       } catch {
         transition(deps, jobId, 'FAILED')
-        record(deps, jobId, 'error', actionToken)
+        record(deps, jobId, 'error', actionToken, target)
         emit(deps, 'error', startedMs)
         return { outcome: 'error' }
       } finally {

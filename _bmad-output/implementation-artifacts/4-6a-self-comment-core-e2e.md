@@ -1,6 +1,6 @@
 # Story 4.6a: Thực thi self-comment — core end-to-end (headless)
 
-Status: review
+Status: done
 
 Epic: 4 — Lõi Automation Facebook (Self-Comment MVP) · Story: 4.6a (tách từ 4.6) · ID: 4.6a
 
@@ -48,6 +48,29 @@ So that validate toàn bộ stack (login → token → action-token gate → exe
 - [x] **V** — Verify: backend pytest + client lint/typecheck/test + full suite không giảm (baseline 175).
 
 > **D1 (defer → 4.6b):** IPC `phase3:automation:start` + `phase3:automation:status` + automation-handlers; trigger UI (renderer); content_templates CRUD (IPC + UI thêm/sửa/xóa). 4.6a chỉ entry headless `runSelfComment()` + seed template.
+
+## Review Findings (2026-06-03 — bmad-code-review, 3-lens adversarial)
+
+> Diff: commit `685f4e5` (full-stack). **Client: Lint ✅ · Typecheck ✅ · 189 tests PASS** (175 + 14). **Backend: review bằng đọc code + py_compile ✅** (pytest cần Postgres — không chạy được trong env review). Verdict: **APPROVE — không blocker, không bug.**
+
+**AC1–AC8 + guardrail — đạt:**
+- ✅ **AC1** orchestrator drive state-machine đúng thứ tự (proxy→login 4.3→token-extract 4.4→action-token 4.5→executor→persist); transition `!ok`→onTransitionError (4.3 pattern).
+- ✅ **AC2** action-token gate TRƯỚC EXECUTING (deny/offline→catch→FAILED, KHÔNG execute); consume SAU execute; backend `consume_action_token` jwt.decode(verify exp)+jti+used_at→set; status map ĐỦ (INVALID 422/REUSED 409/EXPIRED 401 — không default 500).
+- ✅ **AC3/AC6** `action-executor` bundled `SELF_COMMENT_SELECTORS` + exists()-guard (selector_miss) + read-back; **never throws** (catch→'error') → consume luôn chạy sau execute. DI page.
+- ✅ **AC4** `getRandomTemplate(rng inject)` + empty→undefined→error (no crash); seedDefaults INSERT OR IGNORE.
+- ✅ **AC5** `job_actions.action_token` = **jti** (job-action-repo lưu `actionTokenJti`, KHÔNG JWT raw); telemetry `onActionOutcome` hook. Test assert records `not.toContain('JWT_SECRET_VALUE')`.
+- ✅ **AC7** secret: 0 log; jti-only persist; `finally session?.close()` mọi nhánh (test assert closed.value=true cả happy/selector_miss/checkpoint).
+- ✅ **AC8** orchestrator unit (happy/checkpoint/deny/empty/selector_miss + no-leak + cleanup) + executor unit + repo integration + real-Chromium smoke (own-post mock) + backend consume pytest (success/reuse-409/expired-401/unknown-422).
+
+**Findings (tất cả LOW/INFO — KHÔNG block done):**
+
+- [ ] [Review][Info] **`extractTokens` (4.4) result bị discard** — token fb_dtsg/lsd/jazoest extract nhưng KHÔNG dùng trong self-comment DOM-path (executor dùng selector, không HTTP POST). Validate stack (4.4 chạy + extraction-fail→FAILED như session-health gate) nhưng token chưa tiêu thụ. OK cho "validate stack" + forward-compat HTTP action. Note.
+- [ ] [Review][Info][→4.6b/real] **Thiếu bước navigate-to-own-post** — orchestrator truyền `activeSession.page` cho executor nhưng KHÔNG navigate tới post của chính profile (sau login 4.3 page ở FB home). Smoke pass nhờ mock `own-post.html` có sẵn comment box; **flow THẬT cần navigate tới own post + tìm post** trước executor (4.6b/Epic 5 selector). 4.6a validate cơ chế qua mock — đúng scope; flag để 4.6b wire navigation + `target`.
+- [ ] [Review][Info] transition sớm (ACQUIRING_PROXY/LOGGING_IN/WARMING_UP/EXECUTING) bỏ qua `!ok` return (chỉ onTransitionError, vẫn proceed) — nhất quán 4.3; caller đảm bảo PENDING. consume error `.catch(()=>undefined)` (best-effort audit; token expire 60s).
+
+**Limitation review:** Backend pytest KHÔNG chạy được (thiếu Postgres/testcontainers) → review qua đọc service/route/test-code + py_compile. Assertion thật, logic đúng, status map đủ. Khuyến nghị CI chạy pytest consume trước merge.
+
+**Dismissed:** consume-skip-if-executor-throws (executor never throws → moot); job_actions FK (caller createJob trước — đúng); randomUUID row id (không assert determinism); `this.listTemplates()` binding (object method OK).
 
 ## Dev Notes
 

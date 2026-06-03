@@ -5,6 +5,7 @@ import { activateLicense, getLicenseStatus, subscribeLicenseChanges } from './ap
 import { getSetting, openPrivacyPolicy, setSetting } from './api/settings-api'
 import { EulaAcceptanceView } from './views/EulaAcceptanceView'
 import { LicenseView } from './views/LicenseView'
+import { ContentTemplatesView } from './views/ContentTemplatesView'
 import { ProfilesView } from './views/ProfilesView'
 import { ProxyView } from './views/ProxyView'
 
@@ -36,6 +37,7 @@ function MainShell({
           ? `License active: còn ${licenseStatus.daysRemaining ?? 0} ngày.`
           : 'License active.'}
       </p>
+      <ContentTemplatesView />
       <ProfilesView />
       <ProxyView />
     </main>

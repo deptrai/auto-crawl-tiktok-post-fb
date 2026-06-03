@@ -11,6 +11,7 @@ import type { SettingsRepository } from '../db/repositories/settings-repo'
 import { generateHwid } from './hwid-generator'
 
 const ACTIVATION_ID_KEY = 'license.activation_id'
+const LICENSE_KEY_KEY = 'license.key'
 const EXPIRES_AT_KEY = 'license.expires_at'
 const LAST_SUCCESS_CHECK_KEY = 'license.last_success_check'
 const REBIND_COUNT_KEY = 'license.rebind_count'
@@ -195,6 +196,7 @@ export function createLicenseService(deps: {
         const result = await deps.backendClient.activate(key, hwid)
 
         await deps.storage.set(ACTIVATION_ID_KEY, result.activation_id)
+        await deps.storage.set(LICENSE_KEY_KEY, key)
         try {
           await deps.settings.setSetting(EXPIRES_AT_KEY, result.expires_at)
           await deps.settings.setSetting(REBIND_COUNT_KEY, String(result.rebind_count))
@@ -205,6 +207,7 @@ export function createLicenseService(deps: {
           await deps.settings.setSetting(LAST_SUCCESS_CHECK_KEY, getNow().toISOString())
         } catch (settingsError) {
           await deps.storage.delete(ACTIVATION_ID_KEY)
+          await deps.storage.delete(LICENSE_KEY_KEY)
           throw new LicenseServiceError(
             'LICENSE_PERSIST_FAILED',
             'Không thể lưu trạng thái license. Vui lòng thử lại.',

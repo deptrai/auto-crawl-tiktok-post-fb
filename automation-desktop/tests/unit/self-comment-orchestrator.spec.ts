@@ -14,6 +14,7 @@ function createDeps(
   telemetry: unknown[]
   consumed: string[]
   executed: string[]
+  navigated: string[]
   closed: { value: boolean }
 } {
   const transitions: AutomationJobState[] = []
@@ -21,6 +22,7 @@ function createDeps(
   const telemetry: unknown[] = []
   const consumed: string[] = []
   const executed: string[] = []
+  const navigated: string[] = []
   const closed = { value: false }
   const page = {
     async content() {
@@ -50,6 +52,7 @@ function createDeps(
     telemetry,
     consumed,
     executed,
+    navigated,
     closed,
     stateMachine: {
       transition(_jobId, to) {
@@ -98,6 +101,9 @@ function createDeps(
     now: () => '2026-06-03T00:00:01.000Z',
     nowMs: () => 1_000,
     rng: () => 0,
+    navigate: async (_page, target) => {
+      navigated.push(target)
+    },
     onActionOutcome: (event) => telemetry.push(event),
     ...overrides
   }
@@ -120,11 +126,13 @@ test('[P0] self-comment orchestrator drives happy path, consumes token, records 
     'DONE'
   ])
   expect(deps.executed).toEqual(['Nội dung comment'])
+  expect(deps.navigated).toEqual(['https://www.facebook.com/me'])
   expect(deps.consumed).toEqual(['JWT_SECRET_VALUE'])
   expect(deps.records).toEqual([
     expect.objectContaining({
       jobId: 'job-1',
       actionType: 'comment',
+      target: 'https://www.facebook.com/me',
       actionTokenJti: 'jti-reference',
       outcome: 'success'
     })
@@ -147,6 +155,7 @@ test('[P0] checkpoint blocks before token extraction and execution', async () =>
   expect(deps.transitions).toEqual(['ACQUIRING_PROXY', 'LOGGING_IN', 'CHECKPOINT_BLOCKED'])
   expect(deps.executed).toEqual([])
   expect(deps.consumed).toEqual([])
+  expect(deps.navigated).toEqual([])
   expect(deps.records).toEqual([
     expect.objectContaining({ outcome: 'checkpoint', actionTokenJti: null })
   ])
@@ -170,6 +179,7 @@ test('[P0] action-token deny blocks execution and does not consume', async () =>
   expect(deps.transitions).toEqual(['ACQUIRING_PROXY', 'LOGGING_IN', 'WARMING_UP', 'FAILED'])
   expect(deps.executed).toEqual([])
   expect(deps.consumed).toEqual([])
+  expect(deps.navigated).toEqual([])
   expect(JSON.stringify(deps.records)).not.toContain('JWT_SECRET_VALUE')
 })
 
@@ -183,6 +193,7 @@ test('[P0] empty template fails clearly without executing', async () => {
 
   expect(deps.transitions).toEqual(['ACQUIRING_PROXY', 'LOGGING_IN', 'WARMING_UP', 'FAILED'])
   expect(deps.executed).toEqual([])
+  expect(deps.navigated).toEqual([])
   expect(deps.records).toEqual([
     expect.objectContaining({ outcome: 'error', actionTokenJti: null })
   ])
@@ -205,6 +216,7 @@ test('[P0] selector_miss records jti and transitions to failed after cleanup', a
     'EXECUTING',
     'FAILED'
   ])
+  expect(deps.navigated).toEqual(['https://www.facebook.com/me'])
   expect(deps.records).toEqual([
     expect.objectContaining({ outcome: 'selector_miss', actionTokenJti: 'jti-reference' })
   ])
