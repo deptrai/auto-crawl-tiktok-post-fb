@@ -1,6 +1,6 @@
 # Story 2.3: Sửa và xóa profile
 
-Status: review
+Status: done
 
 <!-- Phase 3 story (Epic 2 — Profile Management, story cuối 3/3). Sources: epics-phase3.md#Story-2.3 (L296-308), prd-phase3.md#FR2 (L342), architecture.md (DB schema L1399-1401 CASCADE, R-D3 secret hygiene). ⚠️ automation-desktop/ (Electron client) — 25 rules CLAUDE.md ÁP DỤNG. Previous: 2.1 done (8 patch + cookie-export), 2.2 done (list+polling, 3 patch). -->
 
@@ -47,6 +47,18 @@ so that tôi quản lý vòng đời tài khoản, và khi xóa thì cookie + d�
   - [x] Integration real SQLCipher: mở rộng `runProfileRepoSmoke` (electron-bootstrap, `PHASE3_PROFILE_REPO_SMOKE`) — sau insert: `updateDisplayName` đổi tên + `getProfileById` xác nhận; delete → `profile_metadata` của profile đó bị CASCADE xóa (đã có sẵn check cascade ở 2.1 smoke — verify lại).
   - [x] E2E `tests/e2e/profiles.spec.ts` (thêm): import 1 profile → Sửa displayName → list hiển thị tên mới; Xóa (confirm) → row biến mất + empty state. Reuse `launchWithActiveLicense`/`closeServer`/`setTextareaValue`.
   - [x] `typecheck` PASS, `lint` 0 errors, toàn bộ test 2.1/2.2 vẫn xanh.
+
+### Review Findings (2026-06-03 — bmad-code-review, 3 reviewers)
+
+> Diff: `611c545..HEAD` (2.1+2.2 đã vetted). **Lint ✅ · Typecheck ✅ · 68 unit+integration PASS** (gồm 2 test bảo mật delete: "deletes all secret keys before row" + "aborts row delete when secret fails"). E2E chưa exec (cần build). Scorecard: AC1✅ AC2✅ AC3✅ AC4✅ AC5✅ AC6✅ AC7✅ — **không có Critical/High thực**; delete cleanup secrets-first ĐÚNG spec + retry-safe (idempotent).
+
+**Patch (Low — defense/cleanup):**
+
+- [x] [Review][Patch] `ProfileUpdateRequestSchema.displayName` → `z.string().trim().min(1).max(200)` [profile.ts:14] ✅
+- [x] [Review][Patch] Integration test `PROFILE_DELETE_FAILED` retryable:true (profile-ipc-handlers.spec.ts) + E2E cancel-edit + cancel-delete (profiles.spec.ts) ✅
+- [x] [Review][Patch] `.review-2.2.diff` unstaged + xóa cả 2 file temp diff ✅
+
+**Dismissed (false-positive / theoretical):** delete-loop "permanent broken state" (Edge Critical — SAI: `storage.delete` idempotent → retry hội tụ, test pass); email-secret-not-deleted (Blind — SAI: email ở `profile_metadata` SQLite, CASCADE xóa, KHÔNG phải safeStorage secret); updateProfile TOCTOU updateDisplayName→getProfileById (sync, better-sqlite3 single-thread, no await giữa → no interleave); rowBusyId/rowError shared cross-row (editingId⊥confirmDeleteId mutual-exclusive + rule#17 inline-disable, nhất quán 2.1/2.2); double-submit (inline DOM disable rule #17); confirmDeleteId stale sau external-delete (UUID collision ~impossible); ProfileUpdateResponseSchema empty-displayName throw (caught→normalizeError generic, không leak, displayName never empty); cancel "Hủy" không rule#17-disable (sync, no async risk); E2E không verify safeStorage cleared (unit test ĐÃ verify đủ 4 key); deferred-work.md F4 "thiếu automation_jobs entry" (SAI — đã ghi lúc create-story); updateDisplayName param order (đúng); barrel cross-domain re-export ProfileSummary (single-source shared = đúng 2.2 P3).
 
 ## Dev Notes
 

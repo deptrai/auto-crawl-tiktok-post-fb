@@ -1,5 +1,5 @@
 # generated: 2026-06-02
-# last_updated: 2026-06-03 (Epic 1 done; 2.1+2.2 done; 2.3 review — sửa displayName + xóa cleanup secrets-first; automation_jobs cleanup defer Epic 4; epic-2 in-progress)
+# last_updated: 2026-06-03 (Epic 1+2 done; Epic 3 in-progress; 3.1 ready-for-dev — proxyfb provider; Epic 12 MỚI — Messenger Seeding)
 # project: auto-crawl-tiktok-post-fb (Phase 3 — Facebook Cookie-Based Automation Desktop)
 # project_key: NOKEY
 # tracking_system: file-system
@@ -64,12 +64,12 @@ development_status:
   epic-2: in-progress
   2-1-import-bulk-profile: done
   2-2-xem-danh-sach-profile-real-time: done
-  2-3-sua-va-xoa-profile: review
+  2-3-sua-va-xoa-profile: done
   epic-2-retrospective: optional
 
   # Epic 3: Quản lý Proxy (Proxy Management)
-  epic-3: backlog
-  3-1-tich-hop-proxy-provider-proxyfb: backlog
+  epic-3: in-progress
+  3-1-tich-hop-proxy-provider-proxyfb: ready-for-dev
   3-2-health-check-proxy-circuit-breaker: backlog
   3-3-bind-proxy-rieng-moi-profile-session: backlog
   epic-3-retrospective: optional
@@ -140,3 +140,12 @@ development_status:
   11-1-share-action-executor: backlog
   11-2-friend-request-automation: backlog
   epic-11-retrospective: optional
+
+  # ===== Phase 3.4 Growth =====
+
+  # Epic 12: Mass Messenger Seeding (bổ sung từ gap analysis C# app — 2026-06-03)
+  epic-12: backlog
+  12-1-content-templates: backlog
+  12-2-messenger-seeding-engine: backlog
+  12-3-target-list-management: backlog
+  epic-12-retrospective: optional

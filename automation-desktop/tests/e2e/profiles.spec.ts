@@ -290,3 +290,78 @@ test('[P0] edit profile display name then delete profile from list', async () =>
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('[P1] edit cancel restores original display name without saving', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-edit-cancel-'))
+  let app: ElectronApplication | null = null
+  let server: Server | null = null
+
+  try {
+    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'))
+    app = launched.app
+    server = launched.server
+    const window = launched.window
+
+    // Import one profile
+    const textarea = window.getByTestId('import-textarea')
+    await setTextareaValue(textarea, 'uid_cancel|pass|seed|cookieCANCEL|')
+    await window.getByTestId('import-button').click()
+    await expect(window.getByTestId('import-result')).toBeVisible({ timeout: 10_000 })
+
+    // Wait for list
+    await expect(window.getByTestId('profile-list')).toBeVisible({ timeout: 10_000 })
+
+    // Click Sửa → type new name → click Hủy
+    await window.getByTestId('profile-edit-uid_cancel').click()
+    const editInput = window.getByTestId('profile-edit-input-uid_cancel')
+    await expect(editInput).toBeVisible()
+    await editInput.fill('New Name Should Not Be Saved')
+
+    await window.getByTestId('profile-edit-cancel-uid_cancel').click()
+
+    // Edit form gone + original displayName still shown
+    await expect(editInput).not.toBeVisible()
+    await expect(window.getByTestId('profile-row-uid_cancel')).toBeVisible()
+    await expect(window.getByTestId('profile-edit-uid_cancel')).toBeVisible()
+  } finally {
+    if (app) await app.close()
+    await closeServer(server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('[P1] delete cancel leaves profile intact in list', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-delete-cancel-'))
+  let app: ElectronApplication | null = null
+  let server: Server | null = null
+
+  try {
+    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'))
+    app = launched.app
+    server = launched.server
+    const window = launched.window
+
+    // Import one profile
+    const textarea = window.getByTestId('import-textarea')
+    await setTextareaValue(textarea, 'uid_del_cancel|pass|seed|cookieDELCANCEL|')
+    await window.getByTestId('import-button').click()
+    await expect(window.getByTestId('import-result')).toBeVisible({ timeout: 10_000 })
+
+    // Wait for list
+    await expect(window.getByTestId('profile-list')).toBeVisible({ timeout: 10_000 })
+
+    // Click Xóa → confirm panel appears → click Hủy
+    await window.getByTestId('profile-delete-uid_del_cancel').click()
+    await expect(window.getByTestId('profile-delete-confirm-uid_del_cancel')).toBeVisible()
+
+    await window.getByTestId('profile-delete-cancel-uid_del_cancel').click()
+
+    // Confirm panel gone + profile still in list
+    await expect(window.getByTestId('profile-delete-confirm-uid_del_cancel')).not.toBeVisible()
+    await expect(window.getByTestId('profile-row-uid_del_cancel')).toBeVisible()
+  } finally {
+    if (app) await app.close()
+    await closeServer(server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

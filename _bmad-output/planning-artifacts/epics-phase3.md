@@ -440,8 +440,10 @@ So that tôi validate toàn bộ stack hoạt động (MVP action).
 **And** kết quả (success/checkpoint/error) ghi vào `job_actions` + telemetry beacon
 **And** comment thật xuất hiện trên FB (verify read-back)
 **And** state machine vào DONE
+**And** nội dung comment chọn ngẫu nhiên từ danh sách template lưu trong SQLite (`content_templates` table: id, label, body, created_at); user quản lý template qua UI riêng (thêm/sửa/xóa); KHÔNG đọc từ file .txt
 
 > **Dependency note:** Epic 4 standalone với bundled selector — KHÔNG phụ thuộc Epic 5. Epic 5 thay thế bundled selector bằng 4-tier resolver + hot config (enhancement layer, backward-compatible).
+> **Scope note:** Story 4.6 = self-comment ONLY. Messenger Seeding (gửi DM tới người dùng khác qua Messenger) là tính năng riêng → Epic 12.
 
 ## Epic 5: Khả năng Tự phục hồi (Adaptive Resilience)
 
@@ -776,6 +778,61 @@ So that tôi mở rộng mạng lưới.
 **When** user trigger friend request
 **Then** mỗi profile gửi request qua selector resolver, throttle theo per-UID rate limit
 **And** action pattern aggressive nhất → warmup bắt buộc trước + canary giám sát chặt
+
+---
+
+## Epic 12: Mass Messenger Seeding — Phase 3.4
+
+User gửi tin nhắn qua Messenger tới người dùng Facebook đã tương tác với bài post (like, comment, share) hoặc theo target list UID, dùng nhiều profile luân phiên với proxy riêng.
+
+> **Phân biệt với self-comment (Epic 4):** Epic 4 = comment lên post của chính profile (validation low-blast). Epic 12 = gửi DM Messenger tới người dùng khác — blast radius cao hơn, detection profile khác, cần warmup (Epic 9) trước.
+
+**FRs covered:** FR-P3-12 (Messenger Seeding — mới, không có trong FR1-37 gốc; bổ sung từ gap analysis C# app)
+
+### Story 12.1: Content Templates — Quản lý nội dung gửi
+
+As a user,
+I want tạo, sửa, xóa các template nội dung (tin nhắn, comment),
+So that automation có thể chọn ngẫu nhiên từ kho template để tránh bị detect spam.
+
+**Acceptance Criteria:**
+
+**Given** user mở màn hình Content Templates
+**When** user thêm template mới (label + body)
+**Then** template lưu vào SQLite `content_templates(id, label, body, created_at)`, hiển thị trong danh sách
+**And** body hỗ trợ placeholder `{uid}`, `{name}` (thay runtime)
+**And** user có thể sửa, xóa từng template
+**And** IPC `phase3:content:list`, `phase3:content:create`, `phase3:content:update`, `phase3:content:delete`
+
+### Story 12.2: Messenger Seeding Engine
+
+As a user,
+I want gửi tin nhắn Messenger tới danh sách target UID tự động,
+So that tôi seeding nội dung hàng loạt qua DM với nhiều profile luân phiên.
+
+**Acceptance Criteria:**
+
+**Given** danh sách target UID (import từ file hoặc paste) + template đã chọn
+**When** user trigger Messenger Seeding job
+**Then** mỗi profile: login cookie → mở Messenger với target UID → gửi nội dung từ template chọn ngẫu nhiên → delay ngẫu nhiên → rotate profile
+**And** checkpoint/rate-limit → profile đó dừng, log lý do, profile khác tiếp tục (không crash batch)
+**And** kết quả per-message ghi vào `automation_jobs` + telemetry beacon
+**And** proxy riêng mỗi profile session (dùng Epic 3 proxy layer)
+**And** warmup bắt buộc trước nếu profile chưa warm (link Epic 9.1)
+
+### Story 12.3: Target List Management
+
+As a user,
+I want quản lý danh sách target UID để gửi Messenger,
+So that tôi tổ chức chiến dịch seeding theo từng nhóm mục tiêu.
+
+**Acceptance Criteria:**
+
+**Given** user mở Target Lists
+**When** user tạo list mới + import UID (paste text hoặc file .txt)
+**Then** list lưu vào SQLite `target_lists(id, label, created_at)` + `target_list_entries(list_id, uid, sent_at)`
+**And** user filter UID đã gửi / chưa gửi / gửi lỗi để không gửi trùng
+**And** link list với job khi trigger seeding
 
 ---
 

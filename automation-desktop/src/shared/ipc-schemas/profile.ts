@@ -11,7 +11,7 @@ export const ProfileListRequestSchema = z.object({}).strict()
 
 export const ProfileUpdateRequestSchema = z.object({
   id: z.string().min(1),
-  displayName: z.string().min(1)
+  displayName: z.string().trim().min(1).max(200)
 })
 
 export const ProfileDeleteRequestSchema = z.object({

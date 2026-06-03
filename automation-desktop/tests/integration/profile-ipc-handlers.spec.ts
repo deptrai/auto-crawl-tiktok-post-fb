@@ -330,3 +330,25 @@ test('[P1] profile IPC delete rejects invalid payload with validation ErrorEnvel
   expect(err.code).toBe('VALIDATION_ERROR')
   expect(err.retryable).toBe(false)
 })
+
+test('[P1] profile IPC delete propagates PROFILE_DELETE_FAILED as retryable ErrorEnvelope', async () => {
+  const fakeIpc = new FakeIpcMain()
+  const { ProfileServiceError } = await import('../../src/main/profile/profile-service')
+  const service: ProfileService = {
+    importBulk: async () => successResult,
+    listProfiles: () => profileList,
+    updateProfile: () => profileList[0],
+    deleteProfile: async () => {
+      throw new ProfileServiceError('PROFILE_DELETE_FAILED', 'Không thể xóa dữ liệu nhạy cảm của profile. Vui lòng thử lại.', true)
+    }
+  }
+  registerProfileHandlers(fakeIpc, service)
+
+  const response = await fakeIpc.invoke('phase3:profile:delete', { id: 'profile-new' })
+
+  expect((response as { ok: boolean }).ok).toBe(false)
+  const err = (response as { error: { code: string; message: string; retryable: boolean } }).error
+  expect(err.code).toBe('PROFILE_DELETE_FAILED')
+  expect(err.retryable).toBe(true)
+  expect(err.message).toContain('Không thể xóa')
+})
