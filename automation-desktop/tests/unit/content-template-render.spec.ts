@@ -34,3 +34,12 @@ test('[P1] renderContentTemplate leaves body without placeholders unchanged', ()
 test('[P1] renderContentTemplate handles adjacent placeholders', () => {
   expect(renderContentTemplate('{uid}{name}', { uid: '1', name: 'A' })).toBe('1A')
 })
+
+test('[P1] renderContentTemplate treats null vars as empty string', () => {
+  expect(renderContentTemplate('Chào {name} ({uid})', { uid: null, name: null })).toBe('Chào  ()')
+})
+
+test('[P0] renderContentTemplate does not re-substitute when a value contains another token', () => {
+  // uid value literally contains "{name}" — single-pass must NOT replace it with vars.name.
+  expect(renderContentTemplate('{uid}', { uid: 'a{name}b', name: 'Luis' })).toBe('a{name}b')
+})

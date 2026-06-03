@@ -77,6 +77,9 @@ test('[P0] content template UI creates, edits, deletes, and protects final templ
     const defaultRow = window.locator('.template-row', { hasText: 'Mặc định' })
     await expect(defaultRow.getByRole('button', { name: 'Xóa' })).toBeDisabled()
 
+    // AC2: preview is hidden while the body is empty (rule #16 — distinct empty state).
+    await expect(window.getByTestId('content-template-preview')).toHaveCount(0)
+
     await window.getByTestId('content-template-label-input').fill('Khen nhẹ')
     await expect(window.getByTestId('content-template-placeholder-hint')).toContainText('{uid}')
     await expect(window.getByTestId('content-template-placeholder-hint')).toContainText('{name}')

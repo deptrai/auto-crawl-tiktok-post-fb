@@ -1,6 +1,6 @@
 # Story 12.1: Content Templates — Placeholder `{uid}`/`{name}` (net-new bổ sung 4.6b)
 
-Status: review
+Status: done
 
 Epic: 12 — Mass Messenger Seeding (Phase 3.4 Growth) · Story: 12.1 · ID: 12.1
 
@@ -42,6 +42,23 @@ So that automation seeding chọn ngẫu nhiên template rồi cá nhân hóa t�
 - [x] **V** — `cd automation-desktop && npm run typecheck` + `npm run lint` (0 errors kể cả test mới) + `npx playwright test tests/unit tests/integration tests/e2e --reporter=line` (≥ baseline 218). Pre-commit secret guard (placeholder/body = user content, KHÔNG secret — OK). (AC5)
 
 > **D1 (defer):** placeholder mở rộng (`{firstname}`, `{custom1}`...) + escape literal `\{uid\}` nếu cần → Epic 12 sau hoặc khi 12.2 yêu cầu. Live-preview với target THẬT (uid/name từ list) → 12.3 Target List. Wire render vào seeding flow → 12.2.
+
+### Review Findings
+
+> Code review adversarial 3-layer (Blind Hunter + Edge Case Hunter + Acceptance Auditor) — 2026-06-04. Diff: commit `a47dda8` (5 file, scoped 12.1). Verdict: AC1/AC2/AC5 PASS (logic đúng, gap test nhỏ); AC3/AC4 PASS (reuse nguyên 4.6b, KHÔNG đụng CRUD/IPC/schema).
+>
+> 🔎 **Lưu ý scope:** placeholder hiện CHỈ render ở **preview UI** — CHƯA có consumer production (self-comment dùng `template.body` raw theo AC3; Messenger Seeding 12.2 mới là consumer thật). Đây ĐÚNG thiết kế 12.1, KHÔNG phải bug.
+
+**Patch**
+- [x] [Review][Patch] Single-pass substitution (`.replace(/\{(uid|name)\}/g, ...)`) chống double-substitute khi value chứa token khác + 2 test mới (value-contains-token, null vars) [content-template-render.ts:5-10 + content-template-render.spec.ts]
+- [x] [Review][Patch] E2E assert preview **ẩn khi body rỗng** (`toHaveCount(0)` ở empty state) [tests/e2e/content-templates.spec.ts:78]
+- [x] [Review][Patch] CSS preview: `white-space: pre-wrap` + `max-height:160px`/`overflow-y:auto` [main.css `.template-preview`]
+
+**Deferred**
+- [x] [Review][Defer] ⚠️ Cross-feature: `content_templates` dùng CHUNG giữa self-comment (4.6b) và seeding (12.x). Template có `{uid}`/`{name}` nếu bị `getRandomTemplate` chọn cho self-comment → post **literal** `{uid}` lên FB (readBack vẫn `success` → che lỗi). Cần xử lý ở 12.2 (wire render / tách template set / cảnh báo) [self-comment-orchestrator.ts:190] — deferred, thuộc phạm vi 12.2
+- [x] [Review][Defer] Placeholder robustness: `{ uid }` (có space), `{UID}` (sai case) không match + không cảnh báo malformed → user dễ nhầm. Hint show đúng dạng nhưng chưa validate [content-template-render.ts] — deferred, nằm trong D1 defer của story
+
+**Dismissed:** useMemo cho preview (premature opt — render O(n) trivial trên ≤2000 chars); empty-array hint (`as const` không rỗng); e2e flaky fill-then-assert (Playwright auto-wait xử lý); "render not wired to orchestrator" BLOCKER (ĐÚNG AC3 — render là cho 12.2); type widening `| null` (cải tiến so spec, không phải lỗi); orchestrator test cho placeholder body (thuộc 12.2 khi wire).
 
 ## Dev Notes
 
@@ -176,3 +193,4 @@ Pre-existing worktree files also modified/formatted during validation, not part 
 ### Change Log
 
 - 2026-06-04: Implemented Story 12.1 placeholder render utility, UI hint/live preview, unit/E2E coverage, and marked story ready for review.
+- 2026-06-04: Code review (3-layer adversarial) — applied 3 patches: single-pass substitution + 2 tests (null vars, no double-substitute), e2e empty-preview assertion, CSS preview pre-wrap/max-height. 2 items deferred to 12.2 (cross-feature placeholder consumption + placeholder robustness). Status → done.

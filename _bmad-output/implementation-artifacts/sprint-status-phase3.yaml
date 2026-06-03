@@ -47,7 +47,7 @@ project: auto-crawl-tiktok-post-fb-phase3
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
-last_updated: 2026-06-03 (Epic 4 complete; Story 12.1 created — content-template placeholder, scoped net-new sau 4.6b)
+last_updated: 2026-06-04 (Story 12.1 done — content-template placeholder render + preview, code-reviewed + 3 patches applied)
 
 development_status:
   # ===== Phase 3.0 MVP =====
@@ -148,7 +148,7 @@ development_status:
 
   # Epic 12: Mass Messenger Seeding (bổ sung từ gap analysis C# app — 2026-06-03)
   epic-12: in-progress
-  12-1-content-templates: ready-for-dev
+  12-1-content-templates: done
   12-2-messenger-seeding-engine: backlog
   12-3-target-list-management: backlog
   epic-12-retrospective: optional

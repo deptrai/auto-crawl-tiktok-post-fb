@@ -314,6 +314,8 @@ h1 {
   padding: 10px 12px;
   color: #f6efe2;
   background: rgba(142, 203, 255, 0.09);
+  max-height: 160px;
+  overflow-y: auto;
 }
 
 .template-preview span {
@@ -327,6 +329,7 @@ h1 {
 .template-preview p {
   margin: 0;
   overflow-wrap: anywhere;
+  white-space: pre-wrap;
   line-height: 1.45;
 }
 
