@@ -1,0 +1,1913 @@
+diff --git a/_bmad-output/implementation-artifacts/ux-1-1-operator-console-bulk-run.md b/_bmad-output/implementation-artifacts/ux-1-1-operator-console-bulk-run.md
+new file mode 100644
+index 0000000..18347e8
+--- /dev/null
++++ b/_bmad-output/implementation-artifacts/ux-1-1-operator-console-bulk-run.md
+@@ -0,0 +1,177 @@
++# Story UX-1.1: Dựng Operator Console + Bulk Self-comment
++
++Status: review
++
++> **Namespace lưu ý:** Story này thuộc epic breakdown **UI/UX redesign** (`epics-ux-redesign.md`), KHÁC với Epic 1 Phase 3 features (`epics-phase3.md`). Dùng prefix `ux-` để tránh trùng `1-1-khoi-tao-scaffold-automation-desktop.md`. KHÔNG ghi vào `sprint-status.yaml` (namespace Phase 3 features) để tránh nhiễu auto-discovery.
++
++<!-- Note: Validation is optional. Run validate-create-story for quality check before dev-story. -->
++
++## Story
++
++As an operator (vận hành nhiều tài khoản Facebook),
++I want một console full-width với sidebar điều hướng, bảng tài khoản trạng thái real-time, và khả năng tick chọn nhiều acc để chạy self-comment hàng loạt,
++so that tôi điều cả đội tài khoản trong tầm mắt thay vì cuộn dọc và click từng acc.
++
++## Acceptance Criteria
++
++**AC1 — Design tokens (UX-DR1)**
++1. Thêm lớp design token vào `src/renderer/src/assets/base.css` `:root`: color (`--bg #0f1216`, `--surface #171b21`, `--surface-2 #1e242c`, `--border #2a323c`, `--text #e8eaed`, `--text-muted #9aa4b0`, `--accent #6c7cff`, `--accent-hover #8893ff`, `--accent-text #0a0d24`), status (`--status-idle #4ad07f`, `--status-running #54a8ff`, `--status-checkpoint #ffb84d`, `--status-error #ff6a52`, `--status-neutral #9aa4b0`), spacing (`--sp-1..6` = 4/8/12/16/24/32), radius (`--r-sm/md/lg` = 8/12/16), font scale (`--fs-display 24`, `--fs-h2 18`, `--fs-body 14`, `--fs-sm 13`, `--fs-xs 11`), `--font-mono: ui-monospace,...`.
++2. Token định nghĩa xong; chưa bắt buộc đổi visual mọi component (các AC sau sẽ dùng token).
++
++**AC2 — AppShell + Sidebar nav + routing (UX-DR2, UX-DR3)**
++1. **Given** state gate = `ready`, **When** render MainShell, **Then** hiển thị `app-shell` grid `sidebar 240px + content 1fr` full-width — KHÔNG còn `width: min(780px)` căn giữa.
++2. Sidebar dùng `<nav>` với NavItem: Dashboard / Profiles / Templates / Proxy / Settings; item active có `aria-current="page"` + indicator accent trái; state `activeView` (useState) điều khiển view; mặc định mở **Profiles**.
++3. LicenseChip ("còn N ngày" / offline-grace) hiển thị ở chân sidebar (chuyển từ `.license-status`/`.warning-banner` hiện tại).
++4. Gate views (EULA / License / Loading / Readonly) vẫn full màn, KHÔNG render sidebar.
++5. ContentTemplatesView / ProxyView mount trong tab tương ứng; ProfilesView ở tab Profiles. Mọi `data-testid` cũ còn nguyên.
++
++**AC3 — TopBar + StatusCounter (UX-DR4)**
++1. TopBar hiển thị tiêu đề view + StatusCounter: đếm số profile theo status (idle/running/checkpoint/error) tính từ list profiles hiện có.
++2. Counter cập nhật real-time theo poll 5s sẵn có của ProfilesView (không thêm poll mới).
++3. Counter có `aria-live="polite"`; dùng dot màu + số.
++
++**AC4 — DataTable + StatusPill (UX-DR5, UX-DR7)**
++1. Refactor ProfilesView danh sách từ `<ul className="profiles-list">` sang `<table className="data-table">` semantic: `<thead>` sticky + `<th scope="col">`; cột: checkbox / UID(mono) / Tên hiển thị / StatusPill / Proxy(mono) / Job / Actions.
++2. `StatusPill` (component mới, chuẩn hóa từ `.status-badge`): dot màu + label chữ (color-blind safe), variant idle/running/checkpoint/error/neutral, có `title`/tooltip giải thích; dùng chung cho profile status (map `STATUS_LABELS` hiện có) + automation job state (`AUTOMATION_STATE_LABELS`).
++3. Giữ NGUYÊN mọi `data-testid`: `profiles-view`, `profiles-list-section`, `profiles-list`, `profile-row-${uid}`, `profile-edit-${uid}`, `profile-edit-save-${uid}`, `profile-edit-cancel-${uid}`, `profile-edit-input-${uid}`, `profile-delete-${uid}`, `profile-delete-confirm-${uid}`, `profile-delete-confirm-submit-${uid}`, `profile-delete-cancel-${uid}`, `profile-proxy-${uid}`, `profile-proxy-acquire-${uid}`, `profile-proxy-release-${uid}`, `profile-self-comment-${uid}`, `profile-automation-status-${uid}`, `profiles-list-loading`, `profiles-list-empty`, `profiles-list-error`.
++4. Loading state dùng class/testid riêng (`profiles-list-loading`) — KHÔNG trùng main shell (rule #16).
++5. Sửa/Xóa/Gán-Thả proxy hoạt động y như cũ trong row; nút async disable-on-click (rule #17). Hàng/cột UID/proxy/job dùng `var(--font-mono)`.
++
++**AC5 — Multi-select + BulkActionBar + bulk self-comment (UX-DR6, UX-DR15)**
++1. Mỗi row có checkbox (`data-testid="profile-select-${uid}"`); header có select-all (`data-testid="profiles-select-all"`); state `selectedIds: Set<string>`.
++2. **Given** `selectedIds.size ≥ 1`, **Then** `BulkActionBar` (`data-testid="bulk-action-bar"`, `role="region" aria-label="Hành động hàng loạt"`) hiện sticky bottom: "Đã chọn N" + TargetUrlInput (`bulk-target-input`) + TemplateSelect (`bulk-template-select`) + HeadlessToggle (tái dùng `automation_browser_headless` setting hiện có) + nút "▶ Chạy self-comment (N)" (`bulk-run-button`).
++3. **When** bấm Chạy, **Then** nút disable tức thì (rule #17); với MỖI profileId trong `selectedIds` gọi `startSelfComment({ profileId, target })` (loop tuần tự hoặc Promise.all giới hạn); set pill → "Đang xếp hàng"; checkbox auto-clear sau khi enqueue xong.
++4. Poll automation status real-time TÁI DÙNG cơ chế `getAutomationStatus` + interval 1s sẵn có (mở rộng cho nhiều job).
++5. Cho phép chọn/chạy batch mới khi batch trước đang chạy (không khóa toàn UI).
++6. **TemplateSelect Phase A**: chỉ hỗ trợ option "🎲 Random tất cả" (hành vi hiện tại). Các template cụ thể hiển thị trong dropdown NHƯNG **disabled + tooltip "Cần mở rộng IPC (story sau)"** — vì `phase3:automation:start` hiện KHÔNG nhận `templateId` (xem Dev Notes). KHÔNG đổi backend trong story này.
++7. Error message tiếng Việt (rule #15); thao tác bằng phím (tab tới checkbox, Space chọn, focus ring `--accent` 2px).
++
++**AC6 — Chất lượng**
++1. `npm run lint` 0 errors (kể cả test files), `npm run typecheck` 0 errors.
++2. E2E hiện có còn xanh (`npm run test:e2e`); thêm test mới: chọn nhiều acc → bulk bar hiện → bấm chạy → pill đổi trạng thái (`tests/e2e`, escape `[P0]` nếu tag).
++3. Renderer KHÔNG import `electron` trực tiếp (rule R-D16 / NFR24) — chỉ qua `window.api`.
++
++## Tasks / Subtasks
++
++- [x] **Task 1 — Design tokens (AC1)**
++  - [x] Thêm `:root` token block vào `assets/base.css` (color/spacing/radius/font/mono)
++  - [x] Verify contrast AA (text ~13:1, muted ~5:1, accent ~8:1)
++- [x] **Task 2 — AppShell + Sidebar + routing (AC2)**
++  - [x] Tạo `components/AppShell.tsx` (grid sidebar+content), `components/Sidebar.tsx` (NavItem + LicenseChip)
++  - [x] Thêm state `activeView` trong `App.tsx` MainShell; render view theo tab
++  - [x] Thêm CSS `.app-shell`, `.sidebar`, `.nav-item`, `.license-chip` vào `main.css` dùng token; bỏ `width: min(780px)` cho main-shell
++  - [x] Đảm bảo gate views (EULA/License/Loading/Readonly) vẫn full màn
++- [x] **Task 3 — TopBar + StatusCounter (AC3)**
++  - [x] Tạo `components/TopBar.tsx` + `components/StatusCounter.tsx`
++  - [x] Tính counts từ `profiles` (lift state hoặc truyền callback từ ProfilesView)
++- [x] **Task 4 — DataTable + StatusPill (AC4)**
++  - [x] Tạo `components/StatusPill.tsx` (variant + tooltip), `components/DataTable` hoặc refactor inline trong ProfilesView
++  - [x] Refactor ProfilesView `<ul>` → `<table>`, giữ toàn bộ handler + data-testid
++  - [x] CSS `.data-table`, `.status-pill`, `.row-checkbox` dùng token
++- [x] **Task 5 — Multi-select + BulkActionBar + bulk run (AC5)**
++  - [x] State `selectedIds`; checkbox per row + select-all; Shift-click (optional)
++  - [x] Tạo `components/BulkActionBar.tsx` (target + template select + headless toggle + run)
++  - [x] `handleBulkSelfComment`: loop `selectedIds` gọi `startSelfComment`; mở rộng automation status poll cho nhiều job
++  - [x] TemplateSelect: option "Random tất cả" enabled; template cụ thể disabled + tooltip
++- [x] **Task 6 — Chất lượng (AC6)**
++  - [x] lint + typecheck pass; E2E cũ xanh
++  - [x] Thêm E2E bulk-run flow; (optional) thêm test DataTable render
++
++## Dev Notes
++
++### Files được TOUCH
++
++| File | Loại | Ghi chú |
++|------|------|---------|
++| `src/renderer/src/assets/base.css` | UPDATE | thêm token `:root` |
++| `src/renderer/src/assets/main.css` | UPDATE | thêm class console mới, bỏ card 780px (giữ class cũ chưa migrate ở story khác) |
++| `src/renderer/src/App.tsx` | UPDATE | MainShell → AppShell + activeView routing; giữ nguyên gate logic (loadGate, gateFromStatus, handleAccept, handleActivate, subscribeLicenseChanges) |
++| `src/renderer/src/views/ProfilesView.tsx` | UPDATE | `<ul>` → `<table>`, thêm multi-select + bulk bar; giữ mọi handler/testid |
++| `src/renderer/src/components/*` | NEW | AppShell, Sidebar, TopBar, StatusCounter, StatusPill, BulkActionBar |
++
++### State machine / behaviors PHẢI giữ (đọc kỹ ProfilesView.tsx hiện tại)
++
++- `refreshProfiles` (poll 5s, có `listInFlightRef`/`pendingRefreshRef` chống chồng lấn) — GIỮ NGUYÊN logic, chỉ đổi render.
++- Automation status poll (interval 1s cho job active, `TERMINAL_AUTOMATION_STATES`) — mở rộng cho nhiều job thay vì 1.
++- Proxy: `acquireProxyForProfile`/`releaseProxyForProfile`, `refreshProxyAssignments`.
++- Edit/Delete inline confirm (`.profile-delete-confirm`) — giữ pattern confirm phá hủy.
++- `handleAutomationBrowserModeChange` + setting `automation_browser_headless` — tái dùng cho HeadlessToggle ở bulk bar.
++- Mọi nút async đã có pattern `e.currentTarget.disabled = true` trước `void handler()` (rule #17) — giữ.
++
++### ⚠️ Caveat quan trọng — Template selector (AC5.6)
++
++IPC `phase3:automation:start` (xem `src/renderer/src/api/automation-api.ts`) **chỉ nhận `{ profileId, target? }`** — KHÔNG có `templateId`. Template được random server-side. Vì story này **không đổi backend/IPC**, TemplateSelect chỉ enable "Random tất cả". Chọn template cụ thể = story tương lai (mở rộng schema `phase3:automation:start` + handler). Đừng giả định truyền được templateId.
++
++### Bulk self-comment
++
++`startSelfComment` nhận 1 profile/lần. Bulk = lặp qua `selectedIds`. Cân nhắc chạy tuần tự (an toàn) hoặc giới hạn song song. Mỗi job trả `jobId` riêng → lưu vào `automationStatuses[profileId]` (đã có Record). Mở rộng poll hiện tại (đang poll mọi entry active) là đủ.
++
++### Ràng buộc CLAUDE.md
++
++- Renderer KHÔNG import `electron` (chỉ `window.api`) — rule R-D16.
++- Loading state class/testid riêng — rule #16.
++- Async button disable-on-click — rule #17.
++- Error message tiếng Việt — rule #15.
++- Lint pass cả test files — rule #20.
++- Plain CSS, KHÔNG thêm dependency.
++
++### Project Structure Notes
++
++- Component mới đặt tại `src/renderer/src/components/` (đã có `Versions.tsx` làm tiền lệ).
++- KHÔNG cần router lib cho 5 view — dùng `activeView` state + conditional render.
++- Tham chiếu visual: `_bmad-output/planning-artifacts/ux-design-directions.html` (accent indigo `#6c7cff`, mật độ row 44px).
++
++### References
++
++- [Source: _bmad-output/planning-artifacts/ux-design-specification.md#Visual Design Foundation] — design tokens
++- [Source: _bmad-output/planning-artifacts/ux-design-specification.md#Component Strategy] — AppShell/DataTable/BulkActionBar/StatusPill spec
++- [Source: _bmad-output/planning-artifacts/ux-design-specification.md#Defining Experience & Mechanics] — bulk run flow
++- [Source: _bmad-output/planning-artifacts/epics-ux-redesign.md#Story 1.1] — AC gốc
++- [Source: automation-desktop/CLAUDE.md] — 25 rule (esp #15/#16/#17/#20, R-D16)
++- [Source: automation-desktop/src/renderer/src/views/ProfilesView.tsx] — code hiện tại (handlers, testid, poll)
++- [Source: automation-desktop/src/renderer/src/api/automation-api.ts] — startSelfComment signature (KHÔNG có templateId)
++- [Source: automation-desktop/src/renderer/src/App.tsx] — gate logic phải giữ
++
++## Dev Agent Record
++
++### Agent Model Used
++
++GPT-5 Codex
++
++### Debug Log References
++
++- 2026-06-04: Started implementation from explicit story path. Per story namespace note, sprint-status.yaml is not updated for this UX story.
++- 2026-06-04: RED phase `npx playwright test tests/e2e/profiles.spec.ts -g "operator console" --reporter=line` failed as expected on missing `app-shell`.
++- 2026-06-04: Targeted GREEN validation `npm run build && npx playwright test tests/e2e/profiles.spec.ts tests/e2e/content-templates.spec.ts tests/e2e/proxy.spec.ts --reporter=line` passed: 13 passed.
++- 2026-06-04: `npm run lint` passed with 0 errors; one existing warning remains in `src/main/adapters/electron-bootstrap.ts` for `phase3-security/no-direct-logger`.
++- 2026-06-04: `npm run build && npm run test:e2e` passed; build includes `npm run typecheck`; E2E result: 22 passed.
++- 2026-06-04: Full regression `npx playwright test tests/unit tests/integration tests/e2e --reporter=line` passed: 249 passed.
++
++### Completion Notes List
++
++- Implemented the full operator console shell with AppShell, sidebar navigation, view routing, and sidebar LicenseChip while preserving full-screen gate views.
++- Added TopBar and live StatusCounter fed by the existing ProfilesView 5s profile polling flow; no extra profile poll was introduced.
++- Refactored ProfilesView from list rendering to a semantic table with sticky headers, StatusPill variants, mono UID/proxy/job columns, and preserved existing profile/proxy/edit/delete/self-comment handlers and `data-testid`s.
++- Added multi-select and sticky BulkActionBar for bulk self-comment enqueue, using the existing `startSelfComment({ profileId, target })` IPC contract per selected profile and the existing 1s automation status polling for multiple jobs.
++- Kept TemplateSelect Phase A scoped to "Random tất cả"; template-specific options remain disabled with tooltip because backend/IPC does not accept `templateId` in this story.
++- No backend or IPC schema changes were made; renderer continues to use `window.api` only.
++
++### File List
++
++- `automation-desktop/src/renderer/src/App.tsx`
++- `automation-desktop/src/renderer/src/assets/base.css`
++- `automation-desktop/src/renderer/src/assets/main.css`
++- `automation-desktop/src/renderer/src/components/AppShell.tsx`
++- `automation-desktop/src/renderer/src/components/BulkActionBar.tsx`
++- `automation-desktop/src/renderer/src/components/Sidebar.tsx`
++- `automation-desktop/src/renderer/src/components/StatusCounter.tsx`
++- `automation-desktop/src/renderer/src/components/StatusPill.tsx`
++- `automation-desktop/src/renderer/src/components/TopBar.tsx`
++- `automation-desktop/src/renderer/src/views/ProfilesView.tsx`
++- `automation-desktop/tests/e2e/content-templates.spec.ts`
++- `automation-desktop/tests/e2e/profiles.spec.ts`
++- `automation-desktop/tests/e2e/proxy.spec.ts`
++
++## Change Log
++
++- 2026-06-04: Implemented UX-1.1 operator console, sidebar routing, live status counters, profile data table, status pills, multi-select bulk self-comment flow, and E2E coverage; validated lint, typecheck/build, targeted E2E, full E2E, and full unit/integration/E2E regression.
+diff --git a/automation-desktop/src/renderer/src/App.tsx b/automation-desktop/src/renderer/src/App.tsx
+index 784a6d9..03b889f 100644
+--- a/automation-desktop/src/renderer/src/App.tsx
++++ b/automation-desktop/src/renderer/src/App.tsx
+@@ -8,6 +8,9 @@ import { LicenseView } from './views/LicenseView'
+ import { ContentTemplatesView } from './views/ContentTemplatesView'
+ import { ProfilesView } from './views/ProfilesView'
+ import { ProxyView } from './views/ProxyView'
++import { AppShell } from './components/AppShell'
++import type { ConsoleView } from './components/Sidebar'
++import type { StatusCounts } from './components/StatusCounter'
+ 
+ type GateState =
+   | 'loading'
+@@ -24,23 +27,56 @@ function MainShell({
+   licenseStatus: LicensePublicStatus | null
+   offlineGrace?: boolean
+ }): React.JSX.Element {
++  const [activeView, setActiveView] = useState<ConsoleView>('profiles')
++  const [profileCounts, setProfileCounts] = useState<StatusCounts>({
++    idle: 0,
++    running: 0,
++    checkpoint: 0,
++    error: 0
++  })
++
++  function renderActiveView(): React.JSX.Element {
++    if (activeView === 'dashboard') {
++      return (
++        <section className="dashboard-panel" data-testid="dashboard-view">
++          <p className="eyebrow">Tổng quan</p>
++          <h2>Đội tài khoản</h2>
++          <p className="profiles-list-subtitle">
++            Chọn tab Profiles để import, gán proxy và chạy self-comment hàng loạt.
++          </p>
++        </section>
++      )
++    }
++    if (activeView === 'templates') return <ContentTemplatesView />
++    if (activeView === 'proxy') return <ProxyView />
++    if (activeView === 'settings') {
++      return (
++        <section className="settings-panel" data-testid="settings-view">
++          <p className="eyebrow">Cài đặt</p>
++          <h2>Thiết lập vận hành</h2>
++          <p className="profiles-list-subtitle">Các cài đặt nâng cao sẽ được nối ở story sau.</p>
++        </section>
++      )
++    }
++    return <ProfilesView onStatusCountsChange={setProfileCounts} />
++  }
++
+   return (
+-    <main className="main-shell" data-testid="main-shell">
++    <AppShell
++      activeView={activeView}
++      counts={profileCounts}
++      licenseStatus={licenseStatus}
++      offlineGrace={offlineGrace}
++      onNavigate={setActiveView}
++    >
+       {offlineGrace ? (
+         <p className="warning-banner" data-testid="offline-grace-banner">
+           Không kết nối được máy chủ license. Bạn vẫn có thể dùng các tác vụ đọc trong 24 giờ sau
+           lần kiểm tra thành công gần nhất.
+         </p>
+       ) : null}
+-      <p className="lead license-status">
+-        {licenseStatus?.active
+-          ? `License active: còn ${licenseStatus.daysRemaining ?? 0} ngày.`
+-          : 'License active.'}
+-      </p>
+-      <ContentTemplatesView />
+-      <ProfilesView />
+-      <ProxyView />
+-    </main>
++      {renderActiveView()}
++    </AppShell>
+   )
+ }
+ 
+diff --git a/automation-desktop/src/renderer/src/assets/base.css b/automation-desktop/src/renderer/src/assets/base.css
+index 5ed6406..5417de8 100644
+--- a/automation-desktop/src/renderer/src/assets/base.css
++++ b/automation-desktop/src/renderer/src/assets/base.css
+@@ -21,6 +21,42 @@
+   --ev-button-alt-hover-border: transparent;
+   --ev-button-alt-hover-text: var(--ev-c-text-1);
+   --ev-button-alt-hover-bg: var(--ev-c-gray-2);
++
++  --bg: #0f1216;
++  --surface: #171b21;
++  --surface-2: #1e242c;
++  --border: #2a323c;
++  --text: #e8eaed;
++  --text-muted: #9aa4b0;
++  --accent: #6c7cff;
++  --accent-hover: #8893ff;
++  --accent-text: #0a0d24;
++
++  --status-idle: #4ad07f;
++  --status-running: #54a8ff;
++  --status-checkpoint: #ffb84d;
++  --status-error: #ff6a52;
++  --status-neutral: #9aa4b0;
++
++  --sp-1: 4px;
++  --sp-2: 8px;
++  --sp-3: 12px;
++  --sp-4: 16px;
++  --sp-5: 24px;
++  --sp-6: 32px;
++
++  --r-sm: 8px;
++  --r-md: 12px;
++  --r-lg: 16px;
++
++  --fs-display: 24px;
++  --fs-h2: 18px;
++  --fs-body: 14px;
++  --fs-sm: 13px;
++  --fs-xs: 11px;
++  --font-mono:
++    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
++    monospace;
+ }
+ 
+ :root {
+diff --git a/automation-desktop/src/renderer/src/assets/main.css b/automation-desktop/src/renderer/src/assets/main.css
+index 807312b..7d91c2c 100644
+--- a/automation-desktop/src/renderer/src/assets/main.css
++++ b/automation-desktop/src/renderer/src/assets/main.css
+@@ -4,12 +4,10 @@ body {
+   min-height: 100vh;
+   margin: 0;
+   overflow: hidden;
+-  color: #f4f0e8;
+-  background:
+-    radial-gradient(circle at 12% 10%, rgba(255, 175, 64, 0.28), transparent 32%),
+-    radial-gradient(circle at 85% 16%, rgba(48, 151, 255, 0.22), transparent 30%),
+-    linear-gradient(135deg, #17130e 0%, #272018 46%, #0f1519 100%);
++  color: var(--text);
++  background: var(--bg);
+   user-select: none;
++  font-size: var(--fs-body);
+ }
+ 
+ button,
+@@ -35,18 +33,17 @@ textarea {
+ 
+ #root {
+   min-height: 100vh;
+-  display: grid;
+-  place-items: center;
+-  padding: 28px;
++  display: block;
++  padding: 0;
+   box-sizing: border-box;
+ }
+ 
+ .eula-card,
+ .license-card,
+ .loading-shell,
+-.main-shell,
+ .readonly-shell {
+   width: min(780px, 100%);
++  margin: 28px auto;
+   border: 1px solid rgba(255, 255, 255, 0.18);
+   border-radius: 28px;
+   padding: 34px;
+@@ -55,12 +52,203 @@ textarea {
+   backdrop-filter: blur(18px);
+ }
+ 
+-.main-shell,
+ .readonly-shell {
+   max-height: calc(100vh - 56px);
+   overflow-y: auto;
+ }
+ 
++.app-shell {
++  display: grid;
++  grid-template-columns: 240px minmax(0, 1fr);
++  min-height: 100vh;
++  color: var(--text);
++  background: var(--bg);
++}
++
++.sidebar {
++  display: grid;
++  grid-template-rows: auto 1fr auto;
++  gap: var(--sp-5);
++  border-right: 1px solid var(--border);
++  padding: var(--sp-5) var(--sp-4);
++  background: var(--surface);
++}
++
++.sidebar-brand {
++  display: flex;
++  align-items: center;
++  gap: var(--sp-3);
++}
++
++.sidebar-brand-mark {
++  width: 34px;
++  height: 34px;
++  border-radius: var(--r-md);
++  background: linear-gradient(135deg, var(--accent), var(--status-running));
++}
++
++.sidebar-brand strong,
++.sidebar-brand span {
++  display: block;
++}
++
++.sidebar-brand strong {
++  font-size: var(--fs-h2);
++  font-weight: 900;
++}
++
++.sidebar-brand span {
++  color: var(--text-muted);
++  font-size: var(--fs-sm);
++}
++
++.sidebar-nav {
++  display: grid;
++  align-content: start;
++  gap: var(--sp-2);
++}
++
++.nav-item {
++  position: relative;
++  display: flex;
++  align-items: center;
++  gap: var(--sp-3);
++  border: 1px solid transparent;
++  border-radius: var(--r-md);
++  padding: 11px 12px;
++  color: var(--text-muted);
++  background: transparent;
++  cursor: pointer;
++  font-weight: 800;
++  text-align: left;
++}
++
++.nav-item:hover,
++.nav-item:focus-visible {
++  color: var(--text);
++  background: var(--surface-2);
++  outline: none;
++}
++
++.nav-item[aria-current='page'] {
++  border-color: rgba(108, 124, 255, 0.42);
++  color: var(--text);
++  background: rgba(108, 124, 255, 0.14);
++}
++
++.nav-item-indicator {
++  width: 3px;
++  height: 18px;
++  border-radius: 999px;
++  background: transparent;
++}
++
++.nav-item[aria-current='page'] .nav-item-indicator {
++  background: var(--accent);
++}
++
++.license-chip {
++  display: grid;
++  gap: var(--sp-1);
++  border: 1px solid var(--border);
++  border-radius: var(--r-md);
++  padding: var(--sp-3);
++  background: var(--surface-2);
++}
++
++.license-chip span {
++  color: var(--text-muted);
++  font-size: var(--fs-xs);
++  font-weight: 900;
++  letter-spacing: 0.08em;
++  text-transform: uppercase;
++}
++
++.license-chip strong {
++  color: var(--text);
++  font-weight: 900;
++}
++
++.console-content {
++  display: grid;
++  grid-template-rows: auto minmax(0, 1fr);
++  gap: var(--sp-5);
++  min-width: 0;
++  max-height: 100vh;
++  overflow-y: auto;
++  padding: var(--sp-5);
++}
++
++.topbar {
++  display: flex;
++  gap: var(--sp-4);
++  align-items: center;
++  justify-content: space-between;
++}
++
++.topbar h1 {
++  font-family: inherit;
++  font-size: var(--fs-display);
++  line-height: 1.2;
++}
++
++.status-counter {
++  display: flex;
++  flex-wrap: wrap;
++  gap: var(--sp-2);
++  justify-content: flex-end;
++}
++
++.status-counter-item {
++  display: inline-flex;
++  align-items: center;
++  gap: 7px;
++  border: 1px solid var(--border);
++  border-radius: 999px;
++  padding: 7px 10px;
++  color: var(--text-muted);
++  background: var(--surface);
++  font-size: var(--fs-xs);
++  font-weight: 800;
++}
++
++.status-counter-item strong {
++  color: var(--text);
++  font-weight: 900;
++}
++
++.status-counter-dot,
++.status-pill-dot {
++  width: 8px;
++  height: 8px;
++  border-radius: 999px;
++  background: var(--status-neutral);
++}
++
++.status-counter-idle .status-counter-dot {
++  background: var(--status-idle);
++}
++
++.status-counter-running .status-counter-dot {
++  background: var(--status-running);
++}
++
++.status-counter-checkpoint .status-counter-dot {
++  background: var(--status-checkpoint);
++}
++
++.status-counter-error .status-counter-dot {
++  background: var(--status-error);
++}
++
++.dashboard-panel,
++.settings-panel {
++  border: 1px solid var(--border);
++  border-radius: var(--r-lg);
++  padding: var(--sp-5);
++  background: var(--surface);
++}
++
+ .eyebrow {
+   margin: 0 0 10px;
+   color: #ffcc7a;
+@@ -253,10 +441,10 @@ h1 {
+ .profiles-list-section,
+ .templates-panel,
+ .proxy-panel {
+-  border: 1px solid rgba(255, 255, 255, 0.14);
+-  border-radius: 22px;
++  border: 1px solid var(--border);
++  border-radius: var(--r-lg);
+   padding: 20px;
+-  background: rgba(255, 255, 255, 0.06);
++  background: var(--surface);
+ }
+ 
+ .result-summary,
+@@ -507,23 +695,48 @@ h1 {
+ }
+ 
+ .profiles-list {
+-  display: grid;
+-  gap: 10px;
+-  padding: 0;
+-  margin: 18px 0 0;
+-  list-style: none;
++  margin-top: 18px;
+ }
+ 
+-.profile-list-row {
+-  display: flex;
+-  flex-wrap: wrap;
+-  gap: 14px;
+-  align-items: center;
+-  justify-content: space-between;
+-  border: 1px solid rgba(255, 255, 255, 0.1);
+-  border-radius: 16px;
+-  padding: 14px 16px;
+-  background: rgba(0, 0, 0, 0.14);
++.data-table-wrap {
++  width: 100%;
++  overflow-x: auto;
++}
++
++.data-table {
++  width: 100%;
++  min-width: 1040px;
++  border-collapse: separate;
++  border-spacing: 0;
++  color: var(--text);
++}
++
++.data-table th,
++.data-table td {
++  border-bottom: 1px solid var(--border);
++  padding: 11px 12px;
++  text-align: left;
++  vertical-align: top;
++}
++
++.data-table thead th {
++  position: sticky;
++  top: 0;
++  z-index: 1;
++  color: var(--text-muted);
++  background: var(--surface-2);
++  font-size: var(--fs-xs);
++  font-weight: 900;
++  letter-spacing: 0.08em;
++  text-transform: uppercase;
++}
++
++.data-table tbody tr {
++  background: rgba(255, 255, 255, 0.02);
++}
++
++.data-table tbody tr:hover {
++  background: rgba(108, 124, 255, 0.08);
+ }
+ 
+ .profile-list-identity {
+@@ -533,12 +746,12 @@ h1 {
+ }
+ 
+ .profile-list-uid {
+-  color: #fff7e9;
++  color: var(--text);
+   font-weight: 900;
+ }
+ 
+ .profile-list-name {
+-  color: #b9c9d9;
++  color: var(--text-muted);
+   font-size: 13px;
+ }
+ 
+@@ -551,24 +764,12 @@ h1 {
+ 
+ .profile-proxy-assignment {
+   display: grid;
+-  min-width: 210px;
++  min-width: 180px;
+   gap: 6px;
+-  padding: 10px 12px;
+-  border: 1px solid rgba(130, 220, 166, 0.24);
+-  border-radius: 16px;
+-  background: linear-gradient(135deg, rgba(76, 214, 119, 0.14), rgba(69, 126, 255, 0.1));
+-}
+-
+-.profile-proxy-label {
+-  color: #9fb5c8;
+-  font-size: 11px;
+-  font-weight: 900;
+-  letter-spacing: 0.08em;
+-  text-transform: uppercase;
+ }
+ 
+ .profile-proxy-assignment strong {
+-  color: #d7ffdf;
++  color: var(--text);
+   font-size: 14px;
+ }
+ 
+@@ -582,19 +783,19 @@ h1 {
+ 
+ .profile-edit-input {
+   width: min(280px, 100%);
+-  border: 1px solid rgba(255, 255, 255, 0.16);
+-  border-radius: 12px;
++  border: 1px solid var(--border);
++  border-radius: var(--r-sm);
+   padding: 9px 11px;
+-  color: #fff7e9;
+-  background: rgba(255, 255, 255, 0.08);
++  color: var(--text);
++  background: var(--surface-2);
+ }
+ 
+ .profile-row-button {
+-  border: 1px solid rgba(255, 255, 255, 0.14);
++  border: 1px solid var(--border);
+   border-radius: 999px;
+   padding: 8px 12px;
+-  color: #fff7e9;
+-  background: rgba(255, 255, 255, 0.08);
++  color: var(--text);
++  background: var(--surface-2);
+   font-size: 12px;
+   font-weight: 900;
+   cursor: pointer;
+@@ -606,8 +807,9 @@ h1 {
+ }
+ 
+ .primary-row-action {
+-  border-color: rgba(130, 220, 166, 0.4);
+-  background: rgba(76, 214, 119, 0.18);
++  border-color: rgba(108, 124, 255, 0.48);
++  color: #eff1ff;
++  background: rgba(108, 124, 255, 0.18);
+ }
+ 
+ .danger-row-action {
+@@ -636,6 +838,153 @@ h1 {
+   font-weight: 800;
+ }
+ 
++.select-column {
++  width: 44px;
++  text-align: center !important;
++}
++
++.row-checkbox {
++  width: 18px;
++  height: 18px;
++  accent-color: var(--accent);
++}
++
++.row-checkbox:focus-visible,
++.bulk-action-bar input:focus-visible,
++.bulk-action-bar select:focus-visible,
++.bulk-run-button:focus-visible,
++.profile-row-button:focus-visible,
++.import-button:focus-visible,
++.primary-button:focus-visible {
++  outline: 2px solid var(--accent);
++  outline-offset: 2px;
++}
++
++.mono-cell {
++  font-family: var(--font-mono);
++  font-size: var(--fs-sm);
++}
++
++.muted-cell {
++  color: var(--text-muted);
++  font-size: var(--fs-sm);
++}
++
++.job-column {
++  min-width: 240px;
++}
++
++.status-pill {
++  display: inline-flex;
++  align-items: center;
++  gap: 7px;
++  border: 1px solid var(--border);
++  border-radius: 999px;
++  padding: 7px 10px;
++  color: var(--text);
++  background: var(--surface-2);
++  font-size: var(--fs-xs);
++  font-weight: 900;
++  white-space: nowrap;
++}
++
++.status-pill-idle .status-pill-dot {
++  background: var(--status-idle);
++}
++
++.status-pill-running .status-pill-dot {
++  background: var(--status-running);
++}
++
++.status-pill-checkpoint .status-pill-dot {
++  background: var(--status-checkpoint);
++}
++
++.status-pill-error .status-pill-dot {
++  background: var(--status-error);
++}
++
++.status-pill-neutral .status-pill-dot {
++  background: var(--status-neutral);
++}
++
++.bulk-action-bar {
++  position: sticky;
++  bottom: 0;
++  z-index: 2;
++  display: grid;
++  grid-template-columns: auto minmax(220px, 1fr) minmax(160px, 220px) auto auto;
++  gap: var(--sp-3);
++  align-items: end;
++  margin-top: var(--sp-4);
++  border: 1px solid rgba(108, 124, 255, 0.36);
++  border-radius: var(--r-lg);
++  padding: var(--sp-3);
++  background: rgba(23, 27, 33, 0.96);
++  box-shadow: 0 -18px 48px rgba(0, 0, 0, 0.36);
++}
++
++.bulk-action-bar > strong {
++  align-self: center;
++  color: var(--text);
++  font-weight: 900;
++}
++
++.bulk-field {
++  display: grid;
++  gap: 6px;
++  color: var(--text-muted);
++  font-size: var(--fs-xs);
++  font-weight: 900;
++  letter-spacing: 0.06em;
++  text-transform: uppercase;
++}
++
++.bulk-field input,
++.bulk-field select {
++  width: 100%;
++  border: 1px solid var(--border);
++  border-radius: var(--r-sm);
++  padding: 10px 11px;
++  color: var(--text);
++  background: var(--surface-2);
++  font-size: var(--fs-sm);
++  text-transform: none;
++}
++
++.bulk-headless-toggle {
++  display: inline-flex;
++  align-items: center;
++  gap: var(--sp-2);
++  color: var(--text);
++  font-weight: 800;
++}
++
++.bulk-headless-toggle input {
++  width: 18px;
++  height: 18px;
++  accent-color: var(--accent);
++}
++
++.bulk-run-button {
++  border: 0;
++  border-radius: var(--r-sm);
++  padding: 11px 14px;
++  color: var(--accent-text);
++  background: var(--accent);
++  cursor: pointer;
++  font-weight: 900;
++}
++
++.bulk-run-button:hover {
++  background: var(--accent-hover);
++}
++
++.bulk-run-button:disabled {
++  cursor: not-allowed;
++  opacity: 0.6;
++}
++
+ .status-badge {
+   flex: 0 0 auto;
+   border: 1px solid rgba(255, 255, 255, 0.16);
+diff --git a/automation-desktop/src/renderer/src/components/AppShell.tsx b/automation-desktop/src/renderer/src/components/AppShell.tsx
+new file mode 100644
+index 0000000..7982eef
+--- /dev/null
++++ b/automation-desktop/src/renderer/src/components/AppShell.tsx
+@@ -0,0 +1,43 @@
++import type { LicensePublicStatus } from '../../../shared/ipc-schemas'
++import { Sidebar, type ConsoleView } from './Sidebar'
++import { TopBar } from './TopBar'
++import type { StatusCounts } from './StatusCounter'
++
++const VIEW_TITLES: Record<ConsoleView, string> = {
++  dashboard: 'Dashboard',
++  profiles: 'Danh sách profile',
++  templates: 'Template bình luận',
++  proxy: 'Proxy provider',
++  settings: 'Cài đặt'
++}
++
++export function AppShell({
++  activeView,
++  children,
++  counts,
++  licenseStatus,
++  offlineGrace,
++  onNavigate
++}: {
++  activeView: ConsoleView
++  children: React.ReactNode
++  counts: StatusCounts
++  licenseStatus: LicensePublicStatus | null
++  offlineGrace: boolean
++  onNavigate: (view: ConsoleView) => void
++}): React.JSX.Element {
++  return (
++    <main className="app-shell" data-testid="app-shell">
++      <Sidebar
++        activeView={activeView}
++        licenseStatus={licenseStatus}
++        offlineGrace={offlineGrace}
++        onNavigate={onNavigate}
++      />
++      <section className="console-content" data-testid="main-shell">
++        <TopBar title={VIEW_TITLES[activeView]} counts={counts} />
++        {children}
++      </section>
++    </main>
++  )
++}
+diff --git a/automation-desktop/src/renderer/src/components/BulkActionBar.tsx b/automation-desktop/src/renderer/src/components/BulkActionBar.tsx
+new file mode 100644
+index 0000000..7b2b450
+--- /dev/null
++++ b/automation-desktop/src/renderer/src/components/BulkActionBar.tsx
+@@ -0,0 +1,94 @@
++import { useEffect, useState } from 'react'
++import type { ContentTemplateSummary } from '../../../shared/ipc-schemas'
++import { listContentTemplates } from '../api/content-template-api'
++
++export function BulkActionBar({
++  count,
++  disabled,
++  headless,
++  target,
++  onHeadlessChange,
++  onRun,
++  onTargetChange
++}: {
++  count: number
++  disabled: boolean
++  headless: boolean
++  target: string
++  onHeadlessChange: (next: boolean) => void
++  onRun: () => void
++  onTargetChange: (target: string) => void
++}): React.JSX.Element {
++  const [templates, setTemplates] = useState<ContentTemplateSummary[]>([])
++
++  useEffect(() => {
++    let cancelled = false
++    void listContentTemplates()
++      .then((next) => {
++        if (!cancelled) setTemplates(next)
++      })
++      .catch(() => undefined)
++    return () => {
++      cancelled = true
++    }
++  }, [])
++
++  return (
++    <div
++      className="bulk-action-bar"
++      data-testid="bulk-action-bar"
++      role="region"
++      aria-label="Hành động hàng loạt"
++    >
++      <strong>Đã chọn {count}</strong>
++      <label className="bulk-field" htmlFor="bulk-target-input">
++        URL post
++        <input
++          id="bulk-target-input"
++          data-testid="bulk-target-input"
++          value={target}
++          placeholder="https://www.facebook.com/.../posts/..."
++          onChange={(event) => onTargetChange(event.target.value)}
++        />
++      </label>
++      <label className="bulk-field" htmlFor="bulk-template-select">
++        Template
++        <select id="bulk-template-select" data-testid="bulk-template-select" defaultValue="random">
++          <option value="random">Random tất cả</option>
++          {templates.map((template) => (
++            <option
++              key={template.id}
++              value={template.id}
++              disabled
++              title="Cần mở rộng IPC (story sau)"
++            >
++              {template.label}
++            </option>
++          ))}
++        </select>
++      </label>
++      <label className="bulk-headless-toggle" htmlFor="bulk-headless-toggle">
++        <input
++          id="bulk-headless-toggle"
++          data-testid="bulk-headless-toggle"
++          type="checkbox"
++          checked={headless}
++          onChange={(event) => onHeadlessChange(event.target.checked)}
++        />
++        <span>Chạy ẩn</span>
++      </label>
++      <button
++        className="bulk-run-button"
++        data-testid="bulk-run-button"
++        type="button"
++        disabled={disabled}
++        onClick={(event) => {
++          ;(event.currentTarget as HTMLButtonElement).disabled = true
++          onRun()
++        }}
++      >
++        ▶ Chạy self-comment ({count})
++      </button>
++    </div>
++  )
++}
+diff --git a/automation-desktop/src/renderer/src/components/Sidebar.tsx b/automation-desktop/src/renderer/src/components/Sidebar.tsx
+new file mode 100644
+index 0000000..b01aa9e
+--- /dev/null
++++ b/automation-desktop/src/renderer/src/components/Sidebar.tsx
+@@ -0,0 +1,62 @@
++import type { LicensePublicStatus } from '../../../shared/ipc-schemas'
++
++export type ConsoleView = 'dashboard' | 'profiles' | 'templates' | 'proxy' | 'settings'
++
++const NAV_ITEMS: Array<{ id: ConsoleView; label: string }> = [
++  { id: 'dashboard', label: 'Dashboard' },
++  { id: 'profiles', label: 'Profiles' },
++  { id: 'templates', label: 'Templates' },
++  { id: 'proxy', label: 'Proxy' },
++  { id: 'settings', label: 'Settings' }
++]
++
++function licenseText(status: LicensePublicStatus | null, offlineGrace: boolean): string {
++  if (offlineGrace) return 'Offline grace'
++  if (status?.active) return `License active: còn ${status.daysRemaining ?? 0} ngày`
++  return 'License active'
++}
++
++export function Sidebar({
++  activeView,
++  licenseStatus,
++  offlineGrace,
++  onNavigate
++}: {
++  activeView: ConsoleView
++  licenseStatus: LicensePublicStatus | null
++  offlineGrace: boolean
++  onNavigate: (view: ConsoleView) => void
++}): React.JSX.Element {
++  return (
++    <aside className="sidebar" data-testid="sidebar">
++      <div className="sidebar-brand">
++        <span className="sidebar-brand-mark" aria-hidden="true" />
++        <div>
++          <strong>Phase 3</strong>
++          <span>Automation</span>
++        </div>
++      </div>
++
++      <nav className="sidebar-nav" data-testid="sidebar-nav" aria-label="Điều hướng console">
++        {NAV_ITEMS.map((item) => (
++          <button
++            className="nav-item"
++            data-testid={`nav-${item.id}`}
++            type="button"
++            key={item.id}
++            aria-current={activeView === item.id ? 'page' : undefined}
++            onClick={() => onNavigate(item.id)}
++          >
++            <span className="nav-item-indicator" aria-hidden="true" />
++            {item.label}
++          </button>
++        ))}
++      </nav>
++
++      <div className="license-chip" data-testid="license-chip">
++        <span>License</span>
++        <strong>{licenseText(licenseStatus, offlineGrace)}</strong>
++      </div>
++    </aside>
++  )
++}
+diff --git a/automation-desktop/src/renderer/src/components/StatusCounter.tsx b/automation-desktop/src/renderer/src/components/StatusCounter.tsx
+new file mode 100644
+index 0000000..8be1491
+--- /dev/null
++++ b/automation-desktop/src/renderer/src/components/StatusCounter.tsx
+@@ -0,0 +1,27 @@
++export interface StatusCounts {
++  idle: number
++  running: number
++  checkpoint: number
++  error: number
++}
++
++const COUNTER_ITEMS: Array<{ key: keyof StatusCounts; label: string }> = [
++  { key: 'idle', label: 'Nhàn rỗi' },
++  { key: 'running', label: 'Đang chạy' },
++  { key: 'checkpoint', label: 'Checkpoint' },
++  { key: 'error', label: 'Lỗi' }
++]
++
++export function StatusCounter({ counts }: { counts: StatusCounts }): React.JSX.Element {
++  return (
++    <div className="status-counter" data-testid="topbar-status-counter" aria-live="polite">
++      {COUNTER_ITEMS.map((item) => (
++        <span className={`status-counter-item status-counter-${item.key}`} key={item.key}>
++          <span className="status-counter-dot" aria-hidden="true" />
++          <span className="status-counter-label">{item.label}</span>
++          <strong>{counts[item.key]}</strong>
++        </span>
++      ))}
++    </div>
++  )
++}
+diff --git a/automation-desktop/src/renderer/src/components/StatusPill.tsx b/automation-desktop/src/renderer/src/components/StatusPill.tsx
+new file mode 100644
+index 0000000..259c370
+--- /dev/null
++++ b/automation-desktop/src/renderer/src/components/StatusPill.tsx
+@@ -0,0 +1,16 @@
++export type StatusPillVariant = 'idle' | 'running' | 'checkpoint' | 'error' | 'neutral'
++
++export interface StatusPillProps {
++  label: string
++  variant: StatusPillVariant
++  title?: string
++}
++
++export function StatusPill({ label, variant, title }: StatusPillProps): React.JSX.Element {
++  return (
++    <span className={`status-pill status-pill-${variant}`} title={title ?? label}>
++      <span className="status-pill-dot" aria-hidden="true" />
++      <span>{label}</span>
++    </span>
++  )
++}
+diff --git a/automation-desktop/src/renderer/src/components/TopBar.tsx b/automation-desktop/src/renderer/src/components/TopBar.tsx
+new file mode 100644
+index 0000000..734eed8
+--- /dev/null
++++ b/automation-desktop/src/renderer/src/components/TopBar.tsx
+@@ -0,0 +1,19 @@
++import { StatusCounter, type StatusCounts } from './StatusCounter'
++
++export function TopBar({
++  title,
++  counts
++}: {
++  title: string
++  counts: StatusCounts
++}): React.JSX.Element {
++  return (
++    <header className="topbar" data-testid="topbar">
++      <div>
++        <p className="eyebrow">Operator Console</p>
++        <h1>{title}</h1>
++      </div>
++      <StatusCounter counts={counts} />
++    </header>
++  )
++}
+diff --git a/automation-desktop/src/renderer/src/views/ProfilesView.tsx b/automation-desktop/src/renderer/src/views/ProfilesView.tsx
+index 8a9aef1..86fab1d 100644
+--- a/automation-desktop/src/renderer/src/views/ProfilesView.tsx
++++ b/automation-desktop/src/renderer/src/views/ProfilesView.tsx
+@@ -12,14 +12,17 @@ import {
+   releaseProxyForProfile
+ } from '../api/proxy-api'
+ import { getSetting, setSetting } from '../api/settings-api'
++import { BulkActionBar } from '../components/BulkActionBar'
++import { StatusPill, type StatusPillVariant } from '../components/StatusPill'
++import type { StatusCounts } from '../components/StatusCounter'
+ 
+ const AUTOMATION_BROWSER_HEADLESS_SETTING = 'automation_browser_headless'
+ 
+-const STATUS_LABELS: Record<string, { label: string; className: string }> = {
+-  idle: { label: 'Nhàn rỗi', className: 'status-idle' },
+-  running: { label: 'Đang chạy', className: 'status-running' },
+-  checkpoint: { label: 'Checkpoint', className: 'status-checkpoint' },
+-  error: { label: 'Lỗi', className: 'status-error' }
++const STATUS_LABELS: Record<string, { label: string; variant: StatusPillVariant }> = {
++  idle: { label: 'Nhàn rỗi', variant: 'idle' },
++  running: { label: 'Đang chạy', variant: 'running' },
++  checkpoint: { label: 'Checkpoint', variant: 'checkpoint' },
++  error: { label: 'Lỗi', variant: 'error' }
+ }
+ 
+ const AUTOMATION_STATE_LABELS: Record<string, string> = {
+@@ -46,11 +49,35 @@ interface AutomationRowStatus {
+   message?: string
+ }
+ 
+-function getStatusBadge(status: string): { label: string; className: string } {
+-  return STATUS_LABELS[status] ?? { label: 'Không xác định', className: 'status-unknown' }
++function getStatusBadge(status: string): { label: string; variant: StatusPillVariant } {
++  return STATUS_LABELS[status] ?? { label: 'Không xác định', variant: 'neutral' }
+ }
+ 
+-export function ProfilesView(): React.JSX.Element {
++function getAutomationVariant(state: string): StatusPillVariant {
++  if (state === 'DONE') return 'idle'
++  if (state === 'CHECKPOINT_BLOCKED') return 'checkpoint'
++  if (state === 'FAILED' || state === 'CANCELLED') return 'error'
++  return 'running'
++}
++
++function countProfileStatuses(profiles: ProfileSummary[]): StatusCounts {
++  return profiles.reduce<StatusCounts>(
++    (counts, profile) => {
++      if (profile.status === 'running') counts.running += 1
++      else if (profile.status === 'checkpoint') counts.checkpoint += 1
++      else if (profile.status === 'error') counts.error += 1
++      else counts.idle += 1
++      return counts
++    },
++    { idle: 0, running: 0, checkpoint: 0, error: 0 }
++  )
++}
++
++export function ProfilesView({
++  onStatusCountsChange
++}: {
++  onStatusCountsChange?: (counts: StatusCounts) => void
++}): React.JSX.Element {
+   const [text, setText] = useState('')
+   const [importing, setImporting] = useState(false)
+   const [result, setResult] = useState<ImportResult | null>(null)
+@@ -72,6 +99,8 @@ export function ProfilesView(): React.JSX.Element {
+   const [automationBrowserHeadless, setAutomationBrowserHeadless] = useState(false)
+   const [automationBrowserModeSaving, setAutomationBrowserModeSaving] = useState(false)
+   const [automationBusyId, setAutomationBusyId] = useState<string | null>(null)
++  const [bulkRunning, setBulkRunning] = useState(false)
++  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
+   const [automationStatuses, setAutomationStatuses] = useState<Record<string, AutomationRowStatus>>(
+     {}
+   )
+@@ -80,6 +109,10 @@ export function ProfilesView(): React.JSX.Element {
+   const listCancelledRef = useRef(false)
+   const pendingRefreshRef = useRef(false)
+ 
++  useEffect(() => {
++    onStatusCountsChange?.(countProfileStatuses(profiles))
++  }, [onStatusCountsChange, profiles])
++
+   const refreshProfiles = useCallback(async (initialLoad = false): Promise<void> => {
+     if (listInFlightRef.current) {
+       pendingRefreshRef.current = true
+@@ -302,6 +335,48 @@ export function ProfilesView(): React.JSX.Element {
+     }
+   }
+ 
++  function toggleProfileSelection(profileId: string, selected: boolean): void {
++    setSelectedIds((current) => {
++      const next = new Set(current)
++      if (selected) next.add(profileId)
++      else next.delete(profileId)
++      return next
++    })
++  }
++
++  function toggleSelectAll(selected: boolean): void {
++    setSelectedIds(selected ? new Set(profiles.map((profile) => profile.id)) : new Set())
++  }
++
++  async function handleBulkSelfComment(): Promise<void> {
++    if (bulkRunning || selectedIds.size === 0) return
++
++    const selectedProfiles = profiles.filter((profile) => selectedIds.has(profile.id))
++    if (selectedProfiles.length === 0) return
++
++    setBulkRunning(true)
++    setAutomationError(null)
++    try {
++      const target = automationTarget.trim()
++      const nextStatuses: Record<string, AutomationRowStatus> = {}
++      for (const profile of selectedProfiles) {
++        const { jobId } = await startSelfComment({
++          profileId: profile.id,
++          ...(target ? { target } : {})
++        })
++        nextStatuses[profile.id] = { jobId, state: 'PENDING' }
++      }
++      setAutomationStatuses((current) => ({ ...current, ...nextStatuses }))
++      setSelectedIds(new Set())
++    } catch (err) {
++      setAutomationError(
++        err instanceof Error ? err.message : 'Không thể chạy self-comment hàng loạt.'
++      )
++    } finally {
++      setBulkRunning(false)
++    }
++  }
++
+   useEffect(() => {
+     const active = Object.entries(automationStatuses).filter(
+       ([, status]) => !TERMINAL_AUTOMATION_STATES.has(status.state)
+@@ -342,6 +417,10 @@ export function ProfilesView(): React.JSX.Element {
+     }
+   }, [automationStatuses])
+ 
++  const selectedCount = selectedIds.size
++  const allProfilesSelected =
++    profiles.length > 0 && profiles.every((profile) => selectedIds.has(profile.id))
++
+   return (
+     <div className="profiles-view" data-testid="profiles-view">
+       <section className="import-panel" aria-labelledby="profiles-import-title">
+@@ -516,210 +595,287 @@ export function ProfilesView(): React.JSX.Element {
+         ) : null}
+ 
+         {profiles.length > 0 ? (
+-          <ul className="profiles-list" data-testid="profiles-list">
+-            {profiles.map((profile) => {
+-              const badge = getStatusBadge(profile.status)
+-              const isEditing = editingId === profile.id
+-              const isConfirmingDelete = confirmDeleteId === profile.id
+-              const isBusy = rowBusyId === profile.id
+-              const automationStatus = automationStatuses[profile.id]
+-              const automationRunning =
+-                automationBusyId === profile.id ||
+-                Boolean(automationStatus && !TERMINAL_AUTOMATION_STATES.has(automationStatus.state))
+-              return (
+-                <li
+-                  key={profile.id}
+-                  className="profile-list-row"
+-                  data-testid={`profile-row-${profile.uid}`}
+-                >
+-                  <div className="profile-list-identity">
+-                    <span className="profile-list-uid">{profile.uid}</span>
+-                    {isEditing ? (
+-                      <div className="profile-edit-form">
+-                        <label className="sr-only" htmlFor={`profile-edit-input-${profile.uid}`}>
+-                          Tên hiển thị
+-                        </label>
++          <div className="data-table-wrap">
++            <table className="data-table profiles-list" data-testid="profiles-list">
++              <thead>
++                <tr>
++                  <th scope="col" className="select-column">
++                    <input
++                      className="row-checkbox"
++                      data-testid="profiles-select-all"
++                      type="checkbox"
++                      aria-label="Chọn tất cả profile"
++                      checked={allProfilesSelected}
++                      onChange={(e) => toggleSelectAll(e.target.checked)}
++                    />
++                  </th>
++                  <th scope="col">UID</th>
++                  <th scope="col">Tên hiển thị</th>
++                  <th scope="col">Trạng thái</th>
++                  <th scope="col">Proxy</th>
++                  <th scope="col">Job</th>
++                  <th scope="col">Actions</th>
++                </tr>
++              </thead>
++              <tbody>
++                {profiles.map((profile) => {
++                  const badge = getStatusBadge(profile.status)
++                  const isEditing = editingId === profile.id
++                  const isConfirmingDelete = confirmDeleteId === profile.id
++                  const isBusy = rowBusyId === profile.id
++                  const automationStatus = automationStatuses[profile.id]
++                  const automationRunning =
++                    automationBusyId === profile.id ||
++                    Boolean(
++                      automationStatus && !TERMINAL_AUTOMATION_STATES.has(automationStatus.state)
++                    )
++                  return (
++                    <tr
++                      key={profile.id}
++                      className="profile-list-row"
++                      data-testid={`profile-row-${profile.uid}`}
++                    >
++                      <td className="select-column">
+                         <input
+-                          id={`profile-edit-input-${profile.uid}`}
+-                          data-testid={`profile-edit-input-${profile.uid}`}
+-                          className="profile-edit-input"
+-                          value={editName}
+-                          disabled={isBusy}
+-                          onChange={(e) => setEditName(e.target.value)}
++                          className="row-checkbox"
++                          data-testid={`profile-select-${profile.uid}`}
++                          type="checkbox"
++                          aria-label={`Chọn profile ${profile.uid}`}
++                          checked={selectedIds.has(profile.id)}
++                          onChange={(e) => toggleProfileSelection(profile.id, e.target.checked)}
+                         />
+-                        <button
+-                          data-testid={`profile-edit-save-${profile.uid}`}
+-                          className="profile-row-button primary-row-action"
+-                          type="button"
+-                          disabled={isBusy || !editName.trim()}
+-                          onClick={(e) => {
+-                            ;(e.currentTarget as HTMLButtonElement).disabled = true
+-                            void handleSaveEdit(profile)
+-                          }}
++                      </td>
++                      <td className="mono-cell profile-list-uid">{profile.uid}</td>
++                      <td>
++                        {isEditing ? (
++                          <div className="profile-edit-form">
++                            <label
++                              className="sr-only"
++                              htmlFor={`profile-edit-input-${profile.uid}`}
++                            >
++                              Tên hiển thị
++                            </label>
++                            <input
++                              id={`profile-edit-input-${profile.uid}`}
++                              data-testid={`profile-edit-input-${profile.uid}`}
++                              className="profile-edit-input"
++                              value={editName}
++                              disabled={isBusy}
++                              onChange={(e) => setEditName(e.target.value)}
++                            />
++                            <button
++                              data-testid={`profile-edit-save-${profile.uid}`}
++                              className="profile-row-button primary-row-action"
++                              type="button"
++                              disabled={isBusy || !editName.trim()}
++                              onClick={(e) => {
++                                ;(e.currentTarget as HTMLButtonElement).disabled = true
++                                void handleSaveEdit(profile)
++                              }}
++                            >
++                              {isBusy ? 'Đang lưu...' : 'Lưu'}
++                            </button>
++                            <button
++                              data-testid={`profile-edit-cancel-${profile.uid}`}
++                              className="profile-row-button"
++                              type="button"
++                              disabled={isBusy}
++                              onClick={() => {
++                                setEditingId(null)
++                                setEditName('')
++                              }}
++                            >
++                              Hủy
++                            </button>
++                          </div>
++                        ) : (
++                          <span className="profile-list-name">{profile.displayName}</span>
++                        )}
++                      </td>
++                      <td>
++                        <StatusPill label={badge.label} variant={badge.variant} />
++                      </td>
++                      <td>
++                        <div
++                          className="profile-proxy-assignment"
++                          data-testid={`profile-proxy-${profile.uid}`}
+                         >
+-                          {isBusy ? 'Đang lưu...' : 'Lưu'}
+-                        </button>
+-                        <button
+-                          data-testid={`profile-edit-cancel-${profile.uid}`}
+-                          className="profile-row-button"
+-                          type="button"
+-                          disabled={isBusy}
+-                          onClick={() => {
+-                            setEditingId(null)
+-                            setEditName('')
+-                          }}
+-                        >
+-                          Hủy
+-                        </button>
+-                      </div>
+-                    ) : (
+-                      <span className="profile-list-name">Tên hiển thị: {profile.displayName}</span>
+-                    )}
+-                  </div>
+-                  <div className="profile-row-side">
+-                    <span className={`status-badge ${badge.className}`}>{badge.label}</span>
+-                    <div
+-                      className="profile-proxy-assignment"
+-                      data-testid={`profile-proxy-${profile.uid}`}
+-                    >
+-                      <span className="profile-proxy-label">Proxy riêng</span>
+-                      {proxyAssignments[profile.id] ? (
+-                        <strong data-testid={`profile-proxy-value-${profile.uid}`}>
+-                          {proxyAssignments[profile.id].host}:{proxyAssignments[profile.id].port}
+-                        </strong>
+-                      ) : (
+-                        <span data-testid={`profile-proxy-empty-${profile.uid}`}>Chưa gán</span>
+-                      )}
+-                      <div className="profile-row-actions">
+-                        <button
+-                          data-testid={`profile-proxy-acquire-${profile.uid}`}
+-                          className="profile-row-button primary-row-action"
+-                          type="button"
+-                          disabled={Boolean(proxyBusyId) || Boolean(proxyAssignments[profile.id])}
+-                          onClick={(e) => {
+-                            ;(e.currentTarget as HTMLButtonElement).disabled = true
+-                            void handleAcquireProxy(profile)
+-                          }}
+-                        >
+-                          {proxyBusyId === profile.id ? 'Đang gán...' : 'Gán proxy'}
+-                        </button>
+-                        <button
+-                          data-testid={`profile-proxy-release-${profile.uid}`}
+-                          className="profile-row-button"
+-                          type="button"
+-                          disabled={Boolean(proxyBusyId) || !proxyAssignments[profile.id]}
+-                          onClick={(e) => {
+-                            ;(e.currentTarget as HTMLButtonElement).disabled = true
+-                            void handleReleaseProxy(profile)
+-                          }}
+-                        >
+-                          Thả proxy
+-                        </button>
+-                      </div>
+-                    </div>
+-                    <div className="profile-row-actions">
+-                      <button
+-                        data-testid={`profile-self-comment-${profile.uid}`}
+-                        className="profile-row-button primary-row-action"
+-                        type="button"
+-                        disabled={automationRunning || Boolean(automationBusyId)}
+-                        onClick={(e) => {
+-                          ;(e.currentTarget as HTMLButtonElement).disabled = true
+-                          void handleStartSelfComment(profile)
+-                        }}
+-                      >
+-                        {automationRunning ? 'Đang chạy...' : 'Chạy self-comment'}
+-                      </button>
+-                      <button
+-                        data-testid={`profile-edit-${profile.uid}`}
+-                        className="profile-row-button"
+-                        type="button"
+-                        disabled={isBusy}
+-                        onClick={() => startEdit(profile)}
+-                      >
+-                        Sửa
+-                      </button>
+-                      <button
+-                        data-testid={`profile-delete-${profile.uid}`}
+-                        className="profile-row-button danger-row-action"
+-                        type="button"
+-                        disabled={isBusy}
+-                        onClick={() => {
+-                          setRowError(null)
+-                          setEditingId(null)
+-                          setEditName('')
+-                          setConfirmDeleteId(profile.id)
+-                        }}
+-                      >
+-                        Xóa
+-                      </button>
+-                    </div>
+-                  </div>
+-                  {isConfirmingDelete ? (
+-                    <div
+-                      className="profile-delete-confirm"
+-                      data-testid={`profile-delete-confirm-${profile.uid}`}
+-                    >
+-                      <span>Xóa profile {profile.uid}? Cookie + dữ liệu sẽ bị xóa vĩnh viễn.</span>
+-                      <div className="profile-row-actions">
+-                        <button
+-                          data-testid={`profile-delete-confirm-submit-${profile.uid}`}
+-                          className="profile-row-button danger-row-action"
+-                          type="button"
+-                          disabled={isBusy}
+-                          onClick={(e) => {
+-                            ;(e.currentTarget as HTMLButtonElement).disabled = true
+-                            void handleDelete(profile)
+-                          }}
+-                        >
+-                          {isBusy ? 'Đang xóa...' : 'Xóa'}
+-                        </button>
+-                        <button
+-                          data-testid={`profile-delete-cancel-${profile.uid}`}
+-                          className="profile-row-button"
+-                          type="button"
+-                          disabled={isBusy}
+-                          onClick={() => setConfirmDeleteId(null)}
+-                        >
+-                          Hủy
+-                        </button>
+-                      </div>
+-                    </div>
+-                  ) : null}
+-                  {rowError && (isEditing || isConfirmingDelete) ? (
+-                    <p className="error-message profile-row-error">{rowError}</p>
+-                  ) : null}
+-                  {automationStatus ? (
+-                    <p
+-                      className="automation-row-status"
+-                      data-testid={`profile-automation-status-${profile.uid}`}
+-                    >
+-                      Job {automationStatus.jobId}:{' '}
+-                      {AUTOMATION_STATE_LABELS[automationStatus.state] ?? automationStatus.state}
+-                      {automationStatus.outcome ? ` · ${automationStatus.outcome}` : ''}
+-                      {automationStatus.message ? ` · ${automationStatus.message}` : ''}
+-                      {automationStatus.target ? (
+-                        <>
+-                          {' · Post: '}
+-                          <a href={automationStatus.target} target="_blank" rel="noreferrer">
+-                            {automationStatus.target}
+-                          </a>
+-                        </>
+-                      ) : null}
+-                    </p>
+-                  ) : null}
+-                  {proxyError ? (
+-                    <p
+-                      className="error-message profile-row-error"
+-                      data-testid="profile-proxy-error"
+-                    >
+-                      {proxyError}
+-                    </p>
+-                  ) : null}
+-                </li>
+-              )
+-            })}
+-          </ul>
++                          {proxyAssignments[profile.id] ? (
++                            <strong
++                              className="mono-cell"
++                              data-testid={`profile-proxy-value-${profile.uid}`}
++                            >
++                              {proxyAssignments[profile.id].host}:
++                              {proxyAssignments[profile.id].port}
++                            </strong>
++                          ) : (
++                            <span data-testid={`profile-proxy-empty-${profile.uid}`}>Chưa gán</span>
++                          )}
++                          <div className="profile-row-actions">
++                            <button
++                              data-testid={`profile-proxy-acquire-${profile.uid}`}
++                              className="profile-row-button primary-row-action"
++                              type="button"
++                              disabled={
++                                Boolean(proxyBusyId) || Boolean(proxyAssignments[profile.id])
++                              }
++                              onClick={(e) => {
++                                ;(e.currentTarget as HTMLButtonElement).disabled = true
++                                void handleAcquireProxy(profile)
++                              }}
++                            >
++                              {proxyBusyId === profile.id ? 'Đang gán...' : 'Gán proxy'}
++                            </button>
++                            <button
++                              data-testid={`profile-proxy-release-${profile.uid}`}
++                              className="profile-row-button"
++                              type="button"
++                              disabled={Boolean(proxyBusyId) || !proxyAssignments[profile.id]}
++                              onClick={(e) => {
++                                ;(e.currentTarget as HTMLButtonElement).disabled = true
++                                void handleReleaseProxy(profile)
++                              }}
++                            >
++                              Thả proxy
++                            </button>
++                          </div>
++                        </div>
++                        {proxyError ? (
++                          <p
++                            className="error-message profile-row-error"
++                            data-testid="profile-proxy-error"
++                          >
++                            {proxyError}
++                          </p>
++                        ) : null}
++                      </td>
++                      <td className="job-column">
++                        {automationStatus ? (
++                          <div
++                            className="automation-row-status"
++                            data-testid={`profile-automation-status-${profile.uid}`}
++                          >
++                            <StatusPill
++                              label={
++                                AUTOMATION_STATE_LABELS[automationStatus.state] ??
++                                automationStatus.state
++                              }
++                              variant={getAutomationVariant(automationStatus.state)}
++                              title={`Job ${automationStatus.jobId}`}
++                            />
++                            <span className="mono-cell">Job {automationStatus.jobId}</span>
++                            {automationStatus.outcome ? (
++                              <span> · {automationStatus.outcome}</span>
++                            ) : null}
++                            {automationStatus.message ? (
++                              <span> · {automationStatus.message}</span>
++                            ) : null}
++                            {automationStatus.target ? (
++                              <span>
++                                {' · Post: '}
++                                <a href={automationStatus.target} target="_blank" rel="noreferrer">
++                                  {automationStatus.target}
++                                </a>
++                              </span>
++                            ) : null}
++                          </div>
++                        ) : (
++                          <span className="muted-cell">Chưa có job</span>
++                        )}
++                      </td>
++                      <td>
++                        <div className="profile-row-actions">
++                          <button
++                            data-testid={`profile-self-comment-${profile.uid}`}
++                            className="profile-row-button primary-row-action"
++                            type="button"
++                            disabled={automationRunning || Boolean(automationBusyId)}
++                            onClick={(e) => {
++                              ;(e.currentTarget as HTMLButtonElement).disabled = true
++                              void handleStartSelfComment(profile)
++                            }}
++                          >
++                            {automationRunning ? 'Đang chạy...' : 'Chạy self-comment'}
++                          </button>
++                          <button
++                            data-testid={`profile-edit-${profile.uid}`}
++                            className="profile-row-button"
++                            type="button"
++                            disabled={isBusy}
++                            onClick={() => startEdit(profile)}
++                          >
++                            Sửa
++                          </button>
++                          <button
++                            data-testid={`profile-delete-${profile.uid}`}
++                            className="profile-row-button danger-row-action"
++                            type="button"
++                            disabled={isBusy}
++                            onClick={() => {
++                              setRowError(null)
++                              setEditingId(null)
++                              setEditName('')
++                              setConfirmDeleteId(profile.id)
++                            }}
++                          >
++                            Xóa
++                          </button>
++                        </div>
++                        {isConfirmingDelete ? (
++                          <div
++                            className="profile-delete-confirm"
++                            data-testid={`profile-delete-confirm-${profile.uid}`}
++                          >
++                            <span>
++                              Xóa profile {profile.uid}? Cookie + dữ liệu sẽ bị xóa vĩnh viễn.
++                            </span>
++                            <div className="profile-row-actions">
++                              <button
++                                data-testid={`profile-delete-confirm-submit-${profile.uid}`}
++                                className="profile-row-button danger-row-action"
++                                type="button"
++                                disabled={isBusy}
++                                onClick={(e) => {
++                                  ;(e.currentTarget as HTMLButtonElement).disabled = true
++                                  void handleDelete(profile)
++                                }}
++                              >
++                                {isBusy ? 'Đang xóa...' : 'Xóa'}
++                              </button>
++                              <button
++                                data-testid={`profile-delete-cancel-${profile.uid}`}
++                                className="profile-row-button"
++                                type="button"
++                                disabled={isBusy}
++                                onClick={() => setConfirmDeleteId(null)}
++                              >
++                                Hủy
++                              </button>
++                            </div>
++                          </div>
++                        ) : null}
++                        {rowError && (isEditing || isConfirmingDelete) ? (
++                          <p className="error-message profile-row-error">{rowError}</p>
++                        ) : null}
++                      </td>
++                    </tr>
++                  )
++                })}
++              </tbody>
++            </table>
++          </div>
++        ) : null}
++
++        {selectedCount > 0 ? (
++          <BulkActionBar
++            count={selectedCount}
++            disabled={bulkRunning}
++            headless={automationBrowserHeadless}
++            target={automationTarget}
++            onHeadlessChange={(next) => void handleAutomationBrowserModeChange(next)}
++            onRun={() => void handleBulkSelfComment()}
++            onTargetChange={setAutomationTarget}
++          />
+         ) : null}
+       </section>
+     </div>
+diff --git a/automation-desktop/tests/e2e/content-templates.spec.ts b/automation-desktop/tests/e2e/content-templates.spec.ts
+index 96fc7ec..b343d4a 100644
+--- a/automation-desktop/tests/e2e/content-templates.spec.ts
++++ b/automation-desktop/tests/e2e/content-templates.spec.ts
+@@ -72,6 +72,7 @@ test('[P0] content template UI creates, edits, deletes, and protects final templ
+     await expect(window.getByTestId('license-view')).toBeVisible({ timeout: 10_000 })
+     await window.getByRole('textbox', { name: /license key/i }).fill('LIC-TEMPLATE-OK')
+     await window.getByRole('button', { name: /kích hoạt/i }).click()
++    await window.getByTestId('nav-templates').click()
+     await expect(window.getByTestId('content-templates-view')).toBeVisible({ timeout: 10_000 })
+ 
+     const defaultRow = window.locator('.template-row', { hasText: 'Mặc định' })
+diff --git a/automation-desktop/tests/e2e/profiles.spec.ts b/automation-desktop/tests/e2e/profiles.spec.ts
+index 36ebb09..7c4d693 100644
+--- a/automation-desktop/tests/e2e/profiles.spec.ts
++++ b/automation-desktop/tests/e2e/profiles.spec.ts
+@@ -197,6 +197,60 @@ test('[P0] import two profiles shows summary with 2 imported and clears textarea
+   }
+ })
+ 
++test('[P0] operator console renders sidebar table and bulk self-comment enqueue flow', async () => {
++  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-bulk-run-'))
++  let app: ElectronApplication | null = null
++  let server: Server | null = null
++
++  try {
++    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'), {
++      PHASE3_AUTOMATION_STUB: '1'
++    })
++    app = launched.app
++    server = launched.server
++    const window = launched.window
++
++    await expect(window.getByTestId('app-shell')).toBeVisible({ timeout: 10_000 })
++    await expect(window.getByTestId('sidebar-nav')).toBeVisible()
++    await expect(window.getByTestId('nav-profiles')).toHaveAttribute('aria-current', 'page')
++    await expect(window.getByTestId('topbar-status-counter')).toBeVisible()
++
++    const textarea = window.getByTestId('import-textarea')
++    await setTextareaValue(
++      textarea,
++      [
++        'uid_bulk_1|pass1|seed1|cookie_BULK_1|mail1@example.com|mailpass1',
++        'uid_bulk_2|pass2|seed2|cookie_BULK_2|mail2@example.com|mailpass2'
++      ].join('\n')
++    )
++    await window.getByTestId('import-button').click()
++    await expect(window.getByTestId('profile-row-uid_bulk_1')).toBeVisible({ timeout: 10_000 })
++    await expect(window.getByTestId('profiles-list')).toHaveJSProperty('tagName', 'TABLE')
++    await expect(window.getByTestId('topbar-status-counter')).toContainText('2')
++
++    await window.getByTestId('profile-select-uid_bulk_1').check()
++    await window.getByTestId('profile-select-uid_bulk_2').check()
++    await expect(window.getByTestId('bulk-action-bar')).toContainText('Đã chọn 2')
++    await expect(window.getByTestId('bulk-template-select')).toContainText('Random tất cả')
++    await window.getByTestId('bulk-target-input').fill('https://www.facebook.com/me/posts/bulk')
++    await window.getByTestId('bulk-run-button').click()
++
++    await expect(window.getByTestId('bulk-action-bar')).toHaveCount(0, { timeout: 10_000 })
++    await expect(window.getByTestId('profile-automation-status-uid_bulk_1')).toContainText(
++      'Đang xếp hàng',
++      { timeout: 10_000 }
++    )
++    await expect(window.getByTestId('profile-automation-status-uid_bulk_2')).toContainText(
++      'Đang xếp hàng',
++      { timeout: 10_000 }
++    )
++  } finally {
++    if (app) await app.close()
++    await closeServer(server)
++    rmSync(dir, { recursive: true, force: true })
++  }
++})
++
+ test('[P0] profile row can visibly acquire and release a unique proxy assignment', async () => {
+   const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-proxy-assign-'))
+   const proxyfb = await startProxyfbServer()
+@@ -220,9 +274,12 @@ test('[P0] profile row can visibly acquire and release a unique proxy assignment
+     await expect(window.getByTestId('profile-row-uid_proxy_1')).toBeVisible({ timeout: 10_000 })
+     await expect(window.getByTestId('profile-proxy-empty-uid_proxy_1')).toContainText('Chưa gán')
+ 
++    await window.getByTestId('nav-proxy').click()
+     await window.getByTestId('proxy-api-key-input').fill('KEY-PROXY-ASSIGN')
+     await window.getByTestId('proxy-save-button').click()
+     await expect(window.getByText('Đã cấu hình')).toBeVisible({ timeout: 10_000 })
++    await window.getByTestId('nav-profiles').click()
++    await expect(window.getByTestId('profile-row-uid_proxy_1')).toBeVisible({ timeout: 10_000 })
+ 
+     await window.getByTestId('profile-proxy-acquire-uid_proxy_1').click()
+     await expect(window.getByTestId('profile-proxy-value-uid_proxy_1')).toContainText(
+diff --git a/automation-desktop/tests/e2e/proxy.spec.ts b/automation-desktop/tests/e2e/proxy.spec.ts
+index 37c2ab3..57ba90a 100644
+--- a/automation-desktop/tests/e2e/proxy.spec.ts
++++ b/automation-desktop/tests/e2e/proxy.spec.ts
+@@ -105,6 +105,7 @@ test('[P0] proxy view saves api key then tests proxy without exposing credential
+     await window.getByRole('textbox', { name: /license key/i }).fill('LIC-PROXY-OK')
+     await window.getByRole('button', { name: /kích hoạt/i }).click()
+     await expect(window.getByTestId('main-shell')).toBeVisible({ timeout: 10_000 })
++    await window.getByTestId('nav-proxy').click()
+ 
+     await expect(window.getByTestId('proxy-view')).toBeVisible({ timeout: 10_000 })
+     await expect(window.getByText('Chưa cấu hình')).toBeVisible()
+@@ -147,6 +148,7 @@ test('[P1] proxy view shows quarantine health after repeated provider failures',
+     await window.getByRole('textbox', { name: /license key/i }).fill('LIC-PROXY-FAIL')
+     await window.getByRole('button', { name: /kích hoạt/i }).click()
+     await expect(window.getByTestId('main-shell')).toBeVisible({ timeout: 10_000 })
++    await window.getByTestId('nav-proxy').click()
+ 
+     await window.getByTestId('proxy-api-key-input').fill('KEY-SECRET-FAIL')
+     await window.getByTestId('proxy-save-button').click()

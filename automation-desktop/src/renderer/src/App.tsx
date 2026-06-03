@@ -35,7 +35,9 @@ function MainShell({
     error: 0
   })
 
-  function renderActiveView(): React.JSX.Element {
+  // Các view phụ render có điều kiện. ProfilesView KHÔNG render ở đây — nó được giữ
+  // mounted liên tục (ẩn bằng `hidden`) để job polling + selection không mất khi đổi tab.
+  function renderSecondaryView(): React.JSX.Element | null {
     if (activeView === 'dashboard') {
       return (
         <section className="dashboard-panel" data-testid="dashboard-view">
@@ -58,7 +60,7 @@ function MainShell({
         </section>
       )
     }
-    return <ProfilesView onStatusCountsChange={setProfileCounts} />
+    return null
   }
 
   return (
@@ -75,7 +77,12 @@ function MainShell({
           lần kiểm tra thành công gần nhất.
         </p>
       ) : null}
-      {renderActiveView()}
+      {renderSecondaryView()}
+      {/* Giữ ProfilesView luôn mounted: poll job (1s) + danh sách (5s) + selection vẫn
+          duy trì khi operator chuyển sang tab khác rồi quay lại giữa batch. */}
+      <div hidden={activeView !== 'profiles'}>
+        <ProfilesView onStatusCountsChange={setProfileCounts} />
+      </div>
     </AppShell>
   )
 }

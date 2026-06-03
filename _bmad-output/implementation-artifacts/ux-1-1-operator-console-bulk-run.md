@@ -1,6 +1,6 @@
 # Story UX-1.1: Dựng Operator Console + Bulk Self-comment
 
-Status: review
+Status: done
 
 > **Namespace lưu ý:** Story này thuộc epic breakdown **UI/UX redesign** (`epics-ux-redesign.md`), KHÁC với Epic 1 Phase 3 features (`epics-phase3.md`). Dùng prefix `ux-` để tránh trùng `1-1-khoi-tao-scaffold-automation-desktop.md`. KHÔNG ghi vào `sprint-status.yaml` (namespace Phase 3 features) để tránh nhiễu auto-discovery.
 
@@ -76,6 +76,31 @@ so that tôi điều cả đội tài khoản trong tầm mắt thay vì cuộn 
 - [x] **Task 6 — Chất lượng (AC6)**
   - [x] lint + typecheck pass; E2E cũ xanh
   - [x] Thêm E2E bulk-run flow; (optional) thêm test DataTable render
+
+### Review Findings
+
+> Code review commit `130134e` (2026-06-04) — 3 lớp: Blind Hunter · Edge Case Hunter · Acceptance Auditor.
+
+- [x] [Review][Decision→Patch] Mất trạng thái job + selection khi chuyển tab — RESOLVED (best practice): giữ `ProfilesView` mounted (ẩn bằng `hidden`) để poll + selection sống xuyên tab [App.tsx renderSecondaryView + hidden div]
+- [x] [Review][Decision→Defer] Trùng ô Target URL — DEFER: hợp nhất sẽ xóa testid `automation-target-input` → rủi ro vỡ E2E; tách story riêng cập nhật cả test
+- [x] [Review][Decision→Defer] Offline-grace hiện 2 chỗ — DEFER: banner (cảnh báo 24h) và LicenseChip (còn N ngày) là thông tin bổ sung, không thật sự trùng; giữ banner cho nổi bật
+- [x] [Review][Patch] BLOCKER: `handleBulkSelfComment` — FIXED: commit status từng job ngay khi enqueue + per-profile try/catch (tiếp tục khi 1 job lỗi) + chỉ bỏ chọn job thành công (giữ job lỗi để retry) + báo lỗi tiếng Việt [ProfilesView.tsx:351-388]
+- [x] [Review][Patch] `handleDelete` — FIXED: dọn id khỏi `selectedIds` khi xóa profile [ProfilesView.tsx:269-280]
+- [x] [Review][Patch] Select-all `indeterminate` — FIXED: thêm `someProfilesSelected` + ref callback set `el.indeterminate` [ProfilesView.tsx:445-448, header checkbox]
+- [x] [Review][Defer] StatusCounter `aria-live` đọc cả 4 mục mỗi poll (noisy) — a11y polish, gộp Epic 2 (Story 2.7)
+- [x] [Review][Defer] StatusPill chỉ có `title`, thiếu `role`/`aria-label` — a11y, Epic 2
+- [x] [Review][Defer] Template `<select>` uncontrolled `defaultValue` — vô hại Phase A (template disabled), revisit khi mở IPC templateId
+- [x] [Review][Defer] BulkActionBar refetch templates mỗi lần remount (flicker) — tối ưu sau
+- [x] [Review][Defer] `automationError` dùng chung 1 state per-row + bulk — pre-existing, có thể lẫn lỗi
+- [x] [Review][Defer] `proxyError` hiện ở mọi row — pre-existing (bản cũ cũng vậy)
+- [x] [Review][Defer] Sidebar fallback "License active" khi license inactive — path hầu như không tới (gate chặn), cosmetic
+- [x] [Review][Defer] Target URL whitespace bị trim im lặng → fallback feed — pre-existing
+- [x] [Review][Defer] `bulk-target-input` thiếu `autoComplete=off`/`type=url` — minor
+- [x] [Review][Defer] `.data-table td vertical-align: top` lệch khi cell delete-confirm cao — cosmetic
+- [x] [Review][Defer] `offlineGrace` truyền vào AppShell nhưng không dùng trong body (chỉ forward Sidebar) — dead prop cleanup
+- [x] [Review][Defer] E2E thiếu test `profiles-select-all` checkbox — bổ sung test sau
+
+**Dismissed (noise/false-positive):** PENDING không map (sai — đã map 'Đang xếp hàng'); nút bulk "kẹt disabled" (đúng pattern rule #17, React khôi phục qua prop); `main-shell` testid trên `section` (cố ý giữ E2E xanh, test pass); select-all stale snapshot (handler đọc `profiles` render hiện tại); `onStatusCountsChange` dep fragility (`setProfileCounts` stable); poll timer rebuild (pattern pre-existing).
 
 ## Dev Notes
 

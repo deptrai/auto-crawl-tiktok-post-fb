@@ -138,3 +138,18 @@
 
 - ⚠️ Cross-feature: bảng `content_templates` dùng CHUNG giữa self-comment (4.6b) và Messenger Seeding (Epic 12). Template chứa `{uid}`/`{name}` nếu bị `getRandomTemplate` chọn cho self-comment sẽ post **literal** `{uid}` lên Facebook (và `defaultReadBack` vẫn trả `success` → che lỗi hoàn toàn). Cần xử lý ở Story 12.2 khi wire `renderContentTemplate` vào seeding: hoặc tách template set riêng cho seeding vs self-comment, hoặc cảnh báo khi template self-comment chứa placeholder. [automation-desktop/src/main/automation/self-comment-orchestrator.ts:190]
 - Placeholder robustness: `renderContentTemplate` chỉ match exact `{uid}`/`{name}`. Biến thể `{ uid }` (có space) hoặc `{UID}` (sai case — bàn phím mobile auto-capitalize) KHÔNG match và KHÔNG cảnh báo → user dễ nhầm là hợp lệ. UI hint show đúng dạng nhưng chưa có validate/warn malformed placeholder. Nằm trong D1 defer của story (extended placeholder handling → Epic 12 sau). [automation-desktop/src/shared/content-template-render.ts]
+
+## Deferred from: code review of story ux-1-1 (2026-06-04)
+
+- StatusCounter `aria-live="polite"` đọc cả 4 mục mỗi poll 5s (noisy) — gộp a11y Story 2.7 (Epic 2).
+- StatusPill chỉ có `title`, thiếu `role="status"`/`aria-label` — a11y, Epic 2.
+- BulkActionBar template `<select>` uncontrolled (`defaultValue`) — vô hại Phase A vì template cụ thể đang disabled; revisit khi mở rộng IPC `phase3:automation:start` nhận `templateId`.
+- BulkActionBar refetch `listContentTemplates()` mỗi lần remount (selectedIds 0→>0) gây flicker dropdown — tối ưu (cache/lift) sau.
+- `automationError` dùng chung 1 state cho per-row run + bulk run — có thể lẫn/đè lỗi; tách state nếu cần (pre-existing).
+- `proxyError` render trong mọi row thay vì đúng row lỗi — pre-existing (bản cũ cũng vậy); scope theo `proxyBusyId` sau.
+- Sidebar `licenseText` fallback "License active" khi license inactive — cosmetic, path gần như không tới (gate chặn trước).
+- Target URL whitespace-only bị trim im lặng → fallback profile feed, không cảnh báo — pre-existing; thêm validation/indicator sau.
+- `bulk-target-input` thiếu `autoComplete="off"` / `type="url"` — minor.
+- `.data-table td { vertical-align: top }` gây lệch khi cell delete-confirm cao — cosmetic, đổi `middle` sau.
+- `offlineGrace` truyền vào AppShell nhưng không dùng trong body (chỉ forward Sidebar) — dead prop cleanup.
+- E2E thiếu test cho `profiles-select-all` checkbox — bổ sung coverage sau.

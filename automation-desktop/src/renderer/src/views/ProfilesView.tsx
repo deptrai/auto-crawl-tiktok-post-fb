@@ -271,6 +271,13 @@ export function ProfilesView({
         delete next[profile.id]
         return next
       })
+      // Dọn id khỏi selection để count bulk bar không bị lệch sau khi xóa profile đang chọn.
+      setSelectedIds((prev) => {
+        if (!prev.has(profile.id)) return prev
+        const next = new Set(prev)
+        next.delete(profile.id)
+        return next
+      })
       await refreshProfiles(false)
     } catch (err) {
       setRowError(err instanceof Error ? err.message : 'Không thể xóa profile.')
@@ -356,22 +363,40 @@ export function ProfilesView({
 
     setBulkRunning(true)
     setAutomationError(null)
+    const target = automationTarget.trim()
+    const enqueuedIds: string[] = []
+    const failures: string[] = []
     try {
-      const target = automationTarget.trim()
-      const nextStatuses: Record<string, AutomationRowStatus> = {}
       for (const profile of selectedProfiles) {
-        const { jobId } = await startSelfComment({
-          profileId: profile.id,
-          ...(target ? { target } : {})
-        })
-        nextStatuses[profile.id] = { jobId, state: 'PENDING' }
+        try {
+          const { jobId } = await startSelfComment({
+            profileId: profile.id,
+            ...(target ? { target } : {})
+          })
+          // Commit trạng thái từng job ngay khi enqueue thành công để poll theo dõi được,
+          // kể cả khi một job sau đó lỗi (tránh job "ma" chạy ngoài tầm theo dõi của UI).
+          setAutomationStatuses((current) => ({
+            ...current,
+            [profile.id]: { jobId, state: 'PENDING' }
+          }))
+          enqueuedIds.push(profile.id)
+        } catch {
+          // Tiếp tục các profile còn lại thay vì dừng cả batch.
+          failures.push(profile.uid)
+        }
       }
-      setAutomationStatuses((current) => ({ ...current, ...nextStatuses }))
-      setSelectedIds(new Set())
-    } catch (err) {
-      setAutomationError(
-        err instanceof Error ? err.message : 'Không thể chạy self-comment hàng loạt.'
-      )
+      // Bỏ chọn các profile đã enqueue thành công; giữ lại profile lỗi để thử lại.
+      setSelectedIds((current) => {
+        if (enqueuedIds.length === 0) return current
+        const next = new Set(current)
+        for (const id of enqueuedIds) next.delete(id)
+        return next
+      })
+      if (failures.length > 0) {
+        setAutomationError(
+          `Không enqueue được ${failures.length} profile: ${failures.join(', ')}. Đã giữ lại để thử lại.`
+        )
+      }
     } finally {
       setBulkRunning(false)
     }
@@ -420,6 +445,9 @@ export function ProfilesView({
   const selectedCount = selectedIds.size
   const allProfilesSelected =
     profiles.length > 0 && profiles.every((profile) => selectedIds.has(profile.id))
+  // Chọn một phần → checkbox header ở trạng thái indeterminate (chuẩn UX data table).
+  const someProfilesSelected =
+    !allProfilesSelected && profiles.some((profile) => selectedIds.has(profile.id))
 
   return (
     <div className="profiles-view" data-testid="profiles-view">
@@ -601,6 +629,9 @@ export function ProfilesView({
                 <tr>
                   <th scope="col" className="select-column">
                     <input
+                      ref={(el) => {
+                        if (el) el.indeterminate = someProfilesSelected
+                      }}
                       className="row-checkbox"
                       data-testid="profiles-select-all"
                       type="checkbox"
