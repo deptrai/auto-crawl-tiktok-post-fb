@@ -28,6 +28,7 @@ import {
   generateTotp,
   MOBILE_BROWSER_WINDOW_SIZE,
   parseCookieHeader,
+  resolveOwnPostTarget,
   submitTwoFa,
   type SelfCommentLoginResult,
   type SelfCommentOrchestrator
@@ -129,8 +130,8 @@ function reserveNextVisibleBrowserGeometry(): VisibleBrowserGeometry {
   const rows = 2
   const windowHeight = Math.max(320, Math.floor((workArea.height - gap) / rows))
   const viewportHeight = Math.max(260, windowHeight - 108)
-  const viewportWidth = Math.min(390, Math.max(320, Math.floor(windowHeight * 0.74)))
-  const windowSize = { width: Math.max(500, viewportWidth), height: windowHeight }
+  const windowWidth = Math.max(500, Math.min(640, Math.floor(windowHeight * 0.95)))
+  const windowSize = { width: windowWidth, height: windowHeight }
   const stepX = windowSize.width + gap
   const stepY = windowSize.height + gap
   const columns = Math.max(1, Math.floor((workArea.width + gap) / stepX))
@@ -144,7 +145,7 @@ function reserveNextVisibleBrowserGeometry(): VisibleBrowserGeometry {
       y: workArea.y + Math.floor(slot / columns) * stepY
     },
     windowSize,
-    viewport: { width: viewportWidth, height: viewportHeight }
+    viewport: { width: windowWidth, height: viewportHeight }
   }
 }
 
@@ -363,19 +364,7 @@ function initializeDeps(): BootstrapDeps {
               fetchHtml: async () => page.content?.() ?? '',
               onSelectorMiss: () => undefined
             }).extract(),
-          // ⚠️ Fragile bundled selector — Epic 5 will replace with 4-tier own-post finder.
-          resolveOwnPostTarget: async (page) => {
-            try {
-              const href = await page.getAttribute?.(
-                'a[href*="/posts/"], a[href*="/permalink/"], a[href*="/video/"], a[href*="story_fbid"]',
-                'href'
-              )
-              if (!href) return null
-              return href.startsWith('http') ? href : `https://www.facebook.com${href}`
-            } catch {
-              return null
-            }
-          },
+          resolveOwnPostTarget,
           actionTokenClient,
           contentTemplates: contentTemplateRepo,
           actionExecutor: { executeSelfComment },

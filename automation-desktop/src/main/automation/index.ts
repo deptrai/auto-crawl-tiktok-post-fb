@@ -75,3 +75,4 @@ export {
   type RunSelfCommentOptions,
   type SelfCommentSession
 } from './self-comment-orchestrator'
+export { resolveOwnPostTarget, type OwnPostTargetPageLike } from './own-post-target-resolver'

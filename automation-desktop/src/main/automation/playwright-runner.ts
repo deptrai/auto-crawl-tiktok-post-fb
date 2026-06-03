@@ -116,6 +116,9 @@ export function createPlaywrightRunner(deps: PlaywrightRunnerDeps = {}): Playwri
         ? undefined
         : [
             '--app=about:blank',
+            '--disable-notifications',
+            '--disable-infobars',
+            '--disable-features=DesktopPWAsRunOnOsLogin,WebAppEnableLinkCapturing,IPH_DemoMode',
             `--window-size=${windowSize.width},${windowSize.height}`,
             ...(input.windowPosition
               ? [`--window-position=${input.windowPosition.x},${input.windowPosition.y}`]
@@ -133,18 +136,16 @@ export function createPlaywrightRunner(deps: PlaywrightRunnerDeps = {}): Playwri
             timeout: timeoutMs
           })
         }
-        const baseUserAgent = input.userAgent?.trim() || (useMobile ? MOBILE_BROWSER_USER_AGENT : input.fingerprint.userAgent)
+        const baseUserAgent = input.userAgent?.trim() || input.fingerprint.userAgent
         const userAgent = browser ? reconcileUserAgentWithBrowser(baseUserAgent, browser) : baseUserAgent
         const contextOptions = {
           userAgent,
           viewport: useMobile
             ? (input.viewport ?? MOBILE_BROWSER_VIEWPORT)
             : input.fingerprint.viewport,
-          // Keep the iPhone UA/touch surface, but do not enable Playwright's mobile viewport
-          // emulation here: Chromium otherwise exposes a wide layout viewport and Facebook
-          // renders a narrow column with a large gray gutter in headed mode.
+          permissions: [],
           isMobile: false,
-          hasTouch: useMobile,
+          hasTouch: false,
           timezoneId: input.fingerprint.timezone
         }
 
@@ -159,6 +160,9 @@ export function createPlaywrightRunner(deps: PlaywrightRunnerDeps = {}): Playwri
             })
         await context.addCookies(input.cookies)
         const page = context.pages()[0] ?? (await context.newPage())
+        page.on('dialog', (dialog) => {
+          void dialog.dismiss().catch(() => undefined)
+        })
         if (!input.headless) {
           await fitHeadedWindowToMobileViewport(page, input.windowPosition, windowSize)
         }

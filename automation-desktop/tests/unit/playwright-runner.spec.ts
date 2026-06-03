@@ -2,7 +2,6 @@ import { test, expect } from '@playwright/test'
 import type { Browser, BrowserContext, LaunchOptions, Page } from 'playwright'
 import {
   createPlaywrightRunner,
-  MOBILE_BROWSER_USER_AGENT,
   MOBILE_BROWSER_VIEWPORT,
   MOBILE_BROWSER_WINDOW_SIZE
 } from '../../src/main/automation'
@@ -23,6 +22,7 @@ test('[P1] playwright runner launches visible mobile browser with fixed size and
   let launchOptions: Parameters<NonNullable<Parameters<typeof createPlaywrightRunner>[0]>['launchPersistentContext']>[1]
   let contextOptions: Parameters<Browser['newContext']>[0]
   const page = {
+    on: () => page,
     goto: async () => undefined
   } as unknown as Page
   const context = {
@@ -54,14 +54,17 @@ test('[P1] playwright runner launches visible mobile browser with fixed size and
   expect(launchOptions?.headless).toBe(false)
   expect(launchOptions?.args).toEqual([
     '--app=about:blank',
+    '--disable-notifications',
+    '--disable-infobars',
+    '--disable-features=DesktopPWAsRunOnOsLogin,WebAppEnableLinkCapturing,IPH_DemoMode',
     '--window-size=500,520',
     '--window-position=438,0'
   ])
   expect(contextOptions).toMatchObject({
-    userAgent: MOBILE_BROWSER_USER_AGENT,
+    userAgent: fingerprint.userAgent,
     viewport: MOBILE_BROWSER_VIEWPORT,
     isMobile: false,
-    hasTouch: true,
+    hasTouch: false,
     timezoneId: 'Asia/Ho_Chi_Minh'
   })
 })
@@ -69,6 +72,7 @@ test('[P1] playwright runner launches visible mobile browser with fixed size and
 test('[P1] playwright runner can align mobile viewport width with dynamic window width', async () => {
   let contextOptions: Parameters<NonNullable<Parameters<typeof createPlaywrightRunner>[0]>['launchPersistentContext']>[1]
   const page = {
+    on: () => page,
     goto: async () => undefined
   } as unknown as Page
   const context = {
@@ -96,13 +100,14 @@ test('[P1] playwright runner can align mobile viewport width with dynamic window
   expect(contextOptions).toMatchObject({
     viewport: { width: 300, height: 420 },
     isMobile: false,
-    hasTouch: true
+    hasTouch: false
   })
 })
 
 test('[P1] playwright runner prefers imported user agent when provided', async () => {
   let contextOptions: Parameters<NonNullable<Parameters<typeof createPlaywrightRunner>[0]>['launchPersistentContext']>[1]
   const page = {
+    on: () => page,
     goto: async () => undefined
   } as unknown as Page
   const context = {
@@ -134,6 +139,7 @@ test('[P1] playwright runner prefers imported user agent when provided', async (
 test('[P1] playwright runner keeps headless mode hidden while still using mobile context', async () => {
   let launchOptions: LaunchOptions | undefined
   const page = {
+    on: () => page,
     goto: async () => undefined
   } as unknown as Page
   const context = {

@@ -30,11 +30,13 @@ class FakeLocator implements LocatorLike {
 
 function fakePage(locators: Record<string, FakeLocator>): {
   locator: (selector: string) => LocatorLike
+  waitForTimeout: (ms: number) => Promise<void>
 } {
   return {
     locator(selector) {
       return locators[selector] ?? new FakeLocator(false)
-    }
+    },
+    waitForTimeout: async () => undefined
   }
 }
 
@@ -65,6 +67,63 @@ test('[P0] action executor returns selector_miss when composer is absent', async
     executeSelfComment({ page, content: 'Không chạy', readBack: async () => true })
   ).resolves.toBe('selector_miss')
   expect(submit.clicked).toBe(0)
+})
+
+test('[P1] action executor clicks comment trigger before filling delayed composer', async () => {
+  const trigger = new FakeLocator()
+  const box = new FakeLocator()
+  const submit = new FakeLocator()
+  let boxVisible = false
+  box.count = async () => (boxVisible ? 1 : 0)
+  trigger.click = async () => {
+    trigger.clicked += 1
+    boxVisible = true
+  }
+  const page = fakePage({
+    [SELF_COMMENT_SELECTORS.commentTrigger]: trigger,
+    [SELF_COMMENT_SELECTORS.commentBox]: box,
+    [SELF_COMMENT_SELECTORS.submit]: submit
+  })
+
+  const outcome = await executeSelfComment({
+    page,
+    content: 'Composer hiện sau click',
+    readBack: async () => true
+  })
+
+  expect(outcome).toBe('success')
+  expect(trigger.clicked).toBe(1)
+  expect(box.filled).toEqual(['Composer hiện sau click'])
+})
+
+test('[P1] action executor falls back to keyboard typing when React composer rejects fill', async () => {
+  const box = new FakeLocator()
+  const typed: string[] = []
+  const pressed: string[] = []
+  box.fill = async () => {
+    throw new Error('Facebook contenteditable fill failed')
+  }
+  const page = {
+    ...fakePage({ [SELF_COMMENT_SELECTORS.commentBox]: box }),
+    keyboard: {
+      type: async (text: string) => {
+        typed.push(text)
+      },
+      press: async (key: string) => {
+        pressed.push(key)
+      }
+    }
+  }
+
+  const outcome = await executeSelfComment({
+    page,
+    content: 'Gõ bằng keyboard',
+    readBack: async () => true
+  })
+
+  expect(outcome).toBe('success')
+  expect(typed).toEqual(['Gõ bằng keyboard'])
+  expect(pressed).toEqual(['Enter'])
 })
 
 test('[P0] action executor maps submit failures to error without leaking content', async () => {
