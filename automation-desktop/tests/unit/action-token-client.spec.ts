@@ -83,3 +83,20 @@ test('[P1] action token client maps server deny without leaking token or jti', a
   expect(`${serialized}:${printable}`).not.toContain(secretToken)
   expect(`${serialized}:${printable}`).not.toContain(secretJti)
 })
+
+test('[P1] action token client consumes token without persisting jti or echoing JWT', async () => {
+  let captured: unknown
+  const client = createClient(async (options) => {
+    captured = options
+    return { jti: 'jti-reference', consumed_at: '2026-06-03T10:02:00.000Z' }
+  })
+
+  await expect(client.consumeActionToken('JWT_SECRET_VALUE')).resolves.toEqual({
+    jti: 'jti-reference',
+    consumedAt: '2026-06-03T10:02:00.000Z'
+  })
+  expect(captured).toMatchObject({
+    url: 'https://license.example.test/api/v1/automation/action/token/consume',
+    body: { token: 'JWT_SECRET_VALUE' }
+  })
+})

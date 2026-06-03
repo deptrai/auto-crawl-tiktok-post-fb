@@ -1,5 +1,5 @@
 # generated: 2026-06-02
-# last_updated: 2026-06-03 (Epic 1+2 done; Epic 3 stories done; 4.1-4.4 done; 4.5 review — per-action server token; Epic 4 in-progress)
+# last_updated: 2026-06-03 (Epic 1+2 done; Epic 3 stories done; 4.1-4.5 done; 4.6a review — self-comment core e2e; Epic 4 in-progress)
 # project: auto-crawl-tiktok-post-fb (Phase 3 — Facebook Cookie-Based Automation Desktop)
 # project_key: NOKEY
 # tracking_system: file-system
@@ -47,7 +47,7 @@ project: auto-crawl-tiktok-post-fb-phase3
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
-last_updated: 2026-06-03 (Epic 4 in-progress — 4.1-4.4 done; 4.5 in-progress: per-action server token JWT HS256 client+backend R-D9)
+last_updated: 2026-06-03 (Epic 4 in-progress — 4.1-4.5 done; 4.6a review: self-comment core e2e)
 
 development_status:
   # ===== Phase 3.0 MVP =====
@@ -81,8 +81,10 @@ development_status:
   4-2-state-machine-cho-automation-job: done
   4-3-login-cookie-xu-ly-2fa-checkpoint: done
   4-4-trich-xuat-csrf-token-qua-http: done
-  4-5-lay-per-action-server-token: review
-  4-6-thuc-thi-self-comment-end-to-end: backlog
+  4-5-lay-per-action-server-token: done
+  # 4.6 tách thành 4.6a (core e2e headless) + 4.6b (surface IPC/UI) — quyết định 2026-06-03
+  4-6a-self-comment-core-e2e: review
+  4-6b-self-comment-ui-templates: backlog
   epic-4-retrospective: optional
 
   # Epic 5: Khả năng Tự phục hồi (Adaptive Resilience)

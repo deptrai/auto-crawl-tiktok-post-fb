@@ -35,3 +35,10 @@ class ActionTokenResponse(BaseModel):
     token: str
     jti: str
     expires_at: datetime
+
+class ActionTokenConsumeRequest(BaseModel):
+    token: str = Field(min_length=1)
+
+class ActionTokenConsumeResponse(BaseModel):
+    jti: str
+    consumed_at: datetime

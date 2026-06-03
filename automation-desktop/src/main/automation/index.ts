@@ -56,3 +56,18 @@ export {
   type TokenExtractor,
   type TokenExtractorDeps
 } from './token-extractor'
+export {
+  SELF_COMMENT_SELECTORS,
+  executeSelfComment,
+  type ActionOutcome,
+  type CommentPageLike,
+  type LocatorLike,
+  type SelfCommentSelectors
+} from './action-executor'
+export {
+  createSelfCommentOrchestrator,
+  type SelfCommentLoginResult,
+  type SelfCommentOrchestrator,
+  type SelfCommentOrchestratorDeps,
+  type SelfCommentSession
+} from './self-comment-orchestrator'

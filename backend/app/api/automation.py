@@ -13,7 +13,12 @@ from app.api.auth import require_authenticated_user
 from app.api.deps import RoleChecker
 from app.core.database import get_db
 from app.models.models import User
-from app.schemas.automation.action_token import ActionTokenRequest, ActionTokenResponse
+from app.schemas.automation.action_token import (
+    ActionTokenConsumeRequest,
+    ActionTokenConsumeResponse,
+    ActionTokenRequest,
+    ActionTokenResponse,
+)
 from app.schemas.automation.license import (
     AdminLicenseResponse,
     LicenseActivateRequest,
@@ -23,7 +28,7 @@ from app.schemas.automation.license import (
     LicenseCreateRequest,
     LicenseRevokeResponse,
 )
-from app.services.automation.action_token import ActionTokenError, issue_action_token
+from app.services.automation.action_token import ActionTokenError, consume_action_token, issue_action_token
 from app.services.automation.license import (
     LicenseActivationError,
     _admin_license_response,
@@ -44,6 +49,9 @@ _STATUS_BY_CODE = {
     "LICENSE_INVALID": 422,
     "LICENSE_EXPIRED": 403,
     "ACTION_NOT_ALLOWED": 403,
+    "ACTION_TOKEN_INVALID": 422,
+    "ACTION_TOKEN_REUSED": 409,
+    "ACTION_TOKEN_EXPIRED": 401,
     "ACTION_TOKEN_DB_ERROR": 500,
     "LICENSE_DB_ERROR": 500,
     "LICENSE_KEY_COLLISION": 500,
@@ -154,6 +162,22 @@ def issue_action_token_endpoint(
         return _error_response(
             "ACTION_TOKEN_DB_ERROR",
             "Không thể cấp token hành động do lỗi cơ sở dữ liệu.",
+            retryable=True,
+        )
+
+@router.post("/action/token/consume", response_model=ActionTokenConsumeResponse)
+def consume_action_token_endpoint(
+    request_body: ActionTokenConsumeRequest,
+    db: Session = Depends(get_db),
+) -> ActionTokenConsumeResponse | JSONResponse:
+    try:
+        return consume_action_token(db, token=request_body.token)
+    except ActionTokenError as exc:
+        return _error_response(exc.code, exc.message, exc.retryable)
+    except SQLAlchemyError:
+        return _error_response(
+            "ACTION_TOKEN_DB_ERROR",
+            "Không thể tiêu thụ token hành động do lỗi cơ sở dữ liệu.",
             retryable=True,
         )
 

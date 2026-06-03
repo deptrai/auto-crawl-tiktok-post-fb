@@ -1,7 +1,9 @@
 import {
+  BackendActionTokenConsumeResponseSchema,
   BackendActionTokenResponseSchema,
   BackendHttpError,
   postJson as defaultPostJson,
+  type BackendActionTokenConsumeResponse,
   type BackendActionTokenResponse
 } from '../../shared/api-client/http-client'
 import { generateHwid as defaultGenerateHwid } from './hwid-generator'
@@ -18,6 +20,7 @@ export interface ActionTokenRequest {
 
 export interface ActionTokenClient {
   requestActionToken(request: ActionTokenRequest): Promise<ActionToken>
+  consumeActionToken(token: string): Promise<{ jti: string; consumedAt: string }>
 }
 
 export class ActionTokenClientError extends Error {
@@ -87,6 +90,20 @@ export function createActionTokenClient(deps: {
           timeoutMs: deps.timeoutMs
         })
         return { token: response.token, jti: response.jti, expiresAt: response.expires_at }
+      } catch (error) {
+        throw normalizeActionTokenError(error)
+      }
+    },
+
+    async consumeActionToken(token) {
+      try {
+        const response: BackendActionTokenConsumeResponse = await requestJson({
+          url: `${baseUrl}/api/v1/automation/action/token/consume`,
+          body: { token },
+          schema: BackendActionTokenConsumeResponseSchema,
+          timeoutMs: deps.timeoutMs
+        })
+        return { jti: response.jti, consumedAt: response.consumed_at }
       } catch (error) {
         throw normalizeActionTokenError(error)
       }

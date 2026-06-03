@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="vi">
+  <body>
+    <main data-testid="logged-in">
+      <article data-testid="own-post">
+        <p>Bài viết của chính profile</p>
+        <div contenteditable="true" role="textbox" aria-label="Viết bình luận" data-testid="self-comment-box"></div>
+        <button type="button" data-testid="self-comment-submit">Bình luận</button>
+        <div data-testid="comment-list"></div>
+      </article>
+    </main>
+    <script>
+      const box = document.querySelector('[data-testid="self-comment-box"]')
+      document.querySelector('[data-testid="self-comment-submit"]').addEventListener('click', () => {
+        const item = document.createElement('div')
+        item.setAttribute('data-testid', 'comment-item')
+        item.textContent = box.textContent || ''
+        document.querySelector('[data-testid="comment-list"]').appendChild(item)
+      })
+    </script>
+  </body>
+</html>

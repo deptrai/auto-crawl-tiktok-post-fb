@@ -169,3 +169,86 @@ def test_action_token_issues_unique_jtis(client: TestClient, db_session: Session
     assert second.status_code == 200
     assert first.json()["jti"] != second.json()["jti"]
     assert db_session.query(ActionToken).count() == 2
+
+
+def test_action_token_rejects_malformed_hwid_at_schema_layer(client: TestClient, db_session: Session):
+    """Pydantic ActionTokenRequest (hwid Field 64/64 + is_valid_hwid) rejects malformed
+    hwid with 422 BEFORE reaching the service — locks the schema-layer defense."""
+    license_record, _ = _activate(db_session, key="LIC-ACTION-BADHWID")
+
+    response = client.post(
+        "/api/v1/automation/action/token",
+        json={"key": license_record.key, "hwid": "not-a-valid-hwid", "action_type": "comment"},
+    )
+
+    assert response.status_code == 422
+
+
+def test_action_token_consume_success_sets_used_at(client: TestClient, db_session: Session):
+    from app.models.automation.action_token import ActionToken
+
+    license_record, _activation_response = _activate(db_session, key="LIC-ACTION-CONSUME")
+    issued = client.post(
+        "/api/v1/automation/action/token",
+        json={"key": license_record.key, "hwid": VALID_HWID, "action_type": "comment"},
+    ).json()
+
+    response = client.post("/api/v1/automation/action/token/consume", json={"token": issued["token"]})
+
+    assert response.status_code == 200
+    assert response.json()["jti"] == issued["jti"]
+    assert response.json()["consumed_at"]
+    row = db_session.query(ActionToken).filter_by(jti=issued["jti"]).one()
+    assert row.used_at is not None
+
+
+def test_action_token_consume_reuse_returns_409(client: TestClient, db_session: Session):
+    license_record, _activation_response = _activate(db_session, key="LIC-ACTION-REUSE")
+    issued = client.post(
+        "/api/v1/automation/action/token",
+        json={"key": license_record.key, "hwid": VALID_HWID, "action_type": "comment"},
+    ).json()
+
+    assert client.post("/api/v1/automation/action/token/consume", json={"token": issued["token"]}).status_code == 200
+    reused = client.post("/api/v1/automation/action/token/consume", json={"token": issued["token"]})
+
+    assert reused.status_code == 409
+    assert reused.json()["error"]["code"] == "ACTION_TOKEN_REUSED"
+
+
+def test_action_token_consume_expired_returns_401(client: TestClient, db_session: Session):
+    from app.services.automation.action_token import issue_action_token
+
+    license_record, _activation_response = _activate(db_session, key="LIC-ACTION-EXPIRED-CONSUME")
+    issued = issue_action_token(
+        db_session,
+        key=license_record.key,
+        hwid=VALID_HWID,
+        action_type="comment",
+        now=datetime.now(timezone.utc) - timedelta(minutes=2),
+    )
+
+    response = client.post("/api/v1/automation/action/token/consume", json={"token": issued.token})
+
+    assert response.status_code == 401
+    assert response.json()["error"]["code"] == "ACTION_TOKEN_EXPIRED"
+
+
+def test_action_token_consume_unknown_jti_returns_422(client: TestClient, db_session: Session):
+    from app.core.config import settings
+
+    token = jwt.encode(
+        {
+            "jti": "missing-jti",
+            "sub": "activation-id",
+            "action": "comment",
+            "exp": int((datetime.now(timezone.utc) + timedelta(minutes=1)).timestamp()),
+        },
+        settings.JWT_SECRET,
+        algorithm=settings.JWT_ALGORITHM,
+    )
+
+    response = client.post("/api/v1/automation/action/token/consume", json={"token": token})
+
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "ACTION_TOKEN_INVALID"

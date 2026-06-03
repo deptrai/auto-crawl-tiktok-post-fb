@@ -56,5 +56,24 @@ export function openEncryptedDatabase(options: EncryptedDbOptions): Database.Dat
       result TEXT
     )`
   ).run()
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS content_templates(
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      body TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`
+  ).run()
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS job_actions(
+      id TEXT PRIMARY KEY,
+      job_id TEXT NOT NULL REFERENCES automation_jobs(id) ON DELETE CASCADE,
+      action_type TEXT NOT NULL,
+      target TEXT,
+      action_token TEXT,
+      executed_at TEXT NOT NULL,
+      outcome TEXT NOT NULL
+    )`
+  ).run()
   return db
 }

@@ -25,6 +25,15 @@ export const BackendActionTokenResponseSchema = z.object({
 
 export type BackendActionTokenResponse = z.infer<typeof BackendActionTokenResponseSchema>
 
+export const BackendActionTokenConsumeResponseSchema = z.object({
+  jti: z.string().min(1),
+  consumed_at: z.string().datetime({ offset: true })
+})
+
+export type BackendActionTokenConsumeResponse = z.infer<
+  typeof BackendActionTokenConsumeResponseSchema
+>
+
 export class BackendHttpError extends Error {
   code: string
   retryable: boolean

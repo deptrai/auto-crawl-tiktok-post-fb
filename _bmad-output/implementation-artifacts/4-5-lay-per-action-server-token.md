@@ -1,6 +1,6 @@
 # Story 4.5: Lấy per-action server token
 
-Status: review
+Status: done
 
 Epic: 4 — Lõi Automation Facebook (Self-Comment MVP) · Story: 4.5 · ID: 4.5
 
@@ -45,6 +45,29 @@ So that crack license thuần client-side KHÔNG hoạt động (R-D9) — reven
 - [x] **V** — Verify: backend `pytest backend/tests/automation/test_automation_action_token.py` xanh; client `npm run lint` + `typecheck` + test mới + full suite không giảm (baseline 172).
 
 > **D1 (defer):** KHÔNG consume token / mark `used_at` (4.6 khi action execute — verify jti + used_at null + set used_at). KHÔNG self-comment HTTP POST (4.6). KHÔNG IPC/UI wire `automation:start` (4.6). KHÔNG `job_actions` insert (4.6). KHÔNG cache token safeStorage (optional, defer 4.6 nếu cần). KHÔNG state machine transition.
+
+## Review Findings (2026-06-03 — bmad-code-review, 3-lens adversarial)
+
+> Diff: commit `96523b4` (thuần 4.5, full-stack). **Client: Lint ✅ · Typecheck ✅ · 175 tests PASS** (172 + 3). **Backend: review bằng đọc code** (pytest cần testcontainers/Postgres — KHÔNG chạy được trong env review; dev claim xanh, code + test-code đọc kỹ thấy đúng). Verdict: **APPROVE — không blocker, không bug.**
+
+**AC1–AC6 + guardrail — đạt:**
+- ✅ **AC1** `issue_action_token` verify order đúng: action whitelist (TIER2_ACTIONS) → license (revoked→INVALID) → activation → expired → hwid. JWT HS256 `jwt.encode({jti,sub=activation.id,action,exp}, settings.JWT_SECRET, settings.JWT_ALGORITHM)` — secret từ settings (KHÔNG hardcode). exp=now+60s.
+- ✅ **AC2** model `action_tokens`: `jti` PK+unique+Index, FK `phase3.license_activations.id` CASCADE, `used_at` nullable. Migration `20260603_01`. INSERT row + IntegrityError→rollback→DB_ERROR retryable.
+- ✅ **AC3** ErrorEnvelope VN + `_STATUS_BY_CODE` (LICENSE_INVALID 422, EXPIRED 403, HWID_MISMATCH 409, ACTION_NOT_ALLOWED 403, RATE_LIMITED 429). **Pydantic `ActionTokenRequest.hwid=Field(min_length=64,max_length=64)`+`is_valid_hwid` chặn malformed hwid → 422 ở schema layer** (defense trước service).
+- ✅ **AC4** client `requestActionToken`: success→{token,jti,expiresAt} in-memory; NETWORK_ERROR/TIMEOUT→`ACTION_TOKEN_OFFLINE` retryable; 4xx→`ACTION_TOKEN_DENIED`. VN message, retryable đúng. DI (postJson/getLicenseKey/generateHwid).
+- ✅ **AC5 secret hygiene** XUẤT SẮC: backend KHÔNG log token; client test assert error KHÔNG leak token/jti **kể cả khi backend error chứa `{token,jti}` trong details**.
+- ✅ **AC6** backend pytest (JWT decode claims, exp 55-65s, DB row, deny 422/409/403, rate-limit 429, jti unique) + client unit (success/offline/deny/no-leak). rate-limiter riêng `_action_token_rate_limiter` (60/60s).
+- ✅ **D2** anti-reuse DB jti-UNIQUE (no Redis); **D1** backend chưa set `used_at`, client chưa wire IPC (consume + IPC = 4.6).
+
+**Findings (tất cả LOW/INFO — KHÔNG block done):**
+
+- [ ] [Review][Info][KHÔNG fix — đúng thiết kế] **Anti-reuse ở 4.5 chỉ là STORAGE** (jti row + used_at=null). Enforcement (verify JWT + check used_at null + set used_at) = **4.6** (D1/D2). Implement ở 4.5 = kéo scope 4.6 sang → KHÔNG làm. Note để 4.6 không quên.
+- [x] [Review][Nit] **(ĐÃ FIX)** hwid 2 lớp — thật ra service `validate_hwid` còn **normalize** cho so sánh `hwid_hash` + bảo vệ khi gọi service trực tiếp (test gọi thẳng). Thêm comment giải thích defense-in-depth + thêm test `test_action_token_rejects_malformed_hwid_at_schema_layer` (lock Pydantic→422).
+- [ ] [Review][Info][KHÔNG fix — hành vi đúng] client `ACTION_TOKEN_DENIED` surface `error.message` backend (VN) — message giàu thông tin hơn generic; no-leak đã verify (token/jti không lọt kể cả trong details). Đổi sang generic = mất thông tin → giữ nguyên.
+
+**Limitation review:** Backend pytest KHÔNG chạy được trong env này (thiếu testcontainers/Postgres). Đã review qua đọc service/route/model/schema/test-code — assertion thật, logic đúng. Khuyến nghị: CI desktop+backend chạy pytest action_token trước merge để chốt.
+
+**Dismissed:** malformed-hwid→500 (Pydantic schema chặn 422 trước service); JWT tz (timestamp() trên UTC tz-aware đúng); jti collision (uuid4); concurrent issue (2 jti khác, anti-reuse ở consume).
 
 ## Dev Notes
 
