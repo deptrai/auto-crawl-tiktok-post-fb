@@ -318,6 +318,7 @@ export function ProfilesView(): React.JSX.Element {
                           {isBusy ? 'Đang lưu...' : 'Lưu'}
                         </button>
                         <button
+                          data-testid={`profile-edit-cancel-${profile.uid}`}
                           className="profile-row-button"
                           type="button"
                           disabled={isBusy}
@@ -381,6 +382,7 @@ export function ProfilesView(): React.JSX.Element {
                           {isBusy ? 'Đang xóa...' : 'Xóa'}
                         </button>
                         <button
+                          data-testid={`profile-delete-cancel-${profile.uid}`}
                           className="profile-row-button"
                           type="button"
                           disabled={isBusy}

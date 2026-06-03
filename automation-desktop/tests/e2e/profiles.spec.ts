@@ -308,8 +308,8 @@ test('[P1] edit cancel restores original display name without saving', async () 
     await window.getByTestId('import-button').click()
     await expect(window.getByTestId('import-result')).toBeVisible({ timeout: 10_000 })
 
-    // Wait for list
-    await expect(window.getByTestId('profile-list')).toBeVisible({ timeout: 10_000 })
+    // Wait for row to appear in the real-time list
+    await expect(window.getByTestId('profile-row-uid_cancel')).toBeVisible({ timeout: 10_000 })
 
     // Click Sửa → type new name → click Hủy
     await window.getByTestId('profile-edit-uid_cancel').click()
@@ -347,8 +347,8 @@ test('[P1] delete cancel leaves profile intact in list', async () => {
     await window.getByTestId('import-button').click()
     await expect(window.getByTestId('import-result')).toBeVisible({ timeout: 10_000 })
 
-    // Wait for list
-    await expect(window.getByTestId('profile-list')).toBeVisible({ timeout: 10_000 })
+    // Wait for row to appear in the real-time list
+    await expect(window.getByTestId('profile-row-uid_del_cancel')).toBeVisible({ timeout: 10_000 })
 
     // Click Xóa → confirm panel appears → click Hủy
     await window.getByTestId('profile-delete-uid_del_cancel').click()

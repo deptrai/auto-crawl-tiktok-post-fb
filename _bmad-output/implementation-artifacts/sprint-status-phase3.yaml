@@ -1,5 +1,5 @@
 # generated: 2026-06-02
-# last_updated: 2026-06-03 (Epic 1+2 done; Epic 3 in-progress; 3.1 ready-for-dev — proxyfb provider; Epic 12 MỚI — Messenger Seeding)
+# last_updated: 2026-06-03 (Epic 1+2 done; Epic 3 in-progress; 3.1 review — proxyfb provider; Epic 12 MỚI — Messenger Seeding)
 # project: auto-crawl-tiktok-post-fb (Phase 3 — Facebook Cookie-Based Automation Desktop)
 # project_key: NOKEY
 # tracking_system: file-system
@@ -69,7 +69,7 @@ development_status:
 
   # Epic 3: Quản lý Proxy (Proxy Management)
   epic-3: in-progress
-  3-1-tich-hop-proxy-provider-proxyfb: ready-for-dev
+  3-1-tich-hop-proxy-provider-proxyfb: review
   3-2-health-check-proxy-circuit-breaker: backlog
   3-3-bind-proxy-rieng-moi-profile-session: backlog
   epic-3-retrospective: optional

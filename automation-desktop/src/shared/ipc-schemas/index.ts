@@ -47,6 +47,20 @@ import {
   type ProfileUpdateRequest,
   type ProfileUpdateResponse
 } from './profile'
+import {
+  ProxyConfigGetRequestSchema,
+  ProxyConfigGetResponseSchema,
+  ProxyConfigSetRequestSchema,
+  ProxyConfigSetResponseSchema,
+  ProxyRotateRequestSchema,
+  ProxyRotateResponseSchema,
+  type ProxyConfigGetRequest,
+  type ProxyConfigGetResponse,
+  type ProxyConfigSetRequest,
+  type ProxyConfigSetResponse,
+  type ProxyRotateRequest,
+  type ProxyRotateResponse
+} from './proxy'
 
 export type Phase3ChannelName = `phase3:${string}:${string}`
 
@@ -110,7 +124,22 @@ export const channelRegistry = [
     channel: 'phase3:profile:delete',
     requestSchema: ProfileDeleteRequestSchema,
     responseSchema: ProfileDeleteResponseSchema
-  } satisfies ChannelRegistryEntry<ProfileDeleteRequest, ProfileDeleteResponse>
+  } satisfies ChannelRegistryEntry<ProfileDeleteRequest, ProfileDeleteResponse>,
+  {
+    channel: 'phase3:proxy:config-get',
+    requestSchema: ProxyConfigGetRequestSchema,
+    responseSchema: ProxyConfigGetResponseSchema
+  } satisfies ChannelRegistryEntry<ProxyConfigGetRequest, ProxyConfigGetResponse>,
+  {
+    channel: 'phase3:proxy:config-set',
+    requestSchema: ProxyConfigSetRequestSchema,
+    responseSchema: ProxyConfigSetResponseSchema
+  } satisfies ChannelRegistryEntry<ProxyConfigSetRequest, ProxyConfigSetResponse>,
+  {
+    channel: 'phase3:proxy:rotate',
+    requestSchema: ProxyRotateRequestSchema,
+    responseSchema: ProxyRotateResponseSchema
+  } satisfies ChannelRegistryEntry<ProxyRotateRequest, ProxyRotateResponse>
 ] as const satisfies ReadonlyArray<ChannelRegistryEntry>
 
 export * from './common'
@@ -118,3 +147,4 @@ export * from './settings'
 export * from './shell'
 export * from './license'
 export * from './profile'
+export * from './proxy'

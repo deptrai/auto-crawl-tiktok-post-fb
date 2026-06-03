@@ -38,5 +38,12 @@ export function openEncryptedDatabase(options: EncryptedDbOptions): Database.Dat
       PRIMARY KEY(profile_id, key)
     )`
   ).run()
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS proxy_configs(
+      provider TEXT PRIMARY KEY,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_rotated_at TEXT
+    )`
+  ).run()
   return db
 }

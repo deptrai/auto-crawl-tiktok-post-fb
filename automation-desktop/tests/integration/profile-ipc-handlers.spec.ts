@@ -339,7 +339,11 @@ test('[P1] profile IPC delete propagates PROFILE_DELETE_FAILED as retryable Erro
     listProfiles: () => profileList,
     updateProfile: () => profileList[0],
     deleteProfile: async () => {
-      throw new ProfileServiceError('PROFILE_DELETE_FAILED', 'Không thể xóa dữ liệu nhạy cảm của profile. Vui lòng thử lại.', true)
+      throw new ProfileServiceError(
+        'PROFILE_DELETE_FAILED',
+        'Không thể xóa dữ liệu nhạy cảm của profile. Vui lòng thử lại.',
+        true
+      )
     }
   }
   registerProfileHandlers(fakeIpc, service)

@@ -55,6 +55,12 @@ textarea {
   backdrop-filter: blur(18px);
 }
 
+.main-shell,
+.readonly-shell {
+  max-height: calc(100vh - 56px);
+  overflow-y: auto;
+}
+
 .eyebrow {
   margin: 0 0 10px;
   color: #ffcc7a;
@@ -244,7 +250,8 @@ h1 {
 }
 
 .import-result,
-.profiles-list-section {
+.profiles-list-section,
+.proxy-panel {
   border: 1px solid rgba(255, 255, 255, 0.14);
   border-radius: 22px;
   padding: 20px;
@@ -252,9 +259,44 @@ h1 {
 }
 
 .result-summary,
-.profiles-list-section h2 {
+.profiles-list-section h2,
+.proxy-panel h2 {
   margin: 0;
   font-size: 22px;
+}
+
+.proxy-form {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.proxy-field-label {
+  margin: 0;
+}
+
+.proxy-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.proxy-action-button {
+  width: 100%;
+}
+
+.proxy-error {
+  margin: 14px 0 0;
+}
+
+.proxy-test-result {
+  margin: 14px 0 0;
+  border: 1px solid rgba(130, 220, 166, 0.34);
+  border-radius: 14px;
+  padding: 12px 14px;
+  color: #bfeec7;
+  background: rgba(76, 214, 119, 0.12);
+  font-weight: 900;
 }
 
 .failed-list,
@@ -471,5 +513,9 @@ h1 {
   .profile-row-side,
   .profile-edit-input {
     width: 100%;
+  }
+
+  .proxy-actions {
+    grid-template-columns: 1fr;
   }
 }

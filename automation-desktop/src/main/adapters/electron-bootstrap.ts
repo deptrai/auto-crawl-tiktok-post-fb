@@ -11,9 +11,11 @@ import {
   type LicenseStatus
 } from '../license/license-service'
 import { createProfileService, type ProfileService } from '../profile/profile-service'
+import { createProxyService, ProxyfbProvider, type ProxyService } from '../proxy'
 import {
   registerLicenseHandlers,
   registerProfileHandlers,
+  registerProxyHandlers,
   registerSettingsHandlers,
   registerShellHandlers
 } from '../ipc'
@@ -30,6 +32,7 @@ interface BootstrapDeps {
     settings: SettingsRepository
     license: LicenseService
     profile: ProfileService
+    proxy: ProxyService
   }
   repos: {
     profile: ProfileRepository
@@ -47,6 +50,7 @@ interface BootstrapDeps {
 type DbSmokeGlobal = typeof globalThis & {
   __PHASE3_DB_SMOKE_RESULT__?: string
   __PHASE3_PROFILE_REPO_SMOKE_RESULT__?: string
+  __PHASE3_PROXY_SCHEMA_SMOKE_RESULT__?: string
   __PHASE3_EXTERNAL_OPEN_URL__?: string
 }
 
@@ -92,6 +96,12 @@ function initializeDeps(): BootstrapDeps {
       repo: profileRepo,
       storage: adapters.storage,
       importDelayMs: readProfileImportDelayMs()
+    }),
+    proxy: createProxyService({
+      storage: adapters.storage,
+      providers: {
+        proxyfb: new ProxyfbProvider({ baseUrl: readProxyfbBaseUrl() })
+      }
     })
   }
   const repos = {
@@ -146,6 +156,12 @@ function readProfileImportDelayMs(): number | undefined {
   const parsed = Number(trimmed)
   if (!Number.isInteger(parsed) || parsed < 0 || String(parsed) !== trimmed) return undefined
   return Math.min(parsed, 5_000)
+}
+
+function readProxyfbBaseUrl(): string | undefined {
+  if (app.isPackaged) return undefined
+  const raw = process.env['PHASE3_PROXYFB_BASE_URL']?.trim()
+  return raw ? raw : undefined
 }
 
 function runProfileRepoSmoke(db: BootstrapDeps['db'], repo: ProfileRepository): void {
@@ -221,6 +237,27 @@ function runProfileRepoSmoke(db: BootstrapDeps['db'], repo: ProfileRepository): 
   process.env['PHASE3_PROFILE_REPO_SMOKE_RESULT'] = result
 }
 
+function runProxySchemaSmoke(db: BootstrapDeps['db']): void {
+  if (app.isPackaged) return
+  if (process.env['PHASE3_PROXY_SCHEMA_SMOKE'] !== '1') return
+
+  let result = 'pass'
+  try {
+    const columns = db
+      .prepare<[], { name: string }>('PRAGMA table_info(proxy_configs)')
+      .all()
+      .map((row) => row.name)
+    if (columns.join(',') !== 'provider,enabled,last_rotated_at') {
+      throw new Error(`unexpected columns: ${columns.join(',')}`)
+    }
+  } catch (error) {
+    result = `fail:${error instanceof Error ? error.message : String(error)}`
+  }
+
+  ;(globalThis as DbSmokeGlobal).__PHASE3_PROXY_SCHEMA_SMOKE_RESULT__ = result
+  process.env['PHASE3_PROXY_SCHEMA_SMOKE_RESULT'] = result
+}
+
 async function runSafeStorageSmoke(storage: ElectronSafeStorage): Promise<void> {
   if (app.isPackaged) return
   const key = process.env['PHASE3_SAFE_STORAGE_SMOKE_KEY']
@@ -270,6 +307,7 @@ export async function bootstrapApplication(): Promise<void> {
   runDatabaseSmoke(deps.db)
   runSettingsSmoke(deps.services.settings)
   runProfileRepoSmoke(deps.db, deps.repos.profile)
+  runProxySchemaSmoke(deps.db)
   await runSafeStorageSmoke(deps.adapters.storage)
 
   // Init order: db -> adapters -> services -> ipc -> window -> background workers
@@ -279,6 +317,7 @@ export async function bootstrapApplication(): Promise<void> {
   registerSettingsHandlers(ipcMain, deps.services.settings)
   registerLicenseHandlers(ipcMain, deps.services.license)
   registerProfileHandlers(ipcMain, deps.services.profile)
+  registerProxyHandlers(ipcMain, deps.services.proxy)
   registerShellHandlers(ipcMain, async (url) => {
     if (!app.isPackaged && process.env['PHASE3_EXTERNAL_OPEN_SMOKE']) {
       ;(globalThis as DbSmokeGlobal).__PHASE3_EXTERNAL_OPEN_URL__ = url

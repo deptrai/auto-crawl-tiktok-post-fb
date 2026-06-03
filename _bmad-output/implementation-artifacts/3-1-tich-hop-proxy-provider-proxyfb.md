@@ -1,6 +1,6 @@
 # Story 3.1: Tích hợp proxy provider proxyfb
 
-Status: ready-for-dev
+Status: review
 
 <!-- Phase 3 story (Epic 3 — Proxy Management, story 1/3). Sources: epics-phase3.md#Story-3.1 (L314-326), prd-phase3.md#FR24 (L376), architecture.md (folder proxy/ L1826-1827, FR-P3-08 L912). ⚠️ automation-desktop/ (Electron client) — 25 rules CLAUDE.md ÁP DỤNG. Previous: Epic 2 done (2.1+2.2+2.3). C# source: automation-facebook/SST_TOOL_FB/Tech_Meta/proxyfb.cs. -->
 
@@ -25,31 +25,47 @@ so that mỗi profile automation session dùng được IP riêng từ provider 
 
 ### Main process (Electron — TypeScript)
 
-- [ ] **Task 1: ProxyInfo type + ProxyServiceError** (AC: #2,#3)
-  - [ ] `src/shared/types/proxy.ts`: `ProxyInfo = { host:string; port:number; username:string; password:string }` + export. `ProxyProvider` interface.
-  - [ ] `src/main/proxy/proxy-service.ts`: `ProxyServiceError extends Error { code; retryable }` (mirror ProfileServiceError pattern).
-- [ ] **Task 2: proxyfb provider** (AC: #2)
-  - [ ] `src/main/proxy/providers/proxyfb.ts`: `ProxyfbProvider implements ProxyProvider`. Dùng `fetch` (native, Electron supports). `getProxy(key)`: try changeProxy.php → fallback getProxy.php → throw. `parseProxyString(raw: string): ProxyInfo` pure helper (export separately để unit test). KHÔNG import electron.
-- [ ] **Task 3: ProxyService** (AC: #1,#3)
-  - [ ] `src/main/proxy/proxy-service.ts`: `createProxyService({ storage, providers })` — `configGet()`: `storage.get('proxy.proxyfb.api_key')` → `boolean` (có key không, KHÔNG trả raw); `configSet(key)`: `storage.set(...)` validate `key.trim().length > 0`; `rotate(profileId?)`: `storage.get → getProxy → return ProxyInfo`.
-  - [ ] `src/main/proxy/index.ts`: barrel export.
-- [ ] **Task 4: IPC schemas + 3 channel** (AC: #1,#3)
-  - [ ] `src/shared/ipc-schemas/proxy.ts`: Zod schemas cho 3 channel: `phase3:proxy:config-get` (req `{}`, res `{ok:true,configured:boolean}`); `phase3:proxy:config-set` (req `{apiKey:z.string().trim().min(1).max(500)}`, res `{ok:true}`); `phase3:proxy:rotate` (req `{profileId?:z.string()}`, res `{ok:true,proxy:{host,port}}`). **Lưu ý**: `proxy:rotate` response KHÔNG có `username`/`password` (rule #10 — treat proxy credential như secret). Export types.
-  - [ ] `src/shared/ipc-schemas/index.ts`: thêm 3 entry vào `channelRegistry` + import.
-- [ ] **Task 5: IPC handlers** (AC: #1,#3)
-  - [ ] `src/main/ipc/proxy-handlers.ts`: `registerProxyHandlers(ipcMain, service)` — 3 handler, mỗi cái Zod safeParse + try/catch → normalizeError. Reuse `toErrorResponse`/`normalizeError` pattern từ profile-handlers.ts (KHÔNG copy-paste — import shared helper nếu có, nếu không thì viết tương tự).
-- [ ] **Task 6: DB schema `proxy_configs`** (AC: #5)
-  - [ ] `src/main/db/client.ts`: thêm `CREATE TABLE IF NOT EXISTS proxy_configs(provider TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, last_rotated_at TEXT)` sau bảng `profile_metadata`.
-- [ ] **Task 7: Bootstrap wiring** (AC: #1,#3)
-  - [ ] `src/main/adapters/electron-bootstrap.ts`: tạo `proxyService = createProxyService({ storage: adapters.storage, providers: { proxyfb: new ProxyfbProvider() } })`; `registerProxyHandlers(ipcMain, proxyService)`.
-- [ ] **Task 8: Renderer API + ProxyView + App.tsx** (AC: #4)
-  - [ ] `src/renderer/src/api/proxy-api.ts`: `getProxyConfig()`, `setProxyConfig(apiKey)`, `rotateProxy()`.
-  - [ ] `src/renderer/src/views/ProxyView.tsx`: input password (ẩn key), nút Lưu, indicator, nút Test → show `host:port`. Loading rule #16, disable rule #17, tiếng Việt.
-  - [ ] `src/renderer/src/App.tsx`: thêm `<ProxyView />` vào `MainShell` (sau `ProfilesView`).
-- [ ] **Task 9: Tests** (AC: #6)
-  - [ ] `tests/unit/proxyfb-provider.spec.ts`: mock `fetch` (global), test 5 case (happy/fallback/both-fail/parse-ok/parse-error).
-  - [ ] `tests/unit/proxy-service.spec.ts`: configGet/Set, rotate happy/missing-key/provider-fail.
-  - [ ] `tests/integration/proxy-ipc-handlers.spec.ts` (FakeIpcMain): 3 channel Zod 2-way + no-secret.
+- [x] **Task 1: ProxyInfo type + ProxyServiceError** (AC: #2,#3)
+  - [x] `src/shared/types/proxy.ts`: `ProxyInfo = { host:string; port:number; username:string; password:string }` + export. `ProxyProvider` interface.
+  - [x] `src/main/proxy/proxy-service.ts`: `ProxyServiceError extends Error { code; retryable }` (mirror ProfileServiceError pattern).
+- [x] **Task 2: proxyfb provider** (AC: #2)
+  - [x] `src/main/proxy/providers/proxyfb.ts`: `ProxyfbProvider implements ProxyProvider`. Dùng `fetch` (native, Electron supports). `getProxy(key)`: try changeProxy.php → fallback getProxy.php → throw. `parseProxyString(raw: string): ProxyInfo` pure helper (export separately để unit test). KHÔNG import electron.
+- [x] **Task 3: ProxyService** (AC: #1,#3)
+  - [x] `src/main/proxy/proxy-service.ts`: `createProxyService({ storage, providers })` — `configGet()`: `storage.get('proxy.proxyfb.api_key')` → `boolean` (có key không, KHÔNG trả raw); `configSet(key)`: `storage.set(...)` validate `key.trim().length > 0`; `rotate(profileId?)`: `storage.get → getProxy → return ProxyInfo`.
+  - [x] `src/main/proxy/index.ts`: barrel export.
+- [x] **Task 4: IPC schemas + 3 channel** (AC: #1,#3)
+  - [x] `src/shared/ipc-schemas/proxy.ts`: Zod schemas cho 3 channel: `phase3:proxy:config-get` (req `{}`, res `{ok:true,configured:boolean}`); `phase3:proxy:config-set` (req `{apiKey:z.string().trim().min(1).max(500)}`, res `{ok:true}`); `phase3:proxy:rotate` (req `{profileId?:z.string()}`, res `{ok:true,proxy:{host,port}}`). **Lưu ý**: `proxy:rotate` response KHÔNG có `username`/`password` (rule #10 — treat proxy credential như secret). Export types.
+  - [x] `src/shared/ipc-schemas/index.ts`: thêm 3 entry vào `channelRegistry` + import.
+- [x] **Task 5: IPC handlers** (AC: #1,#3)
+  - [x] `src/main/ipc/proxy-handlers.ts`: `registerProxyHandlers(ipcMain, service)` — 3 handler, mỗi cái Zod safeParse + try/catch → normalizeError. Reuse `toErrorResponse`/`normalizeError` pattern từ profile-handlers.ts (KHÔNG copy-paste — import shared helper nếu có, nếu không thì viết tương tự).
+- [x] **Task 6: DB schema `proxy_configs`** (AC: #5)
+  - [x] `src/main/db/client.ts`: thêm `CREATE TABLE IF NOT EXISTS proxy_configs(provider TEXT PRIMARY KEY, enabled INTEGER NOT NULL DEFAULT 1, last_rotated_at TEXT)` sau bảng `profile_metadata`.
+- [x] **Task 7: Bootstrap wiring** (AC: #1,#3)
+  - [x] `src/main/adapters/electron-bootstrap.ts`: tạo `proxyService = createProxyService({ storage: adapters.storage, providers: { proxyfb: new ProxyfbProvider() } })`; `registerProxyHandlers(ipcMain, proxyService)`.
+- [x] **Task 8: Renderer API + ProxyView + App.tsx** (AC: #4)
+  - [x] `src/renderer/src/api/proxy-api.ts`: `getProxyConfig()`, `setProxyConfig(apiKey)`, `rotateProxy()`.
+  - [x] `src/renderer/src/views/ProxyView.tsx`: input password (ẩn key), nút Lưu, indicator, nút Test → show `host:port`. Loading rule #16, disable rule #17, tiếng Việt.
+  - [x] `src/renderer/src/App.tsx`: thêm `<ProxyView />` vào `MainShell` (sau `ProfilesView`).
+- [x] **Task 9: Tests** (AC: #6)
+  - [x] `tests/unit/proxyfb-provider.spec.ts`: mock `fetch` (global), test 5 case (happy/fallback/both-fail/parse-ok/parse-error).
+  - [x] `tests/unit/proxy-service.spec.ts`: configGet/Set, rotate happy/missing-key/provider-fail.
+  - [x] `tests/integration/proxy-ipc-handlers.spec.ts` (FakeIpcMain): 3 channel Zod 2-way + no-secret.
+
+### Review Findings (2026-06-03 — bmad-code-review, 3 reviewers)
+
+> Diff: working-tree (uncommitted). **Lint ✅ · Typecheck ✅ · 18 proxy tests PASS.** E2E chưa exec. Scorecard: AC1✅ AC2⚠️ AC3✅(creds stripped — verified) AC4⚠️ AC5✅ AC6⚠️ — scope sạch. Credential KHÔNG leak (rotate IPC chỉ trả `{host,port}`, Zod strip + integration test verify).
+
+**Decision-needed:**
+
+- [x] [Review][Decision✓→Accept+mitigate] **HTTP-only proxyfb** — ✅ Luis chọn ACCEPT + document + mitigate. Hành động: (1) ghi rủi ro HTTP vào `automation-desktop/project-context.md`; (2) ProxyView hiện cảnh báo nhẹ "proxyfb dùng HTTP — không bảo mật transport"; (3) áp P2 host-validation (reject control chars) làm mitigation MITM-inject. Gốc: `http://api.proxyfb.com` ([proxyfb.ts:14]). API key (qua `?key=`) + proxy `user:pass` (response) di chuyển **plaintext qua mạng**; MITM có thể inject `host:port` proxy độc → route TOÀN BỘ traffic Facebook qua attacker (thảm họa cho tool cookie-based). ✅ **Đã verify: `https://api.proxyfb.com:443` ĐÓNG → provider CHỈ hỗ trợ HTTP** (không sửa được bằng HTTPS; C# gốc cũng HTTP). Options: (a) Accept + document rủi ro + thêm host-validation làm mitigation một phần (như C# gốc, ràng buộc provider); (b) Block tới khi có provider HTTPS; (c) Cảnh báo trong UI. Cần Luis quyết.
+
+**Patch (Low — robustness/consistency):**
+
+- [ ] [Review][Patch] `proxyfb.ts` fetchProxy: `catch {} → return null` nuốt MỌI lỗi (parse/format/auth) + KHÔNG check `response.ok`. Fix: check `response.ok` trước `.json()`; `PROXY_FORMAT_INVALID`/`PROXY_PORT_INVALID` → `retryable:false` (data error, retry không sửa) [proxyfb.ts:20,26,56-67]
+- [ ] [Review][Patch] `parseProxyString` hardening: (a) password chứa `:` → split-limit (host:port:user, phần còn lại = password); (b) host validation cơ bản (reject control chars `\r\n`) — mitigation cho D1 MITM-inject [proxyfb.ts:17-35]
+- [ ] [Review][Patch] Schema/type consistency: `ProxyConfigSetRequestSchema` thêm `.strict()` (2 schema kia đã có); xóa duplicate type `PublicProxyInfo` trong `types/proxy.ts` (giữ Zod-inferred từ `ipc-schemas/proxy.ts` — single source, bài học 2.2 P3) [proxy.ts, types/proxy.ts]
+
+**Dismissed (false-positive / inherited / intentional):** HTTP "Critical" như patch độc lập (provider chỉ có HTTP → thành D1 decision, không phải code bug); `e.currentTarget.disabled` rule#17 (đúng pattern CLAUDE.md #17, nhất quán 2.1-2.3); `proxy_configs` table "dead" (cố ý theo AC5 — 3.2 circuit-breaker sẽ ghi `last_rotated_at`); `rotateProxy()` thiếu `profileId` (3.1 test-proxy không có profile context; 3.3 sẽ thêm param); AC3 vs Dev-Notes "mâu thuẫn" rotate response (impl ĐÚNG — handler strip về `{host,port}`, Auditor + integration test xác nhận; chỉ cần sửa wording AC3); credential leak (verified none); React implicit import + IPC type-anchor (inherited Epic 2, typecheck pass); storage.set raw error khi encryption unavailable (caught→normalizeError generic VN, rare headless Linux); various test-coverage gaps HTTP-4xx/port-boundary/e2e-error (Low — gộp note P1).
 
 ## Dev Notes
 
@@ -140,9 +156,47 @@ automation-desktop/src/main/
 ## Dev Agent Record
 
 ### Agent Model Used
+Codex GPT-5
 
 ### Debug Log References
+- RED targeted proxy tests: `npx playwright test tests/unit/proxyfb-provider.spec.ts tests/unit/proxy-service.spec.ts tests/integration/proxy-ipc-handlers.spec.ts --reporter=line` failed initially because `proxyfb` provider and `proxy-handlers` did not exist.
+- Targeted proxy + schema + E2E: `npx playwright test tests/unit/proxyfb-provider.spec.ts tests/unit/proxy-service.spec.ts tests/integration/proxy-ipc-handlers.spec.ts tests/integration/db-schema.spec.ts --reporter=line && npx electron-vite build && npx playwright test tests/e2e/proxy.spec.ts --reporter=line` -> 18 passed, build passed, 1 E2E passed.
+- Typecheck: `npm run typecheck` -> passed.
+- Lint: `npm run lint` -> passed (existing Node module-type warning only for local eslint-rules files).
+- Full non-E2E regression: `npx playwright test tests/unit tests/integration tests/api tests/component --reporter=line` -> 107 passed.
+- Full E2E regression: `npx electron-vite build && npx playwright test tests/e2e --reporter=line` -> build passed, 17 passed.
 
 ### Completion Notes List
+- Added proxy shared types and `ProxyServiceError`, then implemented `ProxyfbProvider` with `changeProxy.php` first, `getProxy.php` fallback, strict `host:port:user:pass` parsing, 10s abort timeout, and retryable unavailable errors.
+- Implemented `ProxyService` storing API key only in safeStorage key `proxy.proxyfb.api_key`; `configGet` returns only configured boolean and `rotate` returns full `ProxyInfo` for main-process future use.
+- Added proxy IPC schemas/registry and handlers for `phase3:proxy:config-get`, `phase3:proxy:config-set`, and `phase3:proxy:rotate`; public rotate IPC response exposes only `{ host, port }`, never username/password/API key.
+- Added `proxy_configs` metadata table without API key column and wired proxy service/provider/handlers into Electron bootstrap. Dev-only `PHASE3_PROXYFB_BASE_URL` is guarded by `app.isPackaged` for E2E/local fake proxyfb testing.
+- Added `ProxyView` below `ProfilesView` with password API-key input, configured indicator, save/test buttons with immediate disable/loading states, and host:port-only test result. Main shell is scrollable so the proxy panel remains reachable.
+- Added unit, integration, schema, and E2E tests for proxy provider/service/IPC/UX. Also added explicit cancel button testids in `ProfilesView` and stabilized existing profile cancel E2E waits by waiting for the row.
 
 ### File List
+- `automation-desktop/src/shared/types/proxy.ts`
+- `automation-desktop/src/shared/ipc-schemas/proxy.ts`
+- `automation-desktop/src/shared/ipc-schemas/index.ts`
+- `automation-desktop/src/main/proxy/proxy-service.ts`
+- `automation-desktop/src/main/proxy/providers/proxyfb.ts`
+- `automation-desktop/src/main/proxy/index.ts`
+- `automation-desktop/src/main/ipc/proxy-handlers.ts`
+- `automation-desktop/src/main/ipc/index.ts`
+- `automation-desktop/src/main/db/client.ts`
+- `automation-desktop/src/main/adapters/electron-bootstrap.ts`
+- `automation-desktop/src/renderer/src/api/proxy-api.ts`
+- `automation-desktop/src/renderer/src/views/ProxyView.tsx`
+- `automation-desktop/src/renderer/src/views/ProfilesView.tsx`
+- `automation-desktop/src/renderer/src/App.tsx`
+- `automation-desktop/src/renderer/src/assets/main.css`
+- `automation-desktop/tests/unit/proxyfb-provider.spec.ts`
+- `automation-desktop/tests/unit/proxy-service.spec.ts`
+- `automation-desktop/tests/integration/proxy-ipc-handlers.spec.ts`
+- `automation-desktop/tests/integration/db-schema.spec.ts`
+- `automation-desktop/tests/e2e/proxy.spec.ts`
+- `automation-desktop/tests/e2e/profiles.spec.ts`
+- `automation-desktop/tests/integration/profile-ipc-handlers.spec.ts`
+
+### Change Log
+- 2026-06-03: Implemented Story 3.1 proxyfb provider integration, secure API-key config, proxy IPC, ProxyView UI, proxy metadata schema, and proxy-focused unit/integration/E2E validation.

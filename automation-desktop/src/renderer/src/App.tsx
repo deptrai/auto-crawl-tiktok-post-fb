@@ -6,6 +6,7 @@ import { getSetting, openPrivacyPolicy, setSetting } from './api/settings-api'
 import { EulaAcceptanceView } from './views/EulaAcceptanceView'
 import { LicenseView } from './views/LicenseView'
 import { ProfilesView } from './views/ProfilesView'
+import { ProxyView } from './views/ProxyView'
 
 type GateState =
   | 'loading'
@@ -36,6 +37,7 @@ function MainShell({
           : 'License active.'}
       </p>
       <ProfilesView />
+      <ProxyView />
     </main>
   )
 }
