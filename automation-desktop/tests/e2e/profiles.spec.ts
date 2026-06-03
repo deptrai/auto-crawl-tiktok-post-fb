@@ -197,6 +197,60 @@ test('[P0] import two profiles shows summary with 2 imported and clears textarea
   }
 })
 
+test('[P0] operator console renders sidebar table and bulk self-comment enqueue flow', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-bulk-run-'))
+  let app: ElectronApplication | null = null
+  let server: Server | null = null
+
+  try {
+    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'), {
+      PHASE3_AUTOMATION_STUB: '1'
+    })
+    app = launched.app
+    server = launched.server
+    const window = launched.window
+
+    await expect(window.getByTestId('app-shell')).toBeVisible({ timeout: 10_000 })
+    await expect(window.getByTestId('sidebar-nav')).toBeVisible()
+    await expect(window.getByTestId('nav-profiles')).toHaveAttribute('aria-current', 'page')
+    await expect(window.getByTestId('topbar-status-counter')).toBeVisible()
+
+    const textarea = window.getByTestId('import-textarea')
+    await setTextareaValue(
+      textarea,
+      [
+        'uid_bulk_1|pass1|seed1|cookie_BULK_1|mail1@example.com|mailpass1',
+        'uid_bulk_2|pass2|seed2|cookie_BULK_2|mail2@example.com|mailpass2'
+      ].join('\n')
+    )
+    await window.getByTestId('import-button').click()
+    await expect(window.getByTestId('profile-row-uid_bulk_1')).toBeVisible({ timeout: 10_000 })
+    await expect(window.getByTestId('profiles-list')).toHaveJSProperty('tagName', 'TABLE')
+    await expect(window.getByTestId('topbar-status-counter')).toContainText('2')
+
+    await window.getByTestId('profile-select-uid_bulk_1').check()
+    await window.getByTestId('profile-select-uid_bulk_2').check()
+    await expect(window.getByTestId('bulk-action-bar')).toContainText('Đã chọn 2')
+    await expect(window.getByTestId('bulk-template-select')).toContainText('Random tất cả')
+    await window.getByTestId('bulk-target-input').fill('https://www.facebook.com/me/posts/bulk')
+    await window.getByTestId('bulk-run-button').click()
+
+    await expect(window.getByTestId('bulk-action-bar')).toHaveCount(0, { timeout: 10_000 })
+    await expect(window.getByTestId('profile-automation-status-uid_bulk_1')).toContainText(
+      'Đang xếp hàng',
+      { timeout: 10_000 }
+    )
+    await expect(window.getByTestId('profile-automation-status-uid_bulk_2')).toContainText(
+      'Đang xếp hàng',
+      { timeout: 10_000 }
+    )
+  } finally {
+    if (app) await app.close()
+    await closeServer(server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('[P0] profile row can visibly acquire and release a unique proxy assignment', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-proxy-assign-'))
   const proxyfb = await startProxyfbServer()
@@ -220,9 +274,12 @@ test('[P0] profile row can visibly acquire and release a unique proxy assignment
     await expect(window.getByTestId('profile-row-uid_proxy_1')).toBeVisible({ timeout: 10_000 })
     await expect(window.getByTestId('profile-proxy-empty-uid_proxy_1')).toContainText('Chưa gán')
 
+    await window.getByTestId('nav-proxy').click()
     await window.getByTestId('proxy-api-key-input').fill('KEY-PROXY-ASSIGN')
     await window.getByTestId('proxy-save-button').click()
     await expect(window.getByText('Đã cấu hình')).toBeVisible({ timeout: 10_000 })
+    await window.getByTestId('nav-profiles').click()
+    await expect(window.getByTestId('profile-row-uid_proxy_1')).toBeVisible({ timeout: 10_000 })
 
     await window.getByTestId('profile-proxy-acquire-uid_proxy_1').click()
     await expect(window.getByTestId('profile-proxy-value-uid_proxy_1')).toContainText(

@@ -72,6 +72,7 @@ test('[P0] content template UI creates, edits, deletes, and protects final templ
     await expect(window.getByTestId('license-view')).toBeVisible({ timeout: 10_000 })
     await window.getByRole('textbox', { name: /license key/i }).fill('LIC-TEMPLATE-OK')
     await window.getByRole('button', { name: /kích hoạt/i }).click()
+    await window.getByTestId('nav-templates').click()
     await expect(window.getByTestId('content-templates-view')).toBeVisible({ timeout: 10_000 })
 
     const defaultRow = window.locator('.template-row', { hasText: 'Mặc định' })

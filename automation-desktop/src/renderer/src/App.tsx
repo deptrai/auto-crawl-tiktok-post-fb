@@ -8,6 +8,9 @@ import { LicenseView } from './views/LicenseView'
 import { ContentTemplatesView } from './views/ContentTemplatesView'
 import { ProfilesView } from './views/ProfilesView'
 import { ProxyView } from './views/ProxyView'
+import { AppShell } from './components/AppShell'
+import type { ConsoleView } from './components/Sidebar'
+import type { StatusCounts } from './components/StatusCounter'
 
 type GateState =
   | 'loading'
@@ -24,23 +27,56 @@ function MainShell({
   licenseStatus: LicensePublicStatus | null
   offlineGrace?: boolean
 }): React.JSX.Element {
+  const [activeView, setActiveView] = useState<ConsoleView>('profiles')
+  const [profileCounts, setProfileCounts] = useState<StatusCounts>({
+    idle: 0,
+    running: 0,
+    checkpoint: 0,
+    error: 0
+  })
+
+  function renderActiveView(): React.JSX.Element {
+    if (activeView === 'dashboard') {
+      return (
+        <section className="dashboard-panel" data-testid="dashboard-view">
+          <p className="eyebrow">Tổng quan</p>
+          <h2>Đội tài khoản</h2>
+          <p className="profiles-list-subtitle">
+            Chọn tab Profiles để import, gán proxy và chạy self-comment hàng loạt.
+          </p>
+        </section>
+      )
+    }
+    if (activeView === 'templates') return <ContentTemplatesView />
+    if (activeView === 'proxy') return <ProxyView />
+    if (activeView === 'settings') {
+      return (
+        <section className="settings-panel" data-testid="settings-view">
+          <p className="eyebrow">Cài đặt</p>
+          <h2>Thiết lập vận hành</h2>
+          <p className="profiles-list-subtitle">Các cài đặt nâng cao sẽ được nối ở story sau.</p>
+        </section>
+      )
+    }
+    return <ProfilesView onStatusCountsChange={setProfileCounts} />
+  }
+
   return (
-    <main className="main-shell" data-testid="main-shell">
+    <AppShell
+      activeView={activeView}
+      counts={profileCounts}
+      licenseStatus={licenseStatus}
+      offlineGrace={offlineGrace}
+      onNavigate={setActiveView}
+    >
       {offlineGrace ? (
         <p className="warning-banner" data-testid="offline-grace-banner">
           Không kết nối được máy chủ license. Bạn vẫn có thể dùng các tác vụ đọc trong 24 giờ sau
           lần kiểm tra thành công gần nhất.
         </p>
       ) : null}
-      <p className="lead license-status">
-        {licenseStatus?.active
-          ? `License active: còn ${licenseStatus.daysRemaining ?? 0} ngày.`
-          : 'License active.'}
-      </p>
-      <ContentTemplatesView />
-      <ProfilesView />
-      <ProxyView />
-    </main>
+      {renderActiveView()}
+    </AppShell>
   )
 }
 

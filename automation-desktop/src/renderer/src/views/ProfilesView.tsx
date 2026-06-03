@@ -12,14 +12,17 @@ import {
   releaseProxyForProfile
 } from '../api/proxy-api'
 import { getSetting, setSetting } from '../api/settings-api'
+import { BulkActionBar } from '../components/BulkActionBar'
+import { StatusPill, type StatusPillVariant } from '../components/StatusPill'
+import type { StatusCounts } from '../components/StatusCounter'
 
 const AUTOMATION_BROWSER_HEADLESS_SETTING = 'automation_browser_headless'
 
-const STATUS_LABELS: Record<string, { label: string; className: string }> = {
-  idle: { label: 'Nhàn rỗi', className: 'status-idle' },
-  running: { label: 'Đang chạy', className: 'status-running' },
-  checkpoint: { label: 'Checkpoint', className: 'status-checkpoint' },
-  error: { label: 'Lỗi', className: 'status-error' }
+const STATUS_LABELS: Record<string, { label: string; variant: StatusPillVariant }> = {
+  idle: { label: 'Nhàn rỗi', variant: 'idle' },
+  running: { label: 'Đang chạy', variant: 'running' },
+  checkpoint: { label: 'Checkpoint', variant: 'checkpoint' },
+  error: { label: 'Lỗi', variant: 'error' }
 }
 
 const AUTOMATION_STATE_LABELS: Record<string, string> = {
@@ -46,11 +49,35 @@ interface AutomationRowStatus {
   message?: string
 }
 
-function getStatusBadge(status: string): { label: string; className: string } {
-  return STATUS_LABELS[status] ?? { label: 'Không xác định', className: 'status-unknown' }
+function getStatusBadge(status: string): { label: string; variant: StatusPillVariant } {
+  return STATUS_LABELS[status] ?? { label: 'Không xác định', variant: 'neutral' }
 }
 
-export function ProfilesView(): React.JSX.Element {
+function getAutomationVariant(state: string): StatusPillVariant {
+  if (state === 'DONE') return 'idle'
+  if (state === 'CHECKPOINT_BLOCKED') return 'checkpoint'
+  if (state === 'FAILED' || state === 'CANCELLED') return 'error'
+  return 'running'
+}
+
+function countProfileStatuses(profiles: ProfileSummary[]): StatusCounts {
+  return profiles.reduce<StatusCounts>(
+    (counts, profile) => {
+      if (profile.status === 'running') counts.running += 1
+      else if (profile.status === 'checkpoint') counts.checkpoint += 1
+      else if (profile.status === 'error') counts.error += 1
+      else counts.idle += 1
+      return counts
+    },
+    { idle: 0, running: 0, checkpoint: 0, error: 0 }
+  )
+}
+
+export function ProfilesView({
+  onStatusCountsChange
+}: {
+  onStatusCountsChange?: (counts: StatusCounts) => void
+}): React.JSX.Element {
   const [text, setText] = useState('')
   const [importing, setImporting] = useState(false)
   const [result, setResult] = useState<ImportResult | null>(null)
@@ -72,6 +99,8 @@ export function ProfilesView(): React.JSX.Element {
   const [automationBrowserHeadless, setAutomationBrowserHeadless] = useState(false)
   const [automationBrowserModeSaving, setAutomationBrowserModeSaving] = useState(false)
   const [automationBusyId, setAutomationBusyId] = useState<string | null>(null)
+  const [bulkRunning, setBulkRunning] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [automationStatuses, setAutomationStatuses] = useState<Record<string, AutomationRowStatus>>(
     {}
   )
@@ -79,6 +108,10 @@ export function ProfilesView(): React.JSX.Element {
   const listInFlightRef = useRef(false)
   const listCancelledRef = useRef(false)
   const pendingRefreshRef = useRef(false)
+
+  useEffect(() => {
+    onStatusCountsChange?.(countProfileStatuses(profiles))
+  }, [onStatusCountsChange, profiles])
 
   const refreshProfiles = useCallback(async (initialLoad = false): Promise<void> => {
     if (listInFlightRef.current) {
@@ -302,6 +335,48 @@ export function ProfilesView(): React.JSX.Element {
     }
   }
 
+  function toggleProfileSelection(profileId: string, selected: boolean): void {
+    setSelectedIds((current) => {
+      const next = new Set(current)
+      if (selected) next.add(profileId)
+      else next.delete(profileId)
+      return next
+    })
+  }
+
+  function toggleSelectAll(selected: boolean): void {
+    setSelectedIds(selected ? new Set(profiles.map((profile) => profile.id)) : new Set())
+  }
+
+  async function handleBulkSelfComment(): Promise<void> {
+    if (bulkRunning || selectedIds.size === 0) return
+
+    const selectedProfiles = profiles.filter((profile) => selectedIds.has(profile.id))
+    if (selectedProfiles.length === 0) return
+
+    setBulkRunning(true)
+    setAutomationError(null)
+    try {
+      const target = automationTarget.trim()
+      const nextStatuses: Record<string, AutomationRowStatus> = {}
+      for (const profile of selectedProfiles) {
+        const { jobId } = await startSelfComment({
+          profileId: profile.id,
+          ...(target ? { target } : {})
+        })
+        nextStatuses[profile.id] = { jobId, state: 'PENDING' }
+      }
+      setAutomationStatuses((current) => ({ ...current, ...nextStatuses }))
+      setSelectedIds(new Set())
+    } catch (err) {
+      setAutomationError(
+        err instanceof Error ? err.message : 'Không thể chạy self-comment hàng loạt.'
+      )
+    } finally {
+      setBulkRunning(false)
+    }
+  }
+
   useEffect(() => {
     const active = Object.entries(automationStatuses).filter(
       ([, status]) => !TERMINAL_AUTOMATION_STATES.has(status.state)
@@ -341,6 +416,10 @@ export function ProfilesView(): React.JSX.Element {
       window.clearInterval(timer)
     }
   }, [automationStatuses])
+
+  const selectedCount = selectedIds.size
+  const allProfilesSelected =
+    profiles.length > 0 && profiles.every((profile) => selectedIds.has(profile.id))
 
   return (
     <div className="profiles-view" data-testid="profiles-view">
@@ -516,210 +595,287 @@ export function ProfilesView(): React.JSX.Element {
         ) : null}
 
         {profiles.length > 0 ? (
-          <ul className="profiles-list" data-testid="profiles-list">
-            {profiles.map((profile) => {
-              const badge = getStatusBadge(profile.status)
-              const isEditing = editingId === profile.id
-              const isConfirmingDelete = confirmDeleteId === profile.id
-              const isBusy = rowBusyId === profile.id
-              const automationStatus = automationStatuses[profile.id]
-              const automationRunning =
-                automationBusyId === profile.id ||
-                Boolean(automationStatus && !TERMINAL_AUTOMATION_STATES.has(automationStatus.state))
-              return (
-                <li
-                  key={profile.id}
-                  className="profile-list-row"
-                  data-testid={`profile-row-${profile.uid}`}
-                >
-                  <div className="profile-list-identity">
-                    <span className="profile-list-uid">{profile.uid}</span>
-                    {isEditing ? (
-                      <div className="profile-edit-form">
-                        <label className="sr-only" htmlFor={`profile-edit-input-${profile.uid}`}>
-                          Tên hiển thị
-                        </label>
+          <div className="data-table-wrap">
+            <table className="data-table profiles-list" data-testid="profiles-list">
+              <thead>
+                <tr>
+                  <th scope="col" className="select-column">
+                    <input
+                      className="row-checkbox"
+                      data-testid="profiles-select-all"
+                      type="checkbox"
+                      aria-label="Chọn tất cả profile"
+                      checked={allProfilesSelected}
+                      onChange={(e) => toggleSelectAll(e.target.checked)}
+                    />
+                  </th>
+                  <th scope="col">UID</th>
+                  <th scope="col">Tên hiển thị</th>
+                  <th scope="col">Trạng thái</th>
+                  <th scope="col">Proxy</th>
+                  <th scope="col">Job</th>
+                  <th scope="col">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {profiles.map((profile) => {
+                  const badge = getStatusBadge(profile.status)
+                  const isEditing = editingId === profile.id
+                  const isConfirmingDelete = confirmDeleteId === profile.id
+                  const isBusy = rowBusyId === profile.id
+                  const automationStatus = automationStatuses[profile.id]
+                  const automationRunning =
+                    automationBusyId === profile.id ||
+                    Boolean(
+                      automationStatus && !TERMINAL_AUTOMATION_STATES.has(automationStatus.state)
+                    )
+                  return (
+                    <tr
+                      key={profile.id}
+                      className="profile-list-row"
+                      data-testid={`profile-row-${profile.uid}`}
+                    >
+                      <td className="select-column">
                         <input
-                          id={`profile-edit-input-${profile.uid}`}
-                          data-testid={`profile-edit-input-${profile.uid}`}
-                          className="profile-edit-input"
-                          value={editName}
-                          disabled={isBusy}
-                          onChange={(e) => setEditName(e.target.value)}
+                          className="row-checkbox"
+                          data-testid={`profile-select-${profile.uid}`}
+                          type="checkbox"
+                          aria-label={`Chọn profile ${profile.uid}`}
+                          checked={selectedIds.has(profile.id)}
+                          onChange={(e) => toggleProfileSelection(profile.id, e.target.checked)}
                         />
-                        <button
-                          data-testid={`profile-edit-save-${profile.uid}`}
-                          className="profile-row-button primary-row-action"
-                          type="button"
-                          disabled={isBusy || !editName.trim()}
-                          onClick={(e) => {
-                            ;(e.currentTarget as HTMLButtonElement).disabled = true
-                            void handleSaveEdit(profile)
-                          }}
+                      </td>
+                      <td className="mono-cell profile-list-uid">{profile.uid}</td>
+                      <td>
+                        {isEditing ? (
+                          <div className="profile-edit-form">
+                            <label
+                              className="sr-only"
+                              htmlFor={`profile-edit-input-${profile.uid}`}
+                            >
+                              Tên hiển thị
+                            </label>
+                            <input
+                              id={`profile-edit-input-${profile.uid}`}
+                              data-testid={`profile-edit-input-${profile.uid}`}
+                              className="profile-edit-input"
+                              value={editName}
+                              disabled={isBusy}
+                              onChange={(e) => setEditName(e.target.value)}
+                            />
+                            <button
+                              data-testid={`profile-edit-save-${profile.uid}`}
+                              className="profile-row-button primary-row-action"
+                              type="button"
+                              disabled={isBusy || !editName.trim()}
+                              onClick={(e) => {
+                                ;(e.currentTarget as HTMLButtonElement).disabled = true
+                                void handleSaveEdit(profile)
+                              }}
+                            >
+                              {isBusy ? 'Đang lưu...' : 'Lưu'}
+                            </button>
+                            <button
+                              data-testid={`profile-edit-cancel-${profile.uid}`}
+                              className="profile-row-button"
+                              type="button"
+                              disabled={isBusy}
+                              onClick={() => {
+                                setEditingId(null)
+                                setEditName('')
+                              }}
+                            >
+                              Hủy
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="profile-list-name">{profile.displayName}</span>
+                        )}
+                      </td>
+                      <td>
+                        <StatusPill label={badge.label} variant={badge.variant} />
+                      </td>
+                      <td>
+                        <div
+                          className="profile-proxy-assignment"
+                          data-testid={`profile-proxy-${profile.uid}`}
                         >
-                          {isBusy ? 'Đang lưu...' : 'Lưu'}
-                        </button>
-                        <button
-                          data-testid={`profile-edit-cancel-${profile.uid}`}
-                          className="profile-row-button"
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => {
-                            setEditingId(null)
-                            setEditName('')
-                          }}
-                        >
-                          Hủy
-                        </button>
-                      </div>
-                    ) : (
-                      <span className="profile-list-name">Tên hiển thị: {profile.displayName}</span>
-                    )}
-                  </div>
-                  <div className="profile-row-side">
-                    <span className={`status-badge ${badge.className}`}>{badge.label}</span>
-                    <div
-                      className="profile-proxy-assignment"
-                      data-testid={`profile-proxy-${profile.uid}`}
-                    >
-                      <span className="profile-proxy-label">Proxy riêng</span>
-                      {proxyAssignments[profile.id] ? (
-                        <strong data-testid={`profile-proxy-value-${profile.uid}`}>
-                          {proxyAssignments[profile.id].host}:{proxyAssignments[profile.id].port}
-                        </strong>
-                      ) : (
-                        <span data-testid={`profile-proxy-empty-${profile.uid}`}>Chưa gán</span>
-                      )}
-                      <div className="profile-row-actions">
-                        <button
-                          data-testid={`profile-proxy-acquire-${profile.uid}`}
-                          className="profile-row-button primary-row-action"
-                          type="button"
-                          disabled={Boolean(proxyBusyId) || Boolean(proxyAssignments[profile.id])}
-                          onClick={(e) => {
-                            ;(e.currentTarget as HTMLButtonElement).disabled = true
-                            void handleAcquireProxy(profile)
-                          }}
-                        >
-                          {proxyBusyId === profile.id ? 'Đang gán...' : 'Gán proxy'}
-                        </button>
-                        <button
-                          data-testid={`profile-proxy-release-${profile.uid}`}
-                          className="profile-row-button"
-                          type="button"
-                          disabled={Boolean(proxyBusyId) || !proxyAssignments[profile.id]}
-                          onClick={(e) => {
-                            ;(e.currentTarget as HTMLButtonElement).disabled = true
-                            void handleReleaseProxy(profile)
-                          }}
-                        >
-                          Thả proxy
-                        </button>
-                      </div>
-                    </div>
-                    <div className="profile-row-actions">
-                      <button
-                        data-testid={`profile-self-comment-${profile.uid}`}
-                        className="profile-row-button primary-row-action"
-                        type="button"
-                        disabled={automationRunning || Boolean(automationBusyId)}
-                        onClick={(e) => {
-                          ;(e.currentTarget as HTMLButtonElement).disabled = true
-                          void handleStartSelfComment(profile)
-                        }}
-                      >
-                        {automationRunning ? 'Đang chạy...' : 'Chạy self-comment'}
-                      </button>
-                      <button
-                        data-testid={`profile-edit-${profile.uid}`}
-                        className="profile-row-button"
-                        type="button"
-                        disabled={isBusy}
-                        onClick={() => startEdit(profile)}
-                      >
-                        Sửa
-                      </button>
-                      <button
-                        data-testid={`profile-delete-${profile.uid}`}
-                        className="profile-row-button danger-row-action"
-                        type="button"
-                        disabled={isBusy}
-                        onClick={() => {
-                          setRowError(null)
-                          setEditingId(null)
-                          setEditName('')
-                          setConfirmDeleteId(profile.id)
-                        }}
-                      >
-                        Xóa
-                      </button>
-                    </div>
-                  </div>
-                  {isConfirmingDelete ? (
-                    <div
-                      className="profile-delete-confirm"
-                      data-testid={`profile-delete-confirm-${profile.uid}`}
-                    >
-                      <span>Xóa profile {profile.uid}? Cookie + dữ liệu sẽ bị xóa vĩnh viễn.</span>
-                      <div className="profile-row-actions">
-                        <button
-                          data-testid={`profile-delete-confirm-submit-${profile.uid}`}
-                          className="profile-row-button danger-row-action"
-                          type="button"
-                          disabled={isBusy}
-                          onClick={(e) => {
-                            ;(e.currentTarget as HTMLButtonElement).disabled = true
-                            void handleDelete(profile)
-                          }}
-                        >
-                          {isBusy ? 'Đang xóa...' : 'Xóa'}
-                        </button>
-                        <button
-                          data-testid={`profile-delete-cancel-${profile.uid}`}
-                          className="profile-row-button"
-                          type="button"
-                          disabled={isBusy}
-                          onClick={() => setConfirmDeleteId(null)}
-                        >
-                          Hủy
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                  {rowError && (isEditing || isConfirmingDelete) ? (
-                    <p className="error-message profile-row-error">{rowError}</p>
-                  ) : null}
-                  {automationStatus ? (
-                    <p
-                      className="automation-row-status"
-                      data-testid={`profile-automation-status-${profile.uid}`}
-                    >
-                      Job {automationStatus.jobId}:{' '}
-                      {AUTOMATION_STATE_LABELS[automationStatus.state] ?? automationStatus.state}
-                      {automationStatus.outcome ? ` · ${automationStatus.outcome}` : ''}
-                      {automationStatus.message ? ` · ${automationStatus.message}` : ''}
-                      {automationStatus.target ? (
-                        <>
-                          {' · Post: '}
-                          <a href={automationStatus.target} target="_blank" rel="noreferrer">
-                            {automationStatus.target}
-                          </a>
-                        </>
-                      ) : null}
-                    </p>
-                  ) : null}
-                  {proxyError ? (
-                    <p
-                      className="error-message profile-row-error"
-                      data-testid="profile-proxy-error"
-                    >
-                      {proxyError}
-                    </p>
-                  ) : null}
-                </li>
-              )
-            })}
-          </ul>
+                          {proxyAssignments[profile.id] ? (
+                            <strong
+                              className="mono-cell"
+                              data-testid={`profile-proxy-value-${profile.uid}`}
+                            >
+                              {proxyAssignments[profile.id].host}:
+                              {proxyAssignments[profile.id].port}
+                            </strong>
+                          ) : (
+                            <span data-testid={`profile-proxy-empty-${profile.uid}`}>Chưa gán</span>
+                          )}
+                          <div className="profile-row-actions">
+                            <button
+                              data-testid={`profile-proxy-acquire-${profile.uid}`}
+                              className="profile-row-button primary-row-action"
+                              type="button"
+                              disabled={
+                                Boolean(proxyBusyId) || Boolean(proxyAssignments[profile.id])
+                              }
+                              onClick={(e) => {
+                                ;(e.currentTarget as HTMLButtonElement).disabled = true
+                                void handleAcquireProxy(profile)
+                              }}
+                            >
+                              {proxyBusyId === profile.id ? 'Đang gán...' : 'Gán proxy'}
+                            </button>
+                            <button
+                              data-testid={`profile-proxy-release-${profile.uid}`}
+                              className="profile-row-button"
+                              type="button"
+                              disabled={Boolean(proxyBusyId) || !proxyAssignments[profile.id]}
+                              onClick={(e) => {
+                                ;(e.currentTarget as HTMLButtonElement).disabled = true
+                                void handleReleaseProxy(profile)
+                              }}
+                            >
+                              Thả proxy
+                            </button>
+                          </div>
+                        </div>
+                        {proxyError ? (
+                          <p
+                            className="error-message profile-row-error"
+                            data-testid="profile-proxy-error"
+                          >
+                            {proxyError}
+                          </p>
+                        ) : null}
+                      </td>
+                      <td className="job-column">
+                        {automationStatus ? (
+                          <div
+                            className="automation-row-status"
+                            data-testid={`profile-automation-status-${profile.uid}`}
+                          >
+                            <StatusPill
+                              label={
+                                AUTOMATION_STATE_LABELS[automationStatus.state] ??
+                                automationStatus.state
+                              }
+                              variant={getAutomationVariant(automationStatus.state)}
+                              title={`Job ${automationStatus.jobId}`}
+                            />
+                            <span className="mono-cell">Job {automationStatus.jobId}</span>
+                            {automationStatus.outcome ? (
+                              <span> · {automationStatus.outcome}</span>
+                            ) : null}
+                            {automationStatus.message ? (
+                              <span> · {automationStatus.message}</span>
+                            ) : null}
+                            {automationStatus.target ? (
+                              <span>
+                                {' · Post: '}
+                                <a href={automationStatus.target} target="_blank" rel="noreferrer">
+                                  {automationStatus.target}
+                                </a>
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : (
+                          <span className="muted-cell">Chưa có job</span>
+                        )}
+                      </td>
+                      <td>
+                        <div className="profile-row-actions">
+                          <button
+                            data-testid={`profile-self-comment-${profile.uid}`}
+                            className="profile-row-button primary-row-action"
+                            type="button"
+                            disabled={automationRunning || Boolean(automationBusyId)}
+                            onClick={(e) => {
+                              ;(e.currentTarget as HTMLButtonElement).disabled = true
+                              void handleStartSelfComment(profile)
+                            }}
+                          >
+                            {automationRunning ? 'Đang chạy...' : 'Chạy self-comment'}
+                          </button>
+                          <button
+                            data-testid={`profile-edit-${profile.uid}`}
+                            className="profile-row-button"
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => startEdit(profile)}
+                          >
+                            Sửa
+                          </button>
+                          <button
+                            data-testid={`profile-delete-${profile.uid}`}
+                            className="profile-row-button danger-row-action"
+                            type="button"
+                            disabled={isBusy}
+                            onClick={() => {
+                              setRowError(null)
+                              setEditingId(null)
+                              setEditName('')
+                              setConfirmDeleteId(profile.id)
+                            }}
+                          >
+                            Xóa
+                          </button>
+                        </div>
+                        {isConfirmingDelete ? (
+                          <div
+                            className="profile-delete-confirm"
+                            data-testid={`profile-delete-confirm-${profile.uid}`}
+                          >
+                            <span>
+                              Xóa profile {profile.uid}? Cookie + dữ liệu sẽ bị xóa vĩnh viễn.
+                            </span>
+                            <div className="profile-row-actions">
+                              <button
+                                data-testid={`profile-delete-confirm-submit-${profile.uid}`}
+                                className="profile-row-button danger-row-action"
+                                type="button"
+                                disabled={isBusy}
+                                onClick={(e) => {
+                                  ;(e.currentTarget as HTMLButtonElement).disabled = true
+                                  void handleDelete(profile)
+                                }}
+                              >
+                                {isBusy ? 'Đang xóa...' : 'Xóa'}
+                              </button>
+                              <button
+                                data-testid={`profile-delete-cancel-${profile.uid}`}
+                                className="profile-row-button"
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => setConfirmDeleteId(null)}
+                              >
+                                Hủy
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+                        {rowError && (isEditing || isConfirmingDelete) ? (
+                          <p className="error-message profile-row-error">{rowError}</p>
+                        ) : null}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        ) : null}
+
+        {selectedCount > 0 ? (
+          <BulkActionBar
+            count={selectedCount}
+            disabled={bulkRunning}
+            headless={automationBrowserHeadless}
+            target={automationTarget}
+            onHeadlessChange={(next) => void handleAutomationBrowserModeChange(next)}
+            onRun={() => void handleBulkSelfComment()}
+            onTargetChange={setAutomationTarget}
+          />
         ) : null}
       </section>
     </div>

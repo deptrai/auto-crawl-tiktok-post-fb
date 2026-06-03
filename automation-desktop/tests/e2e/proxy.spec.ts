@@ -105,6 +105,7 @@ test('[P0] proxy view saves api key then tests proxy without exposing credential
     await window.getByRole('textbox', { name: /license key/i }).fill('LIC-PROXY-OK')
     await window.getByRole('button', { name: /kích hoạt/i }).click()
     await expect(window.getByTestId('main-shell')).toBeVisible({ timeout: 10_000 })
+    await window.getByTestId('nav-proxy').click()
 
     await expect(window.getByTestId('proxy-view')).toBeVisible({ timeout: 10_000 })
     await expect(window.getByText('Chưa cấu hình')).toBeVisible()
@@ -147,6 +148,7 @@ test('[P1] proxy view shows quarantine health after repeated provider failures',
     await window.getByRole('textbox', { name: /license key/i }).fill('LIC-PROXY-FAIL')
     await window.getByRole('button', { name: /kích hoạt/i }).click()
     await expect(window.getByTestId('main-shell')).toBeVisible({ timeout: 10_000 })
+    await window.getByTestId('nav-proxy').click()
 
     await window.getByTestId('proxy-api-key-input').fill('KEY-SECRET-FAIL')
     await window.getByTestId('proxy-save-button').click()

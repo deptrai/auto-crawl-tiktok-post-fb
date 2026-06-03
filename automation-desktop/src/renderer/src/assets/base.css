@@ -21,6 +21,42 @@
   --ev-button-alt-hover-border: transparent;
   --ev-button-alt-hover-text: var(--ev-c-text-1);
   --ev-button-alt-hover-bg: var(--ev-c-gray-2);
+
+  --bg: #0f1216;
+  --surface: #171b21;
+  --surface-2: #1e242c;
+  --border: #2a323c;
+  --text: #e8eaed;
+  --text-muted: #9aa4b0;
+  --accent: #6c7cff;
+  --accent-hover: #8893ff;
+  --accent-text: #0a0d24;
+
+  --status-idle: #4ad07f;
+  --status-running: #54a8ff;
+  --status-checkpoint: #ffb84d;
+  --status-error: #ff6a52;
+  --status-neutral: #9aa4b0;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 24px;
+  --sp-6: 32px;
+
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+
+  --fs-display: 24px;
+  --fs-h2: 18px;
+  --fs-body: 14px;
+  --fs-sm: 13px;
+  --fs-xs: 11px;
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
+    monospace;
 }
 
 :root {
