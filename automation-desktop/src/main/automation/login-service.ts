@@ -1,0 +1,111 @@
+import type { SecureStorage } from '../../adapters/secure-storage'
+import { brandSecret, revealSecret } from '../../shared/types/secret'
+import type { AutomationStateMachine } from './state-machine'
+import type { FingerprintService } from './fingerprint-service'
+import { parseCookieHeader } from './cookie'
+import { detectLoginState, submitTwoFa, type LoginState } from './checkpoint-handler'
+import { generateTotp } from './totp'
+import type { PlaywrightProxyConfig, PlaywrightRunner } from './playwright-runner'
+
+export type LoginCheckpointKind = 'checkpoint' | 'two_fa_no_seed' | 'two_fa_failed'
+
+export type LoginResult = { ok: true; state: LoginState } | { ok: false; code: 'LOGIN_FAILED' }
+
+export interface LoginService {
+  login(jobId: string, profileId: string): Promise<LoginResult>
+}
+
+export interface LoginServiceDeps {
+  secureStorage: Pick<SecureStorage, 'get'>
+  runner: Pick<PlaywrightRunner, 'launchSession'>
+  stateMachine: Pick<AutomationStateMachine, 'transition'>
+  fingerprintService: Pick<FingerprintService, 'ensureFingerprint'>
+  nowMs: () => number
+  onCheckpoint: (profileId: string, kind: LoginCheckpointKind) => void
+  proxy?: PlaywrightProxyConfig
+}
+
+function secretKey(profileId: string, field: 'cookie' | 'twofa'): string {
+  return `profile.${profileId}.${field}`
+}
+
+function transitionToFailed(deps: LoginServiceDeps, jobId: string): void {
+  deps.stateMachine.transition(jobId, 'FAILED')
+}
+
+function transitionToCheckpointBlocked(
+  deps: LoginServiceDeps,
+  jobId: string,
+  profileId: string,
+  kind: LoginCheckpointKind
+): void {
+  deps.stateMachine.transition(jobId, 'CHECKPOINT_BLOCKED')
+  deps.onCheckpoint(profileId, kind)
+}
+
+export function createLoginService(deps: LoginServiceDeps): LoginService {
+  return {
+    async login(jobId, profileId) {
+      const rawCookie = await deps.secureStorage.get(secretKey(profileId, 'cookie'))
+      if (!rawCookie || rawCookie.trim() === '') {
+        transitionToFailed(deps, jobId)
+        return { ok: false, code: 'LOGIN_FAILED' }
+      }
+
+      const cookieSecret = brandSecret(rawCookie)
+      const twoFaRaw = await deps.secureStorage.get(secretKey(profileId, 'twofa'))
+      const twoFaSecret = twoFaRaw && twoFaRaw.trim() ? brandSecret(twoFaRaw) : null
+      let session: Awaited<ReturnType<PlaywrightRunner['launchSession']>> | undefined
+
+      try {
+        const cookies = parseCookieHeader(revealSecret(cookieSecret))
+        const fingerprint = deps.fingerprintService.ensureFingerprint(profileId)
+        session = await deps.runner.launchSession({
+          proxy: deps.proxy,
+          fingerprint,
+          cookies
+        })
+
+        let state = await detectLoginState(session.page)
+        if (state === 'TWO_FA_REQUIRED') {
+          if (!twoFaSecret) {
+            transitionToCheckpointBlocked(deps, jobId, profileId, 'two_fa_no_seed')
+            return { ok: true, state }
+          }
+
+          try {
+            const code = generateTotp(revealSecret(twoFaSecret), deps.nowMs())
+            await submitTwoFa(session.page, code)
+            state = await detectLoginState(session.page)
+          } catch {
+            transitionToCheckpointBlocked(deps, jobId, profileId, 'two_fa_failed')
+            return { ok: true, state: 'TWO_FA_REQUIRED' }
+          }
+        }
+
+        if (state === 'LOGGED_IN') {
+          deps.stateMachine.transition(jobId, 'WARMING_UP')
+          return { ok: true, state }
+        }
+
+        if (state === 'CHECKPOINT' || state === 'TWO_FA_REQUIRED') {
+          transitionToCheckpointBlocked(
+            deps,
+            jobId,
+            profileId,
+            state === 'CHECKPOINT' ? 'checkpoint' : 'two_fa_failed'
+          )
+          return { ok: true, state }
+        }
+
+        transitionToFailed(deps, jobId)
+        return { ok: false, code: 'LOGIN_FAILED' }
+      } catch {
+        transitionToFailed(deps, jobId)
+        return { ok: false, code: 'LOGIN_FAILED' }
+      } finally {
+        await session?.close().catch(() => undefined)
+      }
+    }
+  }
+}

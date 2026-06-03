@@ -1,6 +1,6 @@
 # Story 4.1: Sinh fingerprint diversified per profile
 
-Status: review
+Status: done
 
 Epic: 4 — Lõi Automation Facebook (Self-Comment MVP) · Story: 4.1 · ID: 4.1
 
@@ -50,8 +50,8 @@ So that Facebook khó mass-detect tài khoản theo cohort (cùng UA/viewport/ti
 
 **Findings (tất cả LOW — KHÔNG block done):**
 
-- [ ] [Review][Low][consistency] **2 pattern integration-test song song.** `proxy-repo`/`settings-repo` dùng `_electron.launch()` + `app.evaluate()`; 4.1 hand-roll `esbuild buildSync + execFile + result-file`. Native module là electron-ABI nên spawn electron là ĐÚNG, nhưng cách tự build khác chuẩn. Điểm mong manh nhất: regex rewrite `require("better-sqlite3-multiple-ciphers")` (integration spec L30-33) — nếu esbuild đổi cách emit require, regex im lặng không match (fail loud lúc load, chấp nhận được). Đề xuất: (a) thêm comment giải thích regex + lý do chọn standalone-fixture (tránh nhồi smoke-runner vào `src/`), HOẶC (b) chuẩn hóa về `_electron.launch()`. → quyết định team.
-- [ ] [Review][Low][nit] `Fingerprint.version: number` có thể chặt hơn `version: typeof FINGERPRINT_VERSION` (schema đã enforce literal).
+- [x] [Review][Low][consistency] **(ĐÃ FIX — thêm comment giải thích regex/electron-ABI)** 2 pattern integration-test song song. `proxy-repo`/`settings-repo` dùng `_electron.launch()` + `app.evaluate()`; 4.1 hand-roll `esbuild buildSync + execFile + result-file`. Native module là electron-ABI nên spawn electron là ĐÚNG, nhưng cách tự build khác chuẩn. Điểm mong manh nhất: regex rewrite `require("better-sqlite3-multiple-ciphers")` (integration spec L30-33) — nếu esbuild đổi cách emit require, regex im lặng không match (fail loud lúc load, chấp nhận được). Đề xuất: (a) thêm comment giải thích regex + lý do chọn standalone-fixture (tránh nhồi smoke-runner vào `src/`), HOẶC (b) chuẩn hóa về `_electron.launch()`. → quyết định team.
+- [x] [Review][Low][nit] **(ĐÃ FIX)** `Fingerprint.version` đã tighten thành `typeof FINGERPRINT_VERSION`.
 - [ ] [Review][Low][info] `FingerprintSchema` self-heal chỉ validate structure + version, KHÔNG check pool-membership/`Chrome/` (giá trị structurally-valid nhưng bogus sẽ không regenerate). OK cho MVP vì chỉ generator ghi; note để hardening sau.
 - [ ] [Review][Low][info] Entropy diversification bị giới hạn pool (8 UA × 6 viewport × 7 tz) — coarse features SẼ cluster khi nhiều profile; `webglNoise` (float) + font-subset (2^6) là differentiator per-profile chính → tổng fingerprint vẫn unique. Đây là ràng buộc cố hữu của R-D15 (Chromium pinned), chấp nhận.
 

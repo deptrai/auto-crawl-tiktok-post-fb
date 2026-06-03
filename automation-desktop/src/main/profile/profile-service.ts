@@ -197,6 +197,7 @@ export function createProfileService(deps: ProfileServiceDeps): ProfileService {
         const metadata: Array<{ key: string; value: string }> = []
         if (p.hotmail) metadata.push({ key: 'email', value: p.hotmail })
         if (p.token) metadata.push({ key: 'token', value: p.token })
+        if (p.userAgent) metadata.push({ key: 'user_agent', value: p.userAgent })
 
         // --- Atomicity per-profile (AC5) ---
         // Step 1: write secrets to safeStorage. Track keys for cleanup on failure.

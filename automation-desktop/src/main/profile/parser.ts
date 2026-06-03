@@ -8,6 +8,7 @@ export interface ParsedProfile {
   twofa: string
   cookie: string
   token?: string
+  userAgent?: string
   hotmail: string
   passmail: string
 }
@@ -104,6 +105,7 @@ function parseCookieExport(text: string): ParseResult | null {
  * Format per line (split by `|`):
  *   6-field: uid|pass|2fa|cookie|hotmail|passmail
  *   7-field: uid|pass|2fa|cookie|token|hotmail|passmail
+ *   external 7-field: uid|pass|email|passmail|cookie|token|userAgent
  *
  * Skips empty lines and lines starting with `#` (comments).
  * Returns per-line errors for invalid lines; does NOT abort the batch.
@@ -138,8 +140,9 @@ export function parseBulkProfiles(text: string): ParseResult {
 
     const uid = fields[0] ?? ''
     const pass = fields[1] ?? ''
-    const twofa = fields[2] ?? ''
-    const cookie = fields[3] ?? ''
+    const externalFormat = isExternalCookieFormat(fields)
+    const twofa = externalFormat ? '' : (fields[2] ?? '')
+    const cookie = externalFormat ? (fields[4] ?? '') : (fields[3] ?? '')
 
     if (!uid) {
       errors.push({ line: originalIdx, reason: 'Thiếu uid (field 1): uid là bắt buộc.' })
@@ -151,10 +154,17 @@ export function parseBulkProfiles(text: string): ParseResult {
     }
 
     let token: string | undefined
+    let userAgent: string | undefined
     let hotmail: string
     let passmail: string
 
-    if (fields.length >= 7) {
+    if (externalFormat) {
+      // External marketplace format: uid|pass|email|passmail|cookie|token|userAgent
+      hotmail = fields[2] ?? ''
+      passmail = fields[3] ?? ''
+      token = fields[5] ?? ''
+      userAgent = fields[6] ?? ''
+    } else if (fields.length >= 7) {
       // 7-field variant: uid|pass|2fa|cookie|token|hotmail|passmail
       token = fields[4] ?? ''
       hotmail = fields[5] ?? ''
@@ -172,10 +182,26 @@ export function parseBulkProfiles(text: string): ParseResult {
       twofa,
       cookie,
       ...(token !== undefined ? { token } : {}),
+      ...(userAgent !== undefined ? { userAgent } : {}),
       hotmail,
       passmail
     })
   }
 
   return { parsed, errors, lineCapExceeded: false, dataLineCount: dataLines.length }
+}
+
+function isExternalCookieFormat(fields: string[]): boolean {
+  if (fields.length < 7) return false
+  const email = fields[2] ?? ''
+  const passmail = fields[3] ?? ''
+  const cookie = fields[4] ?? ''
+  const userAgent = fields[6] ?? ''
+
+  return (
+    /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) &&
+    passmail.length > 0 &&
+    /(?:^|;\s*)(?:c_user|xs)=/.test(cookie) &&
+    /^Mozilla\//.test(userAgent)
+  )
 }

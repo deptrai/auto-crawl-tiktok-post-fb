@@ -216,8 +216,9 @@ export function ProfilesView(): React.JSX.Element {
         <p className="eyebrow">Quản lý tài khoản</p>
         <h1 id="profiles-import-title">Import Profile</h1>
         <p className="lead">
-          Dán định dạng <code>uid|pass|2fa|cookie|hotmail|passmail</code> hoặc paste JSON cookie
-          export Facebook. App tự lấy UID từ <code>c_user</code> và không hiển thị lại secret.
+          Dán định dạng <code>uid|pass|2fa|cookie|hotmail|passmail</code>, format ngoài
+          <code>uid|pass|email|passmail|cookie|token|userAgent</code>, hoặc paste JSON cookie export
+          Facebook. App tự lấy UID từ <code>c_user</code> và không hiển thị lại secret.
         </p>
 
         <div className="format-card">
@@ -233,7 +234,7 @@ export function ProfilesView(): React.JSX.Element {
             value={text}
             onChange={(e) => setText(e.target.value)}
             placeholder={
-              'uid1|pass1|seed1|cookie1|email@mail.com|mailpass\n# hoặc paste JSON cookie export Facebook trực tiếp'
+              'uid1|pass1|seed1|cookie1|email@mail.com|mailpass\n# hoặc uid|pass|email|passmail|cookie|token|userAgent'
             }
             rows={8}
             disabled={importing}

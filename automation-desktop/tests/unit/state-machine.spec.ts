@@ -52,11 +52,13 @@ function createFakeRepo(seed: AutomationJob[] = []): Pick<
       updates.push({ id, state, ...params })
       const job = jobs.get(id)
       if (!job) return
+      // Mirror the real repo's always-overwrite semantics (completed_at = ? ?? null,
+      // result = ? ?? null) so the fake cannot mask a regression if the model changes.
       jobs.set(id, {
         ...job,
         state,
-        completedAt: params.completedAt ?? job.completedAt,
-        result: params.result === undefined ? job.result : params.result
+        completedAt: params.completedAt ?? null,
+        result: params.result ?? null
       })
     }
   }

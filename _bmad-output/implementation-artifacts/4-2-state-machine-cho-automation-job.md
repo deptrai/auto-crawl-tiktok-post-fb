@@ -1,6 +1,6 @@
 # Story 4.2: State machine cho automation job
 
-Status: review
+Status: done
 
 Epic: 4 — Lõi Automation Facebook (Self-Comment MVP) · Story: 4.2 · ID: 4.2
 
@@ -31,6 +31,29 @@ So that các story sau (4.3 login, 4.6 self-comment) có khung orchestration chu
 - [x] **T7** — Verify: `npm run lint` + `npm run typecheck` + chạy test mới PASS + full suite không giảm (baseline hiện 144).
 
 > **D1 (defer IPC/UI):** KHÔNG tạo `automation-handlers` IPC hay UI ở 4.2. FSM là orchestration infra; `phase3:automation:start` + UI job-list sẽ wire ở **4.6** (self-comment end-to-end, khi có executor thật). 4.2 chỉ cung cấp khung + persist + resume capability.
+
+## Review Findings (2026-06-03 — bmad-code-review, 3-lens adversarial)
+
+> Diff: commit `450eb6f` + working tree. **Lint ✅ · Typecheck ✅ · 153 tests PASS** (144 + 9 mới). state-machine **PURE** (now injected, grep xác nhận 0 `Date.now`/`new Date`). Verdict: **APPROVE — không có blocker, không có bug.**
+
+**AC1–AC6 + guardrail — TẤT CẢ đạt:**
+- ✅ **AC1** `AUTOMATION_JOB_STATES` const + union literal `(typeof ...)[number]` (single source). State names enforce bằng TYPE (đúng — KHÔNG dựa lint `state-machine-uppercase` không tồn tại).
+- ✅ **AC2** `TRANSITIONS` table + `canTransition`; invalid edge → `INVALID_TRANSITION` typed + repo.updateState KHÔNG gọi (test assert `repo.updates===[]`). Unit test verify MỌI non-terminal → FAILED + CANCELLED.
+- ✅ **AC3** persist qua repo; terminal set `completed_at = now()` + `result`. Migration `automation_jobs` đúng spec (FK cascade, foreign_keys ON).
+- ✅ **AC4** terminal guard cho cả 4 state → `JOB_TERMINAL` + no-persist (unit loop test).
+- ✅ **AC5/NFR19** integration fixture (SQLCipher Electron thật): createJob→ACQUIRING_PROXY→LOGGING_IN → **db.close()→reopen** → state='LOGGING_IN' + `listResumable` chứa job (crash-resume thật, không theater). Terminal job excluded khỏi resumable. FK enforced.
+- ✅ **AC6** unit (7 test) + integration (3 check) + lint/typecheck.
+- ✅ **Clock inject** `now: () => string`; **typed result** không ErrorEnvelope (FSM thuần, đúng — map ErrorEnvelope ở 4.6 IPC); **R-D3** comment "Never store cookie/2FA/password/CSRF/token" trên `result`; **D1** không IPC/UI/bootstrap; reuse fixture-pattern 4.1 (không tạo pattern thứ 3).
+
+**👍 Dev sửa đúng 1 thiếu sót trong spec:** thêm `PENDING → FAILED` vào TRANSITIONS — spec table gốc của tôi thiếu, vi phạm chính AC2 ("mọi non-terminal có nhánh tới FAILED"). Dev bắt đúng.
+
+**Findings (tất cả LOW/INFO — KHÔNG block done):**
+
+- [x] [Review][Low][test-fidelity] **(ĐÃ FIX)** Fake repo (unit) ≠ real repo `updateState` semantics. Real (`automation-job-repo.ts`): `completed_at = completedAt ?? null`, `result = result ?? null` → LUÔN ghi đè cả 2 với (value ?? null). Fake (`state-machine.spec.ts` L58-59): preserve prior khi undefined. Vô hại ở flow hiện tại (completed_at chỉ set ở terminal, terminal chặn transition tiếp → prior luôn null). Nhưng fake không mô phỏng trung thực "always overwrite" của real → có thể che regression nếu model đổi. Đề xuất: align fake về đúng semantics real (`completedAt ?? null`).
+- [ ] [Review][Info] **`transition` không bọc `db.transaction` quanh getJob+updateState.** An toàn ở 4.2 (better-sqlite3 sync, single-thread, không có async gap). Note cho 4.6: khi executor thêm async giữa read↔write → giữ transition sync HOẶC bọc transaction để tránh TOCTOU.
+- [ ] [Review][Info] **`result`/`completed_at` bị ép null mỗi non-terminal transition** (real repo always-overwrite). Hệ quả: KHÔNG thể lưu progress trung gian vào `result` trong EXECUTING. Nếu 4.6 cần track progress → cần cơ chế riêng (cột/bảng khác). Document.
+
+**Dismissed:** fixture key hardcode `'automation-job-test-key'` (test tmpdir ephemeral); fixture không guard isPackaged (trong `tests/`, không bundle prod); self-loop transition (TRANSITIONS không chứa chính nó → INVALID_TRANSITION đúng); concurrency race (sync better-sqlite3 single-thread).
 
 ## Dev Notes
 
