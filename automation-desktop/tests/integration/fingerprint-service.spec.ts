@@ -18,6 +18,15 @@ function buildFixture(): { dir: string; entry: string; resultPath: string } {
   const dir = mkdtempSync(join(tmpdir(), 'phase3-fingerprint-fixture-'))
   const entry = join(dir, 'fingerprint-service-electron-entry.cjs')
   const resultPath = join(dir, 'result.json')
+  // Native module `better-sqlite3-multiple-ciphers` được build cho Electron ABI
+  // (electron-rebuild) → KHÔNG load được trong node test worker → phải spawn Electron
+  // thật để chạy SQLCipher. esbuild bundle fixture với native module `external`,
+  // rồi rewrite require(...) sang absolute path trong node_modules để Electron resolve
+  // đúng. LƯU Ý: regex bám chính xác cách esbuild emit `require("...")`; nếu esbuild
+  // đổi format emit, regex sẽ không match → fixture fail lúc load (fail loud, không
+  // silent-pass). Khi nâng esbuild major, verify lại đoạn replace này.
+  // (Pattern này khác `_electron.launch()` ở proxy-repo/settings-repo spec — chuẩn hóa
+  // về 1 pattern là quyết định team, ngoài scope patch này.)
   buildSync({
     entryPoints: [join(process.cwd(), 'tests/fixtures/fingerprint-service-electron-entry.ts')],
     outfile: entry,

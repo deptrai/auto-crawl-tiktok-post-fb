@@ -3,7 +3,7 @@ import { z } from 'zod'
 export const FINGERPRINT_VERSION = 1 as const
 
 export interface Fingerprint {
-  version: number
+  version: typeof FINGERPRINT_VERSION
   userAgent: string
   viewport: {
     width: number

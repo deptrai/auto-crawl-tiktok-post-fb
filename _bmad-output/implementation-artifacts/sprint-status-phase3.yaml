@@ -47,7 +47,7 @@ project: auto-crawl-tiktok-post-fb-phase3
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
-last_updated: 2026-06-03 (Epic 3 done; Epic 4 started — 4.1 review: fingerprint-generator deterministic per profile)
+last_updated: 2026-06-03 (Epic 4 in-progress — 4.1 review; 4.2 ready-for-dev: automation state-machine + resume NFR19)
 
 development_status:
   # ===== Phase 3.0 MVP =====
@@ -78,7 +78,7 @@ development_status:
   # Epic 4: Lõi Automation Facebook — Self-Comment (Automation Core MVP)
   epic-4: in-progress
   4-1-sinh-fingerprint-diversified-per-profile: review
-  4-2-state-machine-cho-automation-job: backlog
+  4-2-state-machine-cho-automation-job: ready-for-dev
   4-3-login-cookie-xu-ly-2fa-checkpoint: backlog
   4-4-trich-xuat-csrf-token-qua-http: backlog
   4-5-lay-per-action-server-token: backlog

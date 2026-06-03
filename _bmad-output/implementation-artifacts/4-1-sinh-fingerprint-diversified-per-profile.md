@@ -33,6 +33,30 @@ So that Facebook khó mass-detect tài khoản theo cohort (cùng UA/viewport/ti
 
 > **D1 (defer):** KHÔNG wire `fingerprint-service` vào `electron-bootstrap.ts` ở 4.1 — KHÁC `proxyPool` (3.3 có IPC handler nên reachable), fingerprint 4.1 **không có consumer** (no IPC/automation) → wire = dead weight + đụng file security-sensitive vô ích. Epic **4.3** sẽ import từ barrel + wire khi `playwright-runner` thực sự gọi `ensureFingerprint`.
 
+## Review Findings (2026-06-03 — bmad-code-review, 3-lens adversarial)
+
+> Diff: commit `02f27a9` (thuần 4.1) trên baseline. **Lint ✅ · Typecheck ✅ · 144 tests PASS** (138 + 6 mới). Generator **PURE** (grep xác nhận 0 `Math.random`/`Date.now`/`crypto`). Verdict: **APPROVE — không có blocker, không có bug.**
+
+**6 Guardrail (G1–G6) + D1 — TẤT CẢ đạt:**
+- ✅ **G1 (M5)** `tests/unit/profile-service.spec.ts` `createMemoryRepo` đã thêm `getMetadata`/`setMetadata` (Map) → typecheck pass.
+- ✅ **G2** `FingerprintServiceDeps.profileRepo: Pick<ProfileRepository,'getMetadata'|'setMetadata'>`.
+- ✅ **G3 (M1)** fonts dùng `FONT_OPTIONAL_POOL.filter(() => rng()<0.5)` → `Array.filter` gọi callback đúng 1 lần/phần tử, cố định 6 draw → `webglNoise` (draw cuối) ổn định. Có unit test riêng guard rationale.
+- ✅ **G4** purity tuyệt đối; thứ tự rng cố định UA→viewport→tz→fonts(6)→webglNoise.
+- ✅ **G5 (M2)** `version` field + `FingerprintSchema` `z.literal(1)` + test `version+1 → throw`.
+- ✅ **G6 (M4)** test diversification dùng id cố định `id-0..id-49`; `TIMEZONE_POOL` weight `Asia/Ho_Chi_Minh` 3× + SEA (không EU/US); UA_POOL có comment "4.3 must reconcile Chrome/<major>".
+- ✅ **D1** `electron-bootstrap.ts` KHÔNG có ref `fingerprint` (xác minh git diff) — 4.1 không wire bootstrap, defer 4.3 đúng cam kết.
+
+**AC1–AC7:** đủ test. Integration fixture (`tests/fixtures/fingerprint-service-electron-entry.ts`) chạy SQLCipher Electron THẬT, assert thật (không theater): persist-idempotent kiểm `storedAfterSecond === storedAfterFirst` (AC4 không ghi đè), self-heal `'{broken'`→regenerate (AC5), metadata round-trip + missing→undefined.
+
+**Findings (tất cả LOW — KHÔNG block done):**
+
+- [ ] [Review][Low][consistency] **2 pattern integration-test song song.** `proxy-repo`/`settings-repo` dùng `_electron.launch()` + `app.evaluate()`; 4.1 hand-roll `esbuild buildSync + execFile + result-file`. Native module là electron-ABI nên spawn electron là ĐÚNG, nhưng cách tự build khác chuẩn. Điểm mong manh nhất: regex rewrite `require("better-sqlite3-multiple-ciphers")` (integration spec L30-33) — nếu esbuild đổi cách emit require, regex im lặng không match (fail loud lúc load, chấp nhận được). Đề xuất: (a) thêm comment giải thích regex + lý do chọn standalone-fixture (tránh nhồi smoke-runner vào `src/`), HOẶC (b) chuẩn hóa về `_electron.launch()`. → quyết định team.
+- [ ] [Review][Low][nit] `Fingerprint.version: number` có thể chặt hơn `version: typeof FINGERPRINT_VERSION` (schema đã enforce literal).
+- [ ] [Review][Low][info] `FingerprintSchema` self-heal chỉ validate structure + version, KHÔNG check pool-membership/`Chrome/` (giá trị structurally-valid nhưng bogus sẽ không regenerate). OK cho MVP vì chỉ generator ghi; note để hardening sau.
+- [ ] [Review][Low][info] Entropy diversification bị giới hạn pool (8 UA × 6 viewport × 7 tz) — coarse features SẼ cluster khi nhiều profile; `webglNoise` (float) + font-subset (2^6) là differentiator per-profile chính → tổng fingerprint vẫn unique. Đây là ràng buộc cố hữu của R-D15 (Chromium pinned), chấp nhận.
+
+**Dismissed:** fixture hardcode DB key `'fingerprint-test-key'` (test tmpdir ephemeral — không phải secret); fixture không guard `app.isPackaged` (nằm trong `tests/`, không bundle production — rule #2 chỉ áp `src/`); `pick` index tràn (rng∈[0,1) → index∈[0,len-1]); `seedFromProfileId('')` (caller luôn truyền id thật).
+
 ## Dev Notes
 
 ### ⚠️ ĐỌC TRƯỚC: `automation-desktop/CLAUDE.md` (25 rules) + `automation-desktop/project-context.md`
