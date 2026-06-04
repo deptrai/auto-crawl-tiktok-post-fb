@@ -71,6 +71,7 @@ button,
   display: grid;
   grid-template-rows: auto 1fr auto;
   gap: var(--sp-5);
+  min-width: 0;
   border-right: 1px solid var(--border);
   padding: var(--sp-5) var(--sp-4);
   background: var(--surface);
@@ -1241,11 +1242,16 @@ h1 {
   }
 
   .sidebar {
+    overflow: hidden;
     padding: var(--sp-4) var(--sp-2);
   }
 
   .sidebar-brand {
     justify-content: center;
+  }
+
+  .sidebar-brand-mark {
+    display: none;
   }
 
   .sidebar-brand > div,
@@ -1285,15 +1291,22 @@ h1 {
 
   .sidebar-toggle {
     display: inline-grid;
+    flex: 0 0 36px;
+    margin-left: 0;
     place-items: center;
   }
 
   .app-shell.sidebar-expanded .sidebar {
+    overflow: visible;
     padding: var(--sp-4);
   }
 
   .app-shell.sidebar-expanded .sidebar-brand {
     justify-content: flex-start;
+  }
+
+  .app-shell.sidebar-expanded .sidebar-brand-mark {
+    display: block;
   }
 
   .app-shell.sidebar-expanded .sidebar-brand > div,

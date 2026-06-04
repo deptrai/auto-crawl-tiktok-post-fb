@@ -163,7 +163,7 @@ function MainShell({
             </div>
             <div className="settings-row settings-row-disabled" aria-disabled="true">
               <div>
-                <strong>Telemetry opt-in</strong>
+                <strong>Chia sẻ chẩn đoán</strong>
                 <p className="profiles-list-subtitle">Sắp có.</p>
               </div>
               <label className="settings-toggle" htmlFor="settings-telemetry-toggle">
@@ -183,7 +183,7 @@ function MainShell({
             </p>
           ) : null}
           <p className="settings-shortcuts" data-testid="settings-shortcuts">
-            Shortcuts: Ctrl/Cmd+A chọn tất cả trong bảng, Enter chạy bulk khi đã chọn, / focus URL.
+            Phím tắt: Ctrl/Cmd+A chọn tất cả trong bảng, Enter chạy bulk khi đã chọn, / focus URL.
           </p>
         </section>
       )

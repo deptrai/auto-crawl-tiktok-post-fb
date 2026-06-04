@@ -435,8 +435,7 @@ test('[P0] power-user shortcuts context menu and settings stay in sync', async (
 
     await window.setViewportSize({ width: 900, height: 760 })
     await expect(window.getByTestId('sidebar-toggle')).toHaveAttribute('aria-expanded', 'false')
-    await window.getByTestId('sidebar-toggle').focus()
-    await window.keyboard.press('Enter')
+    await window.getByTestId('sidebar-toggle').click()
     await expect(window.getByTestId('sidebar-toggle')).toHaveAttribute('aria-expanded', 'true')
   } finally {
     if (app) await app.close()

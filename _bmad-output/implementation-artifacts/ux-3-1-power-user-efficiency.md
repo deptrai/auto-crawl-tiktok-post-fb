@@ -1,6 +1,6 @@
 # Story UX-3.1: Tăng tốc Power-user — Shortcuts, Context menu, Tooltip & Settings
 
-Status: review
+Status: done
 
 > **Namespace:** Epic 3 (Phase C — **OPTIONAL**) của `epics-ux-redesign.md`. Prefix `ux-`. KHÔNG ghi `sprint-status.yaml`. Tiếp nối UX-1.1 + UX-2.1 (đều done). Chỉ làm khi muốn đánh bóng cho power-user; không block giá trị cốt lõi.
 
@@ -53,6 +53,11 @@ so that tôi thao tác lặp nhanh hơn, ít rời bàn phím và chuột.
 - [x] **Task 4 — Settings view (AC4)**: thay placeholder; gom headless toggle; xử lý sync caveat (lift state hoặc re-fetch).
 - [x] **Task 5 — Sidebar aria-expanded (AC5)**: truyền `sidebarExpanded` → Sidebar; set `aria-expanded`.
 - [x] **Task 6 — Chất lượng (AC6)**: lint/typecheck/E2E + test mới.
+
+### Review Findings
+
+- [x] [Review][Patch] Một số label Settings mới thêm vẫn dùng tiếng Anh, vi phạm khóa tiếng Việt [automation-desktop/src/renderer/src/App.tsx:166]
+- [x] [Review][Patch] Sidebar toggle ở breakpoint mobile vẫn có thể bị console content che khi click/touch; test hiện chỉ dùng keyboard nên không bắt lỗi pointer [automation-desktop/src/renderer/src/assets/main.css:1240]
 
 ## Dev Notes
 
@@ -107,6 +112,7 @@ GPT-5 Codex
 - 2026-06-04: `npm run build` pass để cập nhật `out/` trước E2E.
 - 2026-06-04: `npx playwright test tests/e2e/profiles.spec.ts tests/e2e/automation-trigger.spec.ts --workers=3` pass 13/13.
 - 2026-06-04: `npx playwright test tests/e2e --workers=3` pass 24/24.
+- 2026-06-04: Code review applied 2 patch findings; `npm run build`, `npm run lint`, and `npx playwright test tests/e2e/profiles.spec.ts -g "power-user shortcuts" --workers=1` pass.
 
 ### Completion Notes List
 
@@ -130,3 +136,4 @@ GPT-5 Codex
 ### Change Log
 
 - 2026-06-04: Implemented UX-3.1 power-user shortcuts, row context menu, Settings sync, sidebar a11y and E2E coverage.
+- 2026-06-04: Addressed code review findings: Settings labels fully Vietnamese and sidebar toggle pointer click fixed on mobile breakpoint.
