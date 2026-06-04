@@ -118,6 +118,28 @@ test('[P0] messenger status returns state counts and no secrets', async () => {
   expect(JSON.stringify(response)).not.toMatch(/cookie|token|JWT|fb_dtsg|secret/i)
 })
 
+test('[P0] messenger status returns terminal JOB_NOT_FOUND for missing jobs', async () => {
+  const ipc = new FakeIpcMain()
+  registerMessengerHandlers(ipc, {
+    stateMachine: { createJob: (input) => job(input.id, input.profileId, 'PENDING') },
+    jobRepo: { getJob: () => undefined },
+    jobActions: { countByJob: () => 0, countSuccessByJob: () => 0 },
+    orchestrator: {
+      async runMessengerSeed(_jobId, profileId): Promise<MessengerSeedResult> {
+        return { profileId, sent: 0, failed: 0, perTarget: [] }
+      }
+    },
+    batch: async () => ({ perProfile: [], totalSent: 0, totalFailed: 0, totalCheckpoint: 0 })
+  })
+
+  const response = await ipc.invoke('phase3:messenger:status', { jobIds: ['missing-job'] })
+
+  expect(response).toEqual({
+    ok: true,
+    jobs: [{ jobId: 'missing-job', state: 'FAILED', sent: 0, total: 0, reason: 'JOB_NOT_FOUND' }]
+  })
+})
+
 test('[P1] messenger start rejects invalid payload with VALIDATION_ERROR', async () => {
   const ipc = new FakeIpcMain()
   const createCalls: unknown[] = []
@@ -155,6 +177,42 @@ test('[P1] messenger start rejects invalid payload with VALIDATION_ERROR', async
     expect.objectContaining({ code: 'VALIDATION_ERROR', retryable: false })
   )
   expect(emptyUid.error).toEqual(
+    expect.objectContaining({ code: 'VALIDATION_ERROR', retryable: false })
+  )
+  expect(createCalls).toHaveLength(0)
+  expect(batchCalls).toHaveLength(0)
+})
+
+test('[P1] messenger start rejects duplicate profileIds before creating jobs', async () => {
+  const ipc = new FakeIpcMain()
+  const createCalls: unknown[] = []
+  const batchCalls: unknown[] = []
+  registerMessengerHandlers(ipc, {
+    stateMachine: {
+      createJob(input) {
+        createCalls.push(input)
+        return job(input.id, input.profileId, 'PENDING')
+      }
+    },
+    jobRepo: { getJob: () => undefined },
+    jobActions: { countByJob: () => 0, countSuccessByJob: () => 0 },
+    orchestrator: {
+      async runMessengerSeed(_jobId, profileId): Promise<MessengerSeedResult> {
+        return { profileId, sent: 0, failed: 0, perTarget: [] }
+      }
+    },
+    batch: async (input) => {
+      batchCalls.push(input)
+      return { perProfile: [], totalSent: 0, totalFailed: 0, totalCheckpoint: 0 }
+    }
+  })
+
+  const response = (await ipc.invoke('phase3:messenger:start', {
+    profileIds: ['profile-1', 'profile-1'],
+    targets: [{ uid: '1001' }]
+  })) as { ok: false; error: { code: string; retryable: boolean } }
+
+  expect(response.error).toEqual(
     expect.objectContaining({ code: 'VALIDATION_ERROR', retryable: false })
   )
   expect(createCalls).toHaveLength(0)

@@ -1,6 +1,6 @@
 # Story 12.2b: Messenger Seeding — Surface (IPC start/status + UI trigger + bootstrap wiring)
 
-Status: review
+Status: done
 
 Epic: 12 — Mass Messenger Seeding (Phase 3.4 Growth) · Story: 12.2b (tách từ 12.2) · ID: 12.2b
 
@@ -42,6 +42,10 @@ So that tôi seeding DM hàng loạt qua UI (đóng phần surface của Epic 12
 - [x] **V** — typecheck + lint (0 errors) + full suite ≥ baseline. Pre-commit secret guard.
 
 > **D1 (defer):** Target List CRUD persistence + filter đã-gửi/chưa-gửi (→ 12.3); chọn template cụ thể cho seeding (hiện random); tách template set self-comment vs seeding (AC6 chỉ cảnh báo); backend `action_type='message'` (xem ⚠️ Risk); warmup enforcement (Epic 9); 4-tier Messenger selector (Epic 5); rate-limit adaptive throttle (Epic 9/10).
+
+### Review Findings
+- [x] [Review][Patch] Reject duplicate `profileIds` before job creation; current Map collapse can orphan a `PENDING` job and run the same job twice [automation-desktop/src/main/ipc/messenger-handlers.ts:80]
+- [x] [Review][Patch] Return a terminal status for missing jobIds; current status response omits them and leaves the renderer polling orphaned jobs forever [automation-desktop/src/main/ipc/messenger-handlers.ts:118]
 
 ## Dev Notes
 

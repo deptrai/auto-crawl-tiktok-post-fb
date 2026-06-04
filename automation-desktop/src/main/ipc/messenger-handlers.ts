@@ -115,20 +115,19 @@ export function registerMessengerHandlers(
         return MessengerStatusResponseSchema.parse(parseError(parsedRequest.error.flatten()))
 
       try {
-        const jobs = parsedRequest.data.jobIds.flatMap((jobId) => {
+        const jobs = parsedRequest.data.jobIds.map((jobId) => {
           const job = deps.jobRepo.getJob(jobId)
-          if (!job) return []
-          return [
-            {
-              jobId,
-              state: job.state,
-              sent: deps.jobActions.countSuccessByJob(jobId),
-              total: deps.jobActions.countByJob(jobId),
-              ...(terminalReason(job.state, job.result)
-                ? { reason: terminalReason(job.state, job.result) }
-                : {})
-            }
-          ]
+          if (!job)
+            return { jobId, state: 'FAILED' as const, sent: 0, total: 0, reason: 'JOB_NOT_FOUND' }
+
+          const reason = terminalReason(job.state, job.result)
+          return {
+            jobId,
+            state: job.state,
+            sent: deps.jobActions.countSuccessByJob(jobId),
+            total: deps.jobActions.countByJob(jobId),
+            ...(reason ? { reason } : {})
+          }
         })
         return MessengerStatusResponseSchema.parse({ ok: true, jobs })
       } catch (error) {
