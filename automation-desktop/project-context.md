@@ -16,7 +16,7 @@ optimized_for_llm: true
 
 - **Runtime**: Electron (electron-vite scaffold, NOT electron-react-boilerplate)
 - **Language**: TypeScript strict mode
-- **UI**: React 19, Vite HMR, Tailwind v4 (PostCSS `@theme`)
+- **UI**: React 19, Vite HMR, custom plain CSS design tokens (no Tailwind in `automation-desktop`)
 - **Database**: better-sqlite3-multiple-ciphers (SQLCipher AES-256)
 - **Validation**: zod v4 (`z.object`, `z.infer`, `z.union`)
 - **Testing**: `@playwright/test` only (Vitest deferred)

@@ -7,7 +7,7 @@ inputDocuments:
   - _bmad-output/planning-artifacts/prd-phase3.md
   - automation-desktop/CLAUDE.md
   - automation-desktop/src/renderer/** (App.tsx, main.css, base.css, ProfilesView, ContentTemplatesView, ProxyView, EulaAcceptanceView, LicenseView)
-scope: 'Tái cấu trúc IA + visual redesign cho automation-desktop (Phase 3.0 Electron)'
+scope: 'Tái cấu trúc IA + visual redesign cho automation-desktop Phase 3.0; addendum Phase 3.4-3.10 cho full suite + optional mobile farming'
 project: 'automation-desktop'
 phase: 'phase-3'
 status: 'complete'
@@ -17,7 +17,7 @@ status: 'complete'
 
 **Author:** Luisphan
 **Date:** 2026-06-04
-**Phạm vi:** Tái cấu trúc Information Architecture + visual redesign cho desktop tool vận hành multi-account Facebook self-comment (Phase 3.0).
+**Phạm vi:** Tái cấu trúc Information Architecture + visual redesign cho desktop tool vận hành multi-account Facebook self-comment (Phase 3.0), kèm addendum Phase 3.4-3.10 cho full suite operations và optional mobile device farming.
 
 ---
 
@@ -36,8 +36,8 @@ automation-desktop là **operator console** giúp một người vận hành t�
 1. **Mật độ thông tin cao trên desktop** — nhiều acc × nhiều thuộc tính cùng lúc (layout card `min(780px)` căn giữa hiện tại chống lại điều này).
 2. **Bulk action là mặc định, không phải ngoại lệ** — multi-select cho chạy / gán proxy là yêu cầu cốt lõi (metric: ≥10 profile song song; time-to-first-action < 15 phút).
 3. **Trạng thái real-time đa cấp** — profile status (idle/running/checkpoint/error) + 10 job state (PENDING→DONE) phải scan được, không đọc text dài.
-4. **Ràng buộc cứng**: lock tiếng Việt (NFR28, Phase 3.0→3.9), giữ `data-testid` cho E2E, plain CSS (KHÔNG Tailwind dù context ghi vậy), tuân 25 rule trong `automation-desktop/CLAUDE.md` (đặc biệt rule #16 loading-shell, #17 disable-on-click).
-5. **IA mở rộng được** cho Phase 3.1–3.3 (mass post/comment/share), backup/recovery, telemetry settings, notification phục hồi selector.
+4. **Ràng buộc cứng**: lock tiếng Việt (NFR28, Phase 3.0→3.10), giữ `data-testid` cho E2E, plain CSS design tokens (KHÔNG Tailwind trong `automation-desktop`), tuân 25 rule trong `automation-desktop/CLAUDE.md` (đặc biệt rule #16 loading-shell, #17 disable-on-click).
+5. **IA mở rộng được** cho Phase 3.1–3.10: mass post/comment/share, Messenger, Groups, Pages, Marketplace, Live, Farming/Risk, Leads/Campaigns, Devices/Mobile Farming, backup/recovery, telemetry settings, notification phục hồi selector.
 
 ### Design Opportunities
 
@@ -448,18 +448,18 @@ Bản đồ thay đổi theo file để implement (khi sang phase code). Mọi `
 
 **Ràng buộc khi implement:** tuân 25 rule `automation-desktop/CLAUDE.md` (đặc biệt #15 error tiếng Việt, #16 loading riêng, #17 disable-on-click); không thêm dependency; không vỡ E2E (`data-testid` giữ nguyên + thêm test cho DataTable/BulkBar theo #18).
 
-## Phase 3.4-3.9 UX Addendum — Full Suite Operations
+## Phase 3.4-3.10 UX Addendum — Full Suite Operations
 
-Addendum này mở rộng UX operator console từ Phase 3.0 sang full Facebook automation suite. Mục tiêu là dùng chung shell/pattern hiện có, không tạo landing page hay surface marketing. Mọi text UI/error/toast/confirm tiếp tục bằng tiếng Việt đến hết Phase 3.9.
+Addendum này mở rộng UX operator console từ Phase 3.0 sang full Facebook automation suite và optional mobile device farming module. Mục tiêu là dùng chung shell/pattern hiện có, không tạo landing page hay surface marketing. Mọi text UI/error/toast/confirm tiếp tục bằng tiếng Việt đến hết Phase 3.10.
 
 ### Information Architecture
 
 Sidebar chia nhóm rõ theo công việc:
 
-- **Core Ops:** Dashboard, Profiles, Templates, Target Lists, Proxy, Safety.
+- **Core Ops:** Dashboard, Profiles, Devices, Templates, Target Lists, Proxy, Safety.
 - **Campaigns:** Messenger, Groups, Pages, Marketplace, Live.
-- **Planning:** Farming/Risk, Leads/Campaigns, Reports.
-- **Settings/Admin:** License, EULA, CAPTCHA Solver, Telemetry, Updates.
+- **Planning:** Farming/Risk, Mobile Farming, Leads/Campaigns, Reports.
+- **Settings/Admin:** License, EULA, CAPTCHA Solver, Mobile Provider, Telemetry, Updates.
 
 Không nhồi tất cả vào Dashboard. Dashboard chỉ tổng hợp trạng thái, cảnh báo và entry point nhanh; mỗi domain có view riêng với table, filters, job progress và drawer chi tiết.
 
@@ -474,18 +474,19 @@ Messenger, Groups, Pages, Marketplace và Live dùng cùng layout cơ bản:
 - Right detail drawer: target/campaign/job timeline, raw reason, retry controls, export shortcut.
 - Progress panel: job đang chạy, queue length, profile đang dùng, pause/resume/stop.
 
-`data-testid` phải ổn định theo domain (`messenger-*`, `groups-*`, `pages-*`, `marketplace-*`, `live-*`, `safety-*`, `leads-*`) để E2E không phụ thuộc text.
+`data-testid` phải ổn định theo domain (`messenger-*`, `groups-*`, `pages-*`, `marketplace-*`, `live-*`, `safety-*`, `leads-*`, `devices-*`, `mobile-farm-*`) để E2E không phụ thuộc text.
 
 ### Safety UX Contract
 
-Mọi surface high-blast Phase 3.4-3.9 phải có safety bar cố định trong view:
+Mọi surface high-blast Phase 3.4-3.10 phải có safety bar cố định trong view:
 
-- Global kill switch visible trên Messenger/Groups/Pages/Marketplace/Live/Farming/Risk.
+- Global kill switch visible trên Messenger/Groups/Pages/Marketplace/Live/Farming/Risk/Mobile Farming.
 - Risk banner hiển thị khi profile chưa warm, cap gần chạm, cooldown active, checkpoint/rate-limit hoặc token policy fail.
 - Dry-run preview bắt buộc trước action high-blast: số profile, số target, cap/ngày, cooldown, estimated duration, duplicate suppression, stop conditions.
 - Run button disabled nếu Story 12.0 policy fail; tooltip/error tiếng Việt nêu lý do cụ thể.
 - Stop/Pause luôn accessible bằng keyboard; stop ghi reason rõ trong job timeline.
 - CI/test mock không hiển thị claim "đã post thật" nếu không có read-back/live verification.
+- Execution mode selector hiển thị rõ `Browser`, `Mobile`, `Mixed`; Browser giữ behavior Epic 1-18, Mobile yêu cầu device binding, Mixed dùng mobile eligibility/risk để gate browser campaign.
 
 ### Messenger Surface
 
@@ -511,6 +512,12 @@ View Live gồm live target registry, watcher session queue, live comment/reacti
 
 View Farming/Risk gồm farming plan templates, calendar, profile eligibility, risk score, policy planner, pause/resume và kill switch history. Risk score phải giải thích bằng factors dễ scan: warmup age, recent checkpoint, action volume, proxy health, cooldown. User không sửa trực tiếp counter runtime trong table; chỉ chỉnh policy qua modal/drawer có confirm.
 
+### Devices & Mobile Farming Surface
+
+View Devices gồm danh sách điện thoại sync từ box farm phone/phần mềm điều khiển hiện có: provider device id, label, platform, model, app version, online/offline, health, assigned profile, last seen. View Mobile Farming gồm profile-device binding, provider status, script catalog, manual-assisted plan, script run queue, screenshot/log preview đã redacted, và stop controls. UI phải làm rõ mobile là option riêng; không được làm user hiểu rằng bật mobile sẽ thay thế browser automation.
+
+Provider settings ưu tiên API/CLI/script runner của phần mềm farm phone hiện tại. Appium/ADB chỉ hiển thị như fallback provider type, không phải default. Khi device offline, app missing, provider timeout, binding thiếu, hoặc network changed, run button disabled và nêu lý do tiếng Việt.
+
 ### Leads/Campaigns Surface
 
 View Leads/Campaigns gồm lead registry, segments, suppression list, campaign presets, attribution/report export và operator dashboard. Lead detail drawer hiển thị source, last touch, campaign history, suppression reason và export eligibility. Export phải có field selection + redaction option cho UID/PII nhạy cảm.
@@ -530,5 +537,6 @@ UX implementation nên theo thứ tự:
 5. Pages + Marketplace surfaces.
 6. Live surface.
 7. Farming/Risk + Leads/Campaigns + Reports.
+8. Devices + Mobile Farming optional surfaces.
 
 Không build surface domain mới nếu chưa có safety bar/dry-run/kill-switch integration cho action high-blast tương ứng.

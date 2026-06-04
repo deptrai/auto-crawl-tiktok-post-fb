@@ -262,12 +262,15 @@ function createSelfCommentLoginAdapter(deps: {
       let state = await detectLoginState(sessionHandle.page)
       if (state === 'TWO_FA_REQUIRED') {
         const twoFa = await deps.storage.get(profileSecretKey(profileId, 'twofa'))
-        if (!twoFa?.trim())
+        if (!twoFa?.trim()) {
+          releaseProxy()
           return { ok: true, state, session, reason: 'TWO_FA_REQUIRED', keepSessionOpen: true }
+        }
         try {
           await submitTwoFa(sessionHandle.page, generateTotp(twoFa, Date.now()))
           state = await detectLoginState(sessionHandle.page)
         } catch {
+          releaseProxy()
           return {
             ok: true,
             state: 'TWO_FA_REQUIRED',
@@ -294,10 +297,13 @@ function createSelfCommentLoginAdapter(deps: {
           })
           if (solved.ok) return { ok: true, state: 'LOGGED_IN', session }
         }
+        releaseProxy()
         return { ok: true, state, session, reason: 'CHECKPOINT_BLOCKED', keepSessionOpen: true }
       }
-      if (state === 'TWO_FA_REQUIRED')
+      if (state === 'TWO_FA_REQUIRED') {
+        releaseProxy()
         return { ok: true, state, session, reason: 'TWO_FA_REQUIRED', keepSessionOpen: true }
+      }
       console.warn('[Phase3] Facebook login state failed', {
         profileId,
         url: sessionHandle.page.url(),

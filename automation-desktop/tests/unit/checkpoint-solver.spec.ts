@@ -20,10 +20,14 @@ function client(name: string, result: string | Error): CaptchaSolverClient {
 
 test('[P0] checkpoint solver gates off without calling providers', async () => {
   let calls = 0
+  let detectCalls = 0
   const solver = createCheckpointSolver({
     isEnabled: () => false,
     getClients: () => [client('capsolver', 'TOKEN')],
-    detectType: async () => 'FUNCAPTCHA',
+    detectType: async () => {
+      detectCalls += 1
+      return 'FUNCAPTCHA'
+    },
     extractParams: async () => ({ type: 'FUNCAPTCHA', publicKey: 'pk', websiteUrl: 'url' }),
     injectToken: async () => {
       calls += 1
@@ -34,9 +38,9 @@ test('[P0] checkpoint solver gates off without calling providers', async () => {
 
   await expect(solver.solveCheckpoint(page, { profileId: 'profile-1' })).resolves.toMatchObject({
     ok: false,
-    code: 'NO_API_KEY',
-    type: 'FUNCAPTCHA'
+    code: 'NO_API_KEY'
   })
+  expect(detectCalls).toBe(0)
   expect(calls).toBe(0)
 })
 

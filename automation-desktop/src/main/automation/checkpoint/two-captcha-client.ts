@@ -6,6 +6,7 @@ export interface TwoCaptchaClientOptions {
   apiKey: string
   postJson?: PostJson
   sleep?: (ms: number) => Promise<void>
+  initialDelayMs?: number
   pollIntervalMs?: number
   maxPolls?: number
 }
@@ -37,13 +38,17 @@ function proxyString(proxy: CaptchaParams['proxy']): string | undefined {
   return `${auth}${url.hostname}:${url.port}`
 }
 
+function proxyType(server: string): string {
+  return new URL(server).protocol.replace(':', '').toUpperCase() || 'HTTP'
+}
+
 function createPayload(apiKey: string, params: CaptchaParams): Record<string, unknown> {
   const proxy = proxyString(params.proxy)
   const base = {
     key: apiKey,
     json: 1,
     pageurl: params.websiteUrl,
-    ...(proxy ? { proxy, proxytype: 'HTTP' } : {})
+    ...(proxy && params.proxy ? { proxy, proxytype: proxyType(params.proxy.server) } : {})
   }
 
   if (params.type === 'FUNCAPTCHA') {
@@ -93,6 +98,7 @@ function parseResult(response: unknown): string | null {
 export function createTwoCaptchaClient(options: TwoCaptchaClientOptions): CaptchaSolverClient {
   const postJson = options.postJson ?? defaultPostJson
   const sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)))
+  const initialDelayMs = options.initialDelayMs ?? 15_000
   const pollIntervalMs = options.pollIntervalMs ?? 5_000
   const maxPolls = options.maxPolls ?? 24
 
@@ -104,6 +110,7 @@ export function createTwoCaptchaClient(options: TwoCaptchaClientOptions): Captch
         await postJson(CREATE_URL, createPayload(options.apiKey, params))
       )
 
+      await sleep(initialDelayMs)
       for (let attempt = 0; attempt < maxPolls; attempt += 1) {
         const token = parseResult(
           await postJson(RESULT_URL, {

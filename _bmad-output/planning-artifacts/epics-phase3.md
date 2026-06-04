@@ -12,7 +12,7 @@ releaseMode: 'phased'
 
 ## Overview
 
-Document này decompose requirements từ `prd-phase3.md` (37 FR + 30 NFR) và `architecture.md` § Phase 3 Addendum (16 ADR-D + 16 R-D anchor) thành epics & stories implementable. Phased delivery: Phase 3.0 (MVP) → 3.1 → 3.2 → 3.3 → 3.4 → 3.5 → 3.6 → 3.7 → 3.8 → 3.9.
+Document này decompose requirements từ `prd-phase3.md` (37 FR + 30 NFR) và `architecture.md` § Phase 3 Addendum (16 ADR-D + 16 R-D anchor) thành epics & stories implementable. Phased delivery: Phase 3.0 (MVP) → 3.1 → 3.2 → 3.3 → 3.4 → 3.5 → 3.6 → 3.7 → 3.8 → 3.9 → 3.10 optional mobile.
 
 KHÔNG đụng `epics.md` (Phase 1+2 epics, độc lập).
 
@@ -82,7 +82,7 @@ KHÔNG đụng `epics.md` (Phase 1+2 epics, độc lập).
 **Reliability (Adapt Time SLO)**: NFR14 drift detect <24h; NFR15 hot config fix <1h; NFR16 success rate ≥85%; NFR17 crash-free ≥95%; NFR18 license uptime ≥99% + offline grace 24h; NFR19 state machine resume
 **Compliance & Privacy**: NFR20 telemetry anonymous; NFR21 EULA gate telemetry; NFR22 Nghị định 13; NFR23 billing entity tách
 **Maintainability**: NFR24 adapter layer; NFR25 Zod 2-way; NFR26 coverage ≥70%; NFR27 lint rules
-**Localization**: NFR28 VN lock Phase 3.0-3.9
+**Localization**: NFR28 VN lock Phase 3.0-3.10
 **Compatibility**: NFR29 Win10+/macOS12+; NFR30 update adoption ≥90% trong 7 ngày
 
 ### Additional Requirements (từ Architecture)
@@ -133,8 +133,9 @@ Không có UX Design document riêng. UX cho Phase 3.0 = 5 view đơn giản (Da
 | 16 Livestream Automation | FR-P3-16 | 3.8 |
 | 17 Advanced Account Farming & Risk | FR-P3-17 | 3.9 |
 | 18 Lead, Segment & Campaign Operations | FR-P3-18 | 3.9 |
+| 19 Mobile Device Farming & Account Binding | FR-P3-19 | 3.10 optional |
 
-✅ 37/37 original FR mapped. FR-P3-12→18 added post-validation for full Facebook automation suite scope.
+✅ 37/37 original FR mapped. FR-P3-12→19 added post-validation for full Facebook automation suite scope + optional mobile execution channel.
 
 ## Epic List
 
@@ -209,6 +210,10 @@ User tạo lịch nuôi nick dài ngày, low-risk behavior runner, risk score, e
 ### Epic 18: Lead, Segment & Campaign Operations — Phase 3.9
 User gom lead đa nguồn, segment/suppression, campaign presets, reports, và operator dashboard.
 **FRs covered:** FR-P3-18
+
+### Epic 19: Mobile Device Farming & Account Binding — Phase 3.10 Optional
+User kết nối box farm phone/phần mềm điều khiển điện thoại hiện có, sync device, bind profile↔device, trigger script nuôi acc, và gom logs/risk vào control plane chung. Đây là execution channel riêng, không thay thế browser automation Epic 1-18.
+**FRs covered:** FR-P3-19
 
 ---
 
@@ -871,18 +876,18 @@ User gửi tin nhắn qua Messenger tới người dùng Facebook đã tương t
 
 As an operator,
 I want mọi workflow high-blast có cap, cooldown, eligibility gate và kill switch tối thiểu trước khi chạy,
-So that Messenger/group/Page/Marketplace/live automation không vượt ngưỡng an toàn trước khi Epic 17 risk orchestration nâng cao được triển khai.
+So that Messenger/group/Page/Marketplace/live/mobile automation không vượt ngưỡng an toàn trước khi Epic 17 risk orchestration nâng cao hoặc Epic 19 mobile scripts được triển khai.
 
 **Acceptance Criteria:**
 
-**Given** bất kỳ action high-blast Phase 3.4-3.9 chuẩn bị start (Messenger, group join/post/comment, Page, Marketplace, live)
+**Given** bất kỳ action high-blast Phase 3.4-3.10 chuẩn bị start (Messenger, group join/post/comment, Page, Marketplace, live, mobile script)
 **When** scheduler/action-executor validate profile + action
 **Then** enforce tối thiểu: warmup eligibility, per-profile daily cap, per-action cooldown, per-target duplicate guard, one high-blast action active/profile, terminal stop khi checkpoint/rate-limit/risk pause
 **And** global kill switch có thể bật/tắt toàn bộ high-blast actions ngay lập tức; job đang chạy phải stop ở boundary an toàn kế tiếp và ghi lý do `GLOBAL_KILL_SWITCH`
-**And** lưu policy/state qua repository rõ ràng (`safety_policies`, `profile_action_counters`, `global_kill_switch_state` hoặc schema tương đương) để mọi Epic 12-16 dùng chung
+**And** lưu policy/state qua repository rõ ràng (`safety_policies`, `profile_action_counters`, `global_kill_switch_state` hoặc schema tương đương) để mọi Epic 12-19 browser/mobile high-blast workflow dùng chung, gồm `executor_kind='browser'|'mobile'|'mixed'` khi cần phân tách counter
 **And** expose IPC/API tối thiểu `phase3:safety:get-policy`, `phase3:safety:update-policy`, `phase3:safety:get-kill-switch`, `phase3:safety:set-kill-switch` với Zod + ErrorEnvelope tiếng Việt
 **And** token policy guard: action tier 2+ vẫn cần per-action server token trước khi execute; kill switch/cap failure block trước khi consume action token nếu có thể
-**And** CI/unit tests KHÔNG gọi live Facebook; test cap exceeded, cooldown active, kill switch ON, checkpoint pause, concurrent high-blast blocked, token guard preserved
+**And** CI/unit tests KHÔNG gọi live Facebook hoặc real phone farm device; test cap exceeded, cooldown active, kill switch ON, checkpoint pause, concurrent browser/mobile high-blast blocked, token guard preserved
 **And** Epic 17 được phép mở rộng risk scoring/farming calendar/policy planner, nhưng KHÔNG thay thế safety primitives tối thiểu của Story 12.0
 
 ### Story 12.1: Content Templates — Reuse & Messenger Placeholder Enhancements
@@ -1546,12 +1551,150 @@ So that tôi thấy campaign đang chạy, risk, quota, queue, and audit trail t
 
 ---
 
+## Epic 19: Mobile Device Farming & Account Binding — Optional Mobile Execution Channel
+
+User dùng box farm phone và phần mềm điều khiển điện thoại hiện có để nuôi acc/profile trên mobile app, trong khi browser automation Epic 1-18 vẫn giữ nguyên. App Phase 3 đóng vai trò control plane: quản lý profile, device binding, safety policy, trigger script, logs, risk score, và reports.
+
+> **Scope note:** Epic 19 KHÔNG viết lại toàn bộ Appium/ADB ngay. Provider ưu tiên là API/CLI/local bridge/script runner của phần mềm farm phone hiện có. Appium/ADB chỉ là fallback provider nếu phần mềm hiện tại không expose endpoint đáng tin cậy. Epic 19 không duplicate browser DOM executor; nó thêm `mobile` execution mode bên cạnh `browser` và `mixed`.
+
+**FRs covered:** FR-P3-19 (Mobile Device Farming & Account Binding)
+
+### Story 19.1: Configure Mobile Farm Provider Connection
+
+As a user,
+I want cấu hình kết nối tới phần mềm farm phone hiện có và test connection,
+So that tôi biết app có thể sync device và trigger script mobile trước khi tạo farming plan.
+
+**Acceptance Criteria:**
+
+**Given** user mở Mobile Provider Settings
+**When** user chọn provider type `external_software_api`, `external_software_cli`, hoặc `external_software_script_runner` và nhập endpoint/CLI path/script namespace cần thiết
+**Then** app lưu cấu hình provider an toàn, validate required fields, và không log credential/token/device secret
+**When** user bấm "Kiểm tra kết nối"
+**Then** app gọi provider adapter fakeable để kiểm tra tối thiểu `listDevices`, `getDeviceStatus`, `runScript` capability metadata, `stop`, `getScreenshot`, và `getLogs` nếu provider hỗ trợ
+**And** UI hiển thị provider status, capabilities available/unavailable, last checked time, và lỗi tiếng Việt nếu timeout/malformed response/auth fail
+**And** Appium/ADB được hiển thị là fallback provider type nhưng không phải default và không required để pass Story 19.1
+**And** architecture giữ `MobileFarmProvider` interface làm adapter contract; story này phải có operator-verifiable setup/test connection path
+**And** tests cover API provider fake, CLI provider fake, script-runner fake, timeout, malformed response, auth failure, credential redaction, and successful capability discovery
+
+### Story 19.2: Mobile Device Registry Sync
+
+As a user,
+I want sync danh sách điện thoại từ box farm phone,
+So that tôi thấy device nào online/offline và sẵn sàng dùng để nuôi acc.
+
+**Acceptance Criteria:**
+
+**Given** external farm software trả device list
+**When** user trigger sync hoặc auto-sync định kỳ
+**Then** app lưu `mobile_devices` gồm `provider_device_id`, label, platform, model, os_version, fb_app_version?, network_type?, health_status, last_seen_at
+**And** dedupe theo provider + provider_device_id, không tạo device trùng
+**And** stale device chuyển offline sau TTL configurable
+**And** UI Devices hiển thị online/offline, assigned profile, last seen, provider status
+**And** tests cover sync mới, update existing, stale offline, provider unavailable
+
+### Story 19.3: Profile-Device Binding
+
+As a user,
+I want gán profile Facebook vào điện thoại cố định,
+So that mỗi account có device/session mobile ổn định.
+
+**Acceptance Criteria:**
+
+**Given** profile và mobile device tồn tại
+**When** user tạo binding
+**Then** app lưu `profile_device_bindings(profile_id, device_id, binding_status, first_bound_at, last_used_at, notes)`
+**And** policy mặc định cảnh báo nếu 1 device bind nhiều profile hoặc 1 profile đổi device thường xuyên
+**And** high-blast/mixed plan có thể require binding hợp lệ trước khi chạy
+**And** unbind/rebind cần confirm và ghi audit reason
+**And** tests cover one-profile-one-device happy path, multi-bind warning, rebind audit, invalid device
+
+### Story 19.4: Manual-Assisted Mobile Farming Planner
+
+As a user,
+I want tạo lịch nuôi acc mobile dạng checklist/manual-assisted,
+So that tôi có thể vận hành an toàn trước khi bật automation script.
+
+**Acceptance Criteria:**
+
+**Given** profile-device bindings tồn tại
+**When** user tạo mobile farming plan
+**Then** plan lưu ngày/giờ, action checklist, allowed device/profile, caps, cooldown, manual confirmation fields
+**And** operator có thể mark done/skipped với reason; logs ghi vào audit/job_actions
+**And** risk score Epic 17 consume manual-assisted outcomes
+**And** không trigger device script trong story này
+**And** E2E stub covers create plan, mark done, skip reason, risk summary update
+
+### Story 19.5: Mobile Device Health Check
+
+As a user,
+I want kiểm tra health của điện thoại và Facebook app,
+So that tôi biết device nào đủ điều kiện chạy mobile farming.
+
+**Acceptance Criteria:**
+
+**Given** device đã sync
+**When** user run health check
+**Then** app gọi provider để lấy online status, screenshot optional, FB app installed/version, network status, battery/charging if available
+**And** health result lưu vào `mobile_device_health_checks` và hiển thị trong Devices view
+**And** failed health check không crash batch; device chuyển `needs_attention`
+**And** tests cover online healthy, app missing, screenshot unavailable, provider timeout, redacted logs
+
+### Story 19.6: Mobile Farming Script Trigger
+
+As a user,
+I want trigger script/macro có sẵn trên phần mềm farm phone,
+So that app có thể chạy open app, browse feed, watch video, light react theo plan.
+
+**Acceptance Criteria:**
+
+**Given** profile-device binding hợp lệ và script catalog configured
+**When** user starts mobile farming job
+**Then** scheduler validates Story 12.0 safety policy, device health, binding, caps, cooldown, and provider availability before calling `runScript`
+**And** supported script actions gồm `mobile_open_app`, `mobile_browse_feed`, `mobile_watch_video`, `mobile_light_react`, `mobile_light_comment` với caps riêng
+**And** provider returns script run id/status; app polls or receives webhook until done/failed/stopped
+**And** checkpoint/rate-limit/manual stop pauses profile/device according to safety policy
+**And** tests cover success, unsupported script, kill switch, cooldown active, provider run failure, stop request
+
+### Story 19.7: Mobile Farming Logs & Risk Integration
+
+As a user,
+I want mobile farming results cập nhật vào logs/risk score chung,
+So that browser campaign biết profile nào đủ điều kiện chạy.
+
+**Acceptance Criteria:**
+
+**Given** mobile script/manual plan produces outcomes
+**When** result ingestion runs
+**Then** app writes `job_actions` with `executor_kind='mobile'`, device_id, profile_id, action_type, outcome, duration, reason
+**And** risk score factors include mobile freshness, device stability, network change, recent checkpoint, mobile action volume
+**And** Lead/Campaign reports can filter by executor_kind `browser|mobile|mixed`
+**And** mandatory telemetry remains count-only and never includes UID/content/screenshot/device credential
+**And** tests cover log ingestion, risk factor update, report filter, telemetry redaction
+
+### Story 19.8: Mobile Safety Controls & Mixed Execution Mode
+
+As a user,
+I want bật/tắt mobile jobs và chọn Browser/Mobile/Mixed execution mode rõ ràng,
+So that mobile farming là option riêng nhưng vẫn dùng chung safety control plane.
+
+**Acceptance Criteria:**
+
+**Given** user opens campaign/farming planner
+**When** selecting execution mode
+**Then** UI exposes `Browser`, `Mobile`, `Mixed`; Browser keeps Epic 1-18 behavior unchanged, Mobile requires device binding, Mixed uses mobile eligibility before browser campaign
+**And** global kill switch stops both browser high-blast actions and mobile script starts; mobile active scripts receive provider `stop` when available
+**And** safety bar shows browser/mobile/mixed caps separately but one profile cannot run concurrent browser+mobile high-blast action
+**And** tests cover mode selection, browser unchanged, mobile binding required, mixed eligibility gate, kill switch stop
+
+---
+
 ## Final Validation Results
 
 **Validated:** 2026-06-01
 
 ### FR Coverage: ✅
-Mọi FR1→FR37 ban đầu được cover bởi ít nhất 1 story (xem FR Coverage Map). FR-P3-12 Messenger, FR-P3-13 Group Growth, FR-P3-14 Page Automation, FR-P3-15 Marketplace, FR-P3-16 Livestream, FR-P3-17 Advanced Farming/Risk, và FR-P3-18 Lead/Campaign Ops được bổ sung sau validation ban đầu và đều có epic/story coverage riêng.
+Mọi FR1→FR37 ban đầu được cover bởi ít nhất 1 story (xem FR Coverage Map). FR-P3-12 Messenger, FR-P3-13 Group Growth, FR-P3-14 Page Automation, FR-P3-15 Marketplace, FR-P3-16 Livestream, FR-P3-17 Advanced Farming/Risk, FR-P3-18 Lead/Campaign Ops, và FR-P3-19 Mobile Device Farming được bổ sung sau validation ban đầu và đều có epic/story coverage riêng.
 
 ### Architecture Compliance: ✅
 - Starter template → Epic 1 Story 1.1 (đúng yêu cầu architecture)
@@ -1570,12 +1713,13 @@ Mọi FR1→FR37 ban đầu được cover bởi ít nhất 1 story (xem FR Cove
 - Epic independence: Epic 2 ⊥ Epic 4; Epic 4 ⊥ Epic 5 (bundled selector); growth epics build on 3.0 complete (expected phased dependency)
 - Story 4.6/12.1 template ownership resolved: Story 4.6b owns base `content_templates`; Story 12.1 reuses/extends it
 - Story 5.5/5.6 sequencing resolved: CAPTCHA solver compiles/tests with injected config; Settings persistence follows in 5.6
-- Story 12.0 gates high-blast Epic 12-16 before Epic 17 advanced orchestration
+- Story 12.0 gates high-blast Epic 12-19 browser/mobile workflows before Epic 17 advanced orchestration and Epic 19 mobile scripts
+- Epic 19 is optional mobile execution channel; it reuses safety/risk/control-plane primitives and does not replace browser automation Epic 1-18
 - Within-epic stories sequential, no unresolved forward dependency
 
 ### Summary
-- **18 epics, 83 stories** (Phase 3.0 MVP + growth 3.1-3.9; Epic 12-18 added post initial validation for full Facebook automation suite scope; Story 12.0 added as high-blast safety gate)
-- Status: **READY FOR STORY CREATION / PHASED DEVELOPMENT** — Phase 3.0 remains dev-ready; Phase 3.4-3.9 implementation must pass Story 12.0 safety primitives before live high-blast execution.
+- **19 epics, 91 stories** (Phase 3.0 MVP + growth 3.1-3.10; Epic 12-18 added post initial validation for full Facebook automation suite scope; Story 12.0 added as high-blast safety gate; Epic 19 added as optional mobile device farming module)
+- Status: **READY FOR STORY CREATION / PHASED DEVELOPMENT** — Phase 3.0 remains dev-ready; Phase 3.4-3.10 implementation must pass Story 12.0 safety primitives before live high-blast execution; Phase 3.10 mobile implementation should prefer existing farm phone software adapter before Appium/ADB fallback.
 - Companion: `prd-phase3.md` (37 FR + 30 NFR) + `architecture.md` § Phase 3 Addendum (16 ADR-D + 16 R-D)
 
 ### Known External Blockers (từ PRD Open Questions)

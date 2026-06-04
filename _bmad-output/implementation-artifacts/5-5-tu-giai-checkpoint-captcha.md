@@ -1,6 +1,6 @@
 # Story 5.5: Tự giải checkpoint CAPTCHA (FunCaptcha/reCAPTCHA)
 
-Status: review
+Status: done
 
 Epic: 5 — Khả năng Tự phục hồi (Adaptive Resilience) · Story: 5.5 · ID: 5.5
 
@@ -43,6 +43,23 @@ So that account dính checkpoint vẫn có cơ hội login tiếp thay vì mất
   - `tests/fixtures/fb-mock/checkpoint-funcaptcha.html` + `checkpoint-recaptcha.html` (NEW) — markup chứa pk_/data-sitekey.
   - Update `tests/unit/login-service.spec.ts` — thêm case: CHECKPOINT + solveCheckpoint ok → WARMING_UP; CHECKPOINT + solveCheckpoint fail → CHECKPOINT_BLOCKED; không có dep → hành vi cũ.
 - [x] **T11** — Verify: `npm run lint` + `npm run typecheck` + test mới PASS + full suite không giảm. Grep tự kiểm KHÔNG log token/apiKey/proxy password. Viết **manual test protocol** vào Dev Notes (đã có sẵn bên dưới — chỉ cần thực thi khi có API key thật).
+
+### Review Findings (2026-06-04 — bmad-code-review, 3-lens adversarial)
+
+> Gates: **Typecheck ✅ 0 lỗi · Lint ✅ 0 errors** (1 warning `console.warn` pre-existing tại debug login-state-failed, KHÔNG phải 5.5) · **265 tests PASS** (21 mới) · grep secret-leak 0 hit. 3 layer: Blind Hunter + Edge Case Hunter + Acceptance Auditor.
+
+- [x] [Review][Decision→RESOLVED] **F2 — Proxy bind vào MỌI login launch** [electron-bootstrap.ts:213-216] — **QUYẾT ĐỊNH (Luisphan 2026-06-04): GIỮ LẠI** — coi là hoàn thiện wiring proxy→login mà Story 4.3 defer. Kéo theo patch F8 bắt buộc bên dưới (proxy leak khi keepSessionOpen).
+- [x] [Review][Applied] **F8 — LEAK proxy slot khi `keepSessionOpen: true`** [electron-bootstrap.ts:218-222,245-254 + self-comment-orchestrator.ts:225] — `releaseProxy()` CHỈ chạy trong `session.close()`. Nhưng 3 nhánh trả `keepSessionOpen:true` (2FA-no-seed L266, 2FA-fail L271, CHECKPOINT_BLOCKED L297) → orchestrator `finally` KHÔNG gọi `session.close()` → proxy slot KHÔNG release vĩnh viễn. Regression MỚI do F2 introduce (trước 5.5 adapter không acquire proxy). Pool giới hạn slot → leak dồn → profile sau acquire fail. **Fix:** release proxy khi session bị bỏ mở mà không còn dùng — HOẶC đảm bảo session giữ mở vẫn có đường `close()` được gọi khi job terminal (release proxy lúc đó). Cân nhắc: khi checkpoint solver chạy + fail, browser giữ mở cho user xử lý thủ công (headed) → proxy PHẢI giữ tới khi đóng; vậy cần hook release vào lifecycle đóng-cuối-cùng, không phải bỏ release.
+
+- [x] [Review][Applied] **F1 — STILL_BLOCKED thoát vòng provider sớm, không thử fallback** [checkpoint-solver.ts:161-168] — Khi provider đầu inject token thành công nhưng re-verify vẫn `CHECKPOINT`, code `return failure('STILL_BLOCKED')` NGAY trong `for (const client of clients)` → provider thứ 2 (2captcha) không bao giờ được thử khi token CapSolver bị FB reject. Đây là lỗi đúng cái fallback (AC4) muốn giải quyết. Fix: `break`/continue sang client kế thay vì return; chỉ STILL_BLOCKED sau khi hết clients. (Blind + Edge cùng phát hiện.)
+- [x] [Review][Applied] **F3 — Budget (`solveAttempts++`) tính cả khi mọi provider ném exception** [checkpoint-solver.ts:140] — `solveAttempts += 1` trước vòng solve; nếu cả 2 provider throw (network/credit), budget vẫn bị trừ. Có thể chủ ý (mỗi lần "thử" tốn quota) — nhưng cân nhắc chỉ tăng khi thực sự gọi được provider. Non-blocking; xác nhận intent.
+- [x] [Review][Applied] **F4 — Gate `isEnabled()` chạy SAU `detectType()` (đọc DOM)** [checkpoint-solver.ts:112-121] — Thứ tự hiện tại: breaker → detectType (đọc DOM) → isEnabled. AC2 muốn flag là gate đầu. Rủi ro thấp (vẫn fallback đúng khi OFF) nhưng đọc DOM rò ngoài ranh giới flag. Fix: chuyển `isEnabled()` lên trước `detectType()`.
+- [x] [Review][Applied] **F5 — Detector regex dễ false-positive: `data-sitekey` + `blob:` URL** [checkpoint-type-detector.ts] — `data-sitekey` xuất hiện trên widget FB non-reCAPTCHA; `FUNCAPTCHA_BLOB` regex có thể match `blob:https://...` trong `src`. False-positive → tốn budget + gửi param sai. Fix: thắt regex (sitekey gắn class g-recaptcha; blob loại trừ `blob:` scheme). Lưu ý: extract sai → `PARAMS_NOT_FOUND` hoặc solve fail → vẫn fallback an toàn, nên Med.
+- [x] [Review][Applied] **F6 — 2captcha thiếu initial delay + `proxytype` hardcode HTTP** [two-captcha-client.ts] — Poll ngay tại attempt=0 (2captcha cần ~15-20s xử lý → lãng phí 1 poll); `proxytype: 'HTTP'` cố định bất kể protocol (CapSolver đọc đúng `url.protocol`). Tinh chỉnh khi test thật với account 2captcha.
+- [x] [Review][Defer] **F7 — Telemetry `outcome` chỉ `success|checkpoint`, thiếu `selector_miss|proxy_error|timeout`** [checkpoint-solver.ts:24] — deferred. Auditor claim "compile error" là SAI (typecheck PASS; cả 10 emit site chỉ dùng `success|checkpoint`). ADR-P3-D6 map các outcome khác là khi transport telemetry backend (Epic 6), 5.5 chỉ callback in-memory. Mở rộng enum khi Epic 6 wire transport — không actionable bây giờ.
+
+> **Đã verify & dismiss (noise/false-positive):** (1) `proxyPort: 0` / `new URL()` throw [capsolver+two-captcha] — KHÔNG reachable: `toPlaywrightProxy` luôn emit `http://host:port` đầy đủ scheme+port. (2) "API key logged raw" [Blind] — key chỉ nằm trong request body gửi provider, KHÔNG có log statement nào; grep 0 hit. (3) `keepSessionOpen` trên nhánh TWO_FA — pre-existing, không phải 5.5. (4) page.evaluate XSS — dùng DOM property assignment, không phải innerHTML, an toàn.
+
 
 ## Dev Notes
 
@@ -223,4 +240,3 @@ GPT-5 Codex
 |---|---|---|---|
 | 2026-06-04 | 0.1 | Story created (bmad-create-story) — checkpoint auto-solver FunCaptcha/reCAPTCHA | Luisphan |
 | 2026-06-04 | 1.0 | Implemented checkpoint CAPTCHA solver core, provider fallback, login/bootstrap wiring, tests, and verification. | Codex |
-

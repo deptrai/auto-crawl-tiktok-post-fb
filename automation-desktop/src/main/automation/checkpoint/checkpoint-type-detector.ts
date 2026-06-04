@@ -34,7 +34,7 @@ const RECAPTCHA_MARKERS: readonly RegExp[] = [
   /class=["'][^"']*g-recaptcha/i,
   /www\.google\.com\/recaptcha/i,
   /grecaptcha/i,
-  /data-sitekey/i
+  /g-recaptcha[^>]+data-sitekey|data-sitekey[^>]+g-recaptcha/i
 ]
 
 const OTP_MARKERS: readonly RegExp[] = [
@@ -59,7 +59,8 @@ const FUNCAPTCHA_PUBLIC_KEY = /(?:data-pkey|public_?key|pkey)["'\s:=]+["']?(pk_[
 /** Fallback: bare Arkose public key anywhere in the markup. */
 const FUNCAPTCHA_PUBLIC_KEY_BARE = /\b(pk_[A-Za-z0-9]{8,}-[A-Za-z0-9-]+)\b/
 const FUNCAPTCHA_SURL = /(?:surl|service_?url)["'\s:=]+["']?(https?:\/\/[^"'\s\\]+)/i
-const FUNCAPTCHA_BLOB = /(?:data-?blob|"blob"|blob)["'\s:=]+["']?([A-Za-z0-9+/=._-]{8,})/i
+const FUNCAPTCHA_BLOB =
+  /(?:data-?blob|"blob"|blob)["'\s:=]+["']?(?!https?:\/\/)([A-Za-z0-9+/=._-]{8,})/i
 
 const RECAPTCHA_SITE_KEY = /data-sitekey=["']([A-Za-z0-9_-]{20,})["']/i
 const RECAPTCHA_SITE_KEY_RENDER = /recaptcha\/api\.js\?render=([A-Za-z0-9_-]{20,})/i

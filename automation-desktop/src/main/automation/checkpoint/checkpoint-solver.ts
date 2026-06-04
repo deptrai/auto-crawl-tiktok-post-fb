@@ -109,15 +109,15 @@ export function createCheckpointSolver(deps: CheckpointSolverDeps): CheckpointSo
         return failure('BREAKER_OPEN', duration())
       }
 
+      if (!(await deps.isEnabled())) {
+        emit({ outcome: 'checkpoint', durationMs: duration() })
+        return failure('NO_API_KEY', duration())
+      }
+
       const type = await detectType(page)
       if (!isSolvableCheckpoint(type)) {
         emit({ checkpointType: type, outcome: 'checkpoint', durationMs: duration() })
         return failure('UNSUPPORTED_CHECKPOINT', duration(), { type })
-      }
-
-      if (!(await deps.isEnabled())) {
-        emit({ checkpointType: type, outcome: 'checkpoint', durationMs: duration() })
-        return failure('NO_API_KEY', duration(), { type })
       }
 
       if (solveAttempts >= maxSolves) {
@@ -137,14 +137,19 @@ export function createCheckpointSolver(deps: CheckpointSolverDeps): CheckpointSo
         return failure('NO_API_KEY', duration(), { type })
       }
 
-      solveAttempts += 1
       const paramsWithProxy = { ...params, ...(ctx.proxy ? { proxy: ctx.proxy } : {}) }
       let lastCode: SolveErrorCode = 'PROVIDER_ERROR'
       let lastProvider: string | undefined
+      let failureCounted = false
+      let counted = false
 
       for (const client of clients) {
         lastProvider = client.name
         try {
+          if (!counted) {
+            solveAttempts += 1
+            counted = true
+          }
           const token = await client.solve(paramsWithProxy)
           await inject(page, token)
           const nextState = await reverify(page)
@@ -158,20 +163,17 @@ export function createCheckpointSolver(deps: CheckpointSolverDeps): CheckpointSo
             })
             return { ok: true, type, provider: client.name, durationMs: duration() }
           }
+          lastCode = 'STILL_BLOCKED'
+          lastProvider = client.name
           incrementFailure(ctx.profileId)
-          emit({
-            provider: client.name,
-            checkpointType: type,
-            outcome: 'checkpoint',
-            durationMs: duration()
-          })
-          return failure('STILL_BLOCKED', duration(), { type, provider: client.name })
+          failureCounted = true
+          break
         } catch (error) {
           lastCode = errorCode(error)
         }
       }
 
-      incrementFailure(ctx.profileId)
+      if (!failureCounted) incrementFailure(ctx.profileId)
       emit({
         provider: lastProvider,
         checkpointType: type,

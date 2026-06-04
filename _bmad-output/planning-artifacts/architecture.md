@@ -922,6 +922,7 @@ Tách: business logic, deployment, billing entity.
 | FR-P3-16 | Livestream automation | 3.8 |
 | FR-P3-17 | Advanced farming + risk orchestration | 3.9 |
 | FR-P3-18 | Lead, segment, campaign operations | 3.9 |
+| FR-P3-19 | Mobile device farming + account binding | 3.10 optional |
 
 **Non-Functional Requirements:**
 
@@ -1061,6 +1062,7 @@ Mỗi user có fingerprint profile unique (UA, viewport, timezone, font, WebGL n
 | **3.7** | Marketplace automation | 6 tuần |
 | **3.8** | Livestream automation | 6 tuần + live kill switch gate |
 | **3.9** | Advanced farming/risk + lead/campaign ops | Control-plane readiness gate |
+| **3.10** | Optional mobile device farming/account binding | Provider adapter readiness gate |
 
 #### Decisions Pending → resolve in step-04
 
@@ -1087,7 +1089,7 @@ Mỗi user có fingerprint profile unique (UA, viewport, timezone, font, WebGL n
 
 Stack target:
 - **Language**: TypeScript strict
-- **UI**: React 19 (consistent với Phase 1+2 frontend)
+- **UI**: React 19 (consistent với Phase 1+2 frontend) + custom plain CSS design tokens for `automation-desktop` UI; Tailwind v4 remains for the existing web/admin frontend only
 - **Build**: Vite (modern HMR, ecosystem 2026)
 - **Test**: `@playwright/test` cho cả unit + E2E (Vitest deferred)
 - **Browser automation runtime**: Playwright + playwright-extra + stealth plugin (Node dep, KHÔNG dùng Playwright `electron` namespace — namespace đó để test Electron app)
@@ -1195,7 +1197,6 @@ Override mặc định electron-vite scaffold:
   "react-dom": "^19.x",
   "typescript": "^5.x",
   "vite": "^5.x",
-  "tailwindcss": "^4.x",
   "better-sqlite3": "^11.x",
   "better-sqlite3-multiple-ciphers": "^11.x",
   "playwright": "^1.x",
@@ -1865,7 +1866,7 @@ auto-crawl-tiktok-post-fb/                  # MONO REPO ROOT
 │   │   │   ├── components/
 │   │   │   ├── hooks/
 │   │   │   ├── api/                        # IPC client wrappers
-│   │   │   └── styles/globals.css          # Tailwind v4 entry
+│   │   │   └── styles/globals.css          # plain CSS design tokens + component classes (no Tailwind in automation-desktop)
 │   │   │
 │   │   └── shared/                         # Cross-process single source of truth
 │   │       ├── ipc-schemas/                # ALL Zod schemas + channel registry
@@ -1951,6 +1952,7 @@ Cấm:
 | FR-P3-16 Livestream automation | `main/live/` |
 | FR-P3-17 Advanced farming + risk orchestration | `main/farming/` + `main/risk/` |
 | FR-P3-18 Lead, segment, campaign operations | `main/leads/` + `main/campaigns/` |
+| FR-P3-19 Mobile device farming + account binding | `main/mobile-farm/` + `main/devices/` |
 
 #### Cross-Cutting Concerns Mapping (R-D1 → R-D16)
 
@@ -2097,8 +2099,8 @@ function isInCanary(hwid: string, configVersion: number, canaryPct: number): boo
 
 **G-7 Localization Lock VN — NFR EXPLICIT**
 
-- **NFR-P3-Localization-VN-Lock**: Phase 3.0 → 3.9 UI + error message + EULA + privacy policy LOCK Vietnamese
-- i18n framework defer sau Phase 3.9 nếu mở rộng SEA market
+- **NFR-P3-Localization-VN-Lock**: Phase 3.0 → 3.10 UI + error message + EULA + privacy policy LOCK Vietnamese
+- i18n framework defer sau Phase 3.10 nếu mở rộng SEA market
 - ErrorEnvelope `message` field: Vietnamese user-facing; `code` field: SCREAMING_SNAKE_CASE English (programmatic)
 
 #### Coherence Validation ✅
@@ -2459,9 +2461,9 @@ src/main/automation/checkpoint/
 
 ---
 
-## Phase 3 Addendum — Full Facebook Automation Suite Scope (Epic 12-18)
+## Phase 3 Addendum — Full Facebook Automation Suite Scope (Epic 12-19)
 
-> Thêm 2026-06-04. Bổ sung kiến trúc cho scope mở rộng sau validation: Messenger parity, group growth, Page automation, Marketplace, livestream, advanced farming/risk, và lead/campaign operations.
+> Thêm 2026-06-04. Bổ sung kiến trúc cho scope mở rộng sau validation: Messenger parity, group growth, Page automation, Marketplace, livestream, advanced farming/risk, lead/campaign operations, và optional mobile device farming/account binding.
 
 ### Scope Map Update
 
@@ -2474,12 +2476,13 @@ src/main/automation/checkpoint/
 | FR-P3-16 | Livestream automation | 16 | `src/main/live/` |
 | FR-P3-17 | Farming + risk orchestration | 17 | `src/main/farming/` + `src/main/risk/` |
 | FR-P3-18 | Lead/campaign control plane | 18 | `src/main/leads/` + `src/main/campaigns/` |
+| FR-P3-19 | Mobile device farming/account binding | 19 | `src/main/mobile-farm/` + `src/main/devices/` |
 
-**Boundary rule:** Domain modules may depend on shared Phase 3 primitives (`automation_jobs`, `job_actions`, profile/proxy/session, selector resolver, action-token client, telemetry, content templates, target lists). They MUST NOT create duplicate generic engines for templates, proxy/session binding, checkpoint handling, target-list import/export, or telemetry.
+**Boundary rule:** Domain modules may depend on shared Phase 3 primitives (`automation_jobs`, `job_actions`, profile/proxy/session, selector resolver, action-token client, telemetry, content templates, target lists, safety policies, risk score). They MUST NOT create duplicate generic engines for templates, proxy/session binding, checkpoint handling, target-list import/export, telemetry, safety, or risk. Epic 19 adds a mobile execution channel and MUST NOT replace or mutate browser automation behavior from Epic 1-18.
 
 ### Action Token Taxonomy
 
-All live tier 2+ actions in Epic 12-18 require `POST /api/v1/automation/action/token` before execution. Backend `phase3.action_tokens.action_type` accepts this expanded enum:
+All live tier 2+ actions in Epic 12-19 require `POST /api/v1/automation/action/token` before execution. Backend `phase3.action_tokens.action_type` accepts this expanded enum:
 
 ```text
 message
@@ -2488,9 +2491,12 @@ page_post, page_comment, page_reply, page_inbox_reply
 marketplace_post, marketplace_refresh, marketplace_reply
 live_watch, live_comment, live_react, live_share
 farming_behavior
+mobile_open_app, mobile_browse_feed, mobile_watch_video, mobile_light_react, mobile_light_comment, mobile_health_check
 ```
 
 Page actor variants use either the same action type plus metadata `{ actor_type: 'page', page_id }`, or a backend-supported namespace if later required. The default architecture choice is **same action type + actor metadata** to avoid enum explosion.
+
+Mobile variants use `executor_kind='mobile'` metadata and require profile-device binding. Existing browser actions keep `executor_kind='browser'` behavior unchanged. Mixed mode uses mobile farming/risk eligibility to gate later browser campaign execution.
 
 ### Data Model Extension
 
@@ -2503,6 +2509,7 @@ marketplace_listing_templates, marketplace_listings
 live_targets
 farming_plans, profile_risk_scores, global_safety_policy
 leads, lead_sources, lead_observations, segments, suppression_lists, campaign_presets, campaign_reports, audit_events
+mobile_devices, profile_device_bindings, mobile_device_health_checks, mobile_script_runs, mobile_provider_configs
 ```
 
 Canonical shared tables remain `automation_jobs`, `job_actions`, `content_templates`, and `target_lists`. Lead registry ingests references/outcomes from domain jobs; it does not scrape new domains by itself.
@@ -2521,13 +2528,39 @@ phase3:farming:*
 phase3:risk:*
 phase3:leads:*
 phase3:campaign:*
+phase3:mobile-farm:*
+phase3:devices:*
 ```
 
 All ErrorEnvelope messages remain Vietnamese, and no raw secret/content field may cross renderer IPC unless explicitly modeled as a secure reference handle.
 
+### Mobile Farm Provider Boundary
+
+Epic 19 uses provider adapter boundaries instead of hardcoding Appium:
+
+```ts
+interface MobileFarmProvider {
+  listDevices(): Promise<MobileDevice[]>
+  getDeviceStatus(deviceId: string): Promise<DeviceStatus>
+  runScript(deviceId: string, scriptId: string, params: Record<string, unknown>): Promise<MobileActionResult>
+  stop(deviceId: string): Promise<void>
+  getScreenshot(deviceId: string): Promise<ScreenshotResult>
+  getLogs(deviceId: string, runId: string): Promise<MobileRunLog[]>
+}
+```
+
+Provider priority:
+
+1. Existing farm phone software API/local HTTP/WebSocket.
+2. Existing farm phone software CLI.
+3. Existing macro/script runner trigger.
+4. Appium/ADB/iOS device control fallback only when the existing software cannot expose a reliable control path.
+
+The desktop app remains the control plane: profile-device binding, safety validation, trigger, stop, logs, risk score, and reports. The farm phone software remains the mobile execution/device-control layer.
+
 ### Safety & Scheduling
 
-Epic 17 becomes the global risk gate for high-blast domains. Before a live campaign starts, the scheduler checks:
+Story 12.0 provides mandatory safety primitives before Epic 12-19 browser/mobile high-blast execution. Epic 17 extends them with advanced risk/farming orchestration. Epic 19 reuses the same primitives for mobile scripts. Before a live browser campaign or mobile script starts, the scheduler checks:
 
 - license validity + action token
 - profile eligibility/risk score
@@ -2536,8 +2569,11 @@ Epic 17 becomes the global risk gate for high-blast domains. Before a live campa
 - per-profile/per-action daily cap
 - domain cooldown and allowed hours
 - global kill switch state
+- device binding + device health when `executor_kind='mobile'` or `mixed`
 
 Livestream, group invite/up, Messenger, Marketplace reply, and Page inbox reply are treated as high-blast by default. Live Facebook is never used in CI; all stories use fake adapters or `PHASE3_AUTOMATION_STUB=1` for E2E.
+
+Mobile script actions that interact with a real account are also high-blast unless explicitly classified as manual-assisted checklist or health check. One profile cannot run concurrent browser+mobile high-blast actions.
 
 ### Privacy & Telemetry Redaction
 
@@ -2545,6 +2581,7 @@ Mandatory beacon remains count/outcome only. The following are always redacted f
 
 - cookies, passwords, 2FA, CSRF tokens, action tokens, proxy credentials
 - message bodies, post bodies, comment bodies, Page inbox bodies, Marketplace message bodies, live comment bodies
+- screenshots, device credentials, provider tokens, raw phone control logs unless explicitly redacted/sampled for local debugging
 - phone/email unless user explicitly selects them for export
 - raw scraped member/private profile details
 
@@ -2558,10 +2595,6 @@ This addendum is sufficient for story creation and implementation planning. Befo
 2. new action types and token policy test,
 3. SQLCipher migrations/repository boundaries,
 4. selector resolver/hot-config usage,
-5. redaction assertions and no-live-Facebook CI coverage.
+5. redaction assertions and no-live-Facebook/no-live-device CI coverage.
 
 **Status: DOCUMENTED — READY FOR STORY CREATION.**
-
-
-
-

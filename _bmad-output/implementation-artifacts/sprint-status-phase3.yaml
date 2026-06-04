@@ -38,7 +38,7 @@
 #
 # PHASE 3 SUB-PHASE MAP:
 # ======================
-# Phase 3.0 (MVP): Epic 1-8 | Phase 3.1: Epic 9 | Phase 3.2: Epic 10 | Phase 3.3: Epic 11 | Phase 3.4: Epic 12 | Phase 3.5: Epic 13 | Phase 3.6: Epic 14 | Phase 3.7: Epic 15 | Phase 3.8: Epic 16 | Phase 3.9: Epic 17-18
+# Phase 3.0 (MVP): Epic 1-8 | Phase 3.1: Epic 9 | Phase 3.2: Epic 10 | Phase 3.3: Epic 11 | Phase 3.4: Epic 12 | Phase 3.5: Epic 13 | Phase 3.6: Epic 14 | Phase 3.7: Epic 15 | Phase 3.8: Epic 16 | Phase 3.9: Epic 17-18 | Phase 3.10: Epic 19 optional mobile
 # 6-tuần SLO stability gate giữa mỗi sub-phase.
 
 generated: 2026-06-02
@@ -47,7 +47,7 @@ project: auto-crawl-tiktok-post-fb-phase3
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
-last_updated: 2026-06-04 (Story 12.0 high-blast safety gate added; Story 5.5 checkpoint captcha solver ready for review)
+last_updated: 2026-06-04 (Story 5.5 checkpoint captcha solver review patches applied; status done)
 
 development_status:
   # ===== Phase 3.0 MVP =====
@@ -94,7 +94,7 @@ development_status:
   5-3-client-canary-cohort-5-rollback: backlog
   5-4-canary-profile-drift-detection: backlog
   # 5.5/5.6 (checkpoint auto-solver) context trước 5.1-5.4 — ưu tiên user, độc lập selector resolver (2026-06-04)
-  5-5-tu-giai-checkpoint-captcha: review
+  5-5-tu-giai-checkpoint-captcha: done
   5-6-cau-hinh-api-key-captcha-solver: ready-for-dev
   epic-5-retrospective: optional
 
@@ -228,3 +228,17 @@ development_status:
   18-4-campaign-attribution-report-export: backlog
   18-5-operator-dashboard-audit-log: backlog
   epic-18-retrospective: optional
+
+  # ===== Phase 3.10 Optional Mobile Execution Channel =====
+
+  # Epic 19: Mobile Device Farming & Account Binding (optional phone farm integration — 2026-06-04)
+  epic-19: backlog
+  19-1-configure-mobile-farm-provider-connection: backlog
+  19-2-mobile-device-registry-sync: backlog
+  19-3-profile-device-binding: backlog
+  19-4-manual-assisted-mobile-farming-planner: backlog
+  19-5-mobile-device-health-check: backlog
+  19-6-mobile-farming-script-trigger: backlog
+  19-7-mobile-farming-logs-risk-integration: backlog
+  19-8-mobile-safety-controls-mixed-execution-mode: backlog
+  epic-19-retrospective: optional

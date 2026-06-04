@@ -1,9 +1,20 @@
 ---
-stepsCompleted: ['step-01-document-discovery', 'step-02-prd-analysis', 'step-03-epic-coverage-validation', 'step-04-ux-alignment', 'step-05-epic-quality-review']
+stepsCompleted: ['step-01-document-discovery', 'step-02-prd-analysis', 'step-03-epic-coverage-validation', 'step-04-ux-alignment', 'step-05-epic-quality-review', 'step-06-final-assessment']
 status: complete
 createdAt: '2026-06-04'
 project: auto-crawl-tiktok-post-fb
 workflow: bmad-check-implementation-readiness
+includedDocuments:
+  prd: _bmad-output/planning-artifacts/prd-phase3.md
+  architecture: _bmad-output/planning-artifacts/architecture.md
+  epics: _bmad-output/planning-artifacts/epics-phase3.md
+  ux: _bmad-output/planning-artifacts/ux-design-specification.md
+  sprintStatus: _bmad-output/implementation-artifacts/sprint-status-phase3.yaml
+supportingDocuments:
+  - _bmad-output/planning-artifacts/prd.md
+  - _bmad-output/planning-artifacts/epics.md
+  - _bmad-output/planning-artifacts/epics-ux-redesign.md
+  - _bmad-output/planning-artifacts/prd-validation-report.md
 ---
 
 # Implementation Readiness Assessment Report
@@ -25,7 +36,7 @@ workflow: bmad-check-implementation-readiness
 
 - `_bmad-output/planning-artifacts/prd.md` — Phase 1+2 parent PRD
 - `_bmad-output/planning-artifacts/epics.md` — Phase 1+2 parent epics
-- `_bmad-output/planning-artifacts/epics-ux-redesign.md` — UX redesign artifact, not primary Phase 3 epic source
+- `_bmad-output/planning-artifacts/epics-ux-redesign.md` — UX redesign epic/support artifact, not primary Phase 3 epic source
 - `_bmad-output/planning-artifacts/prd-validation-report.md` — prior validation support artifact
 
 **Discovery decision:** Use Phase 3 documents as the source of truth. No sharded duplicate folders were found.
@@ -59,6 +70,7 @@ FR-P3-15: User có thể tạo Marketplace listing template, đăng listing, ren
 FR-P3-16: User có thể chạy live watcher, live comment/react/share, và dừng campaign live qua safety kill switch *(Phase 3.8)*
 FR-P3-17: User có thể tạo lịch nuôi nick dài ngày, low-risk behavior runner, risk score, eligibility gate, và global safety policy *(Phase 3.9)*
 FR-P3-18: User có thể gom lead đa nguồn, segment/suppression, campaign presets, attribution report, và operator dashboard *(Phase 3.9)*
+FR-P3-19: User có thể kết nối box farm phone/phần mềm điều khiển điện thoại hiện có, sync device registry, bind profile↔device, trigger mobile farming scripts, ghi logs/risk, và dùng mobile execution như option riêng bên cạnh browser automation *(Phase 3.10 optional)*
 FR19: Hệ thống áp dụng fingerprint diversified per user (UA, viewport, timezone, font, WebGL)
 FR20: Hệ thống resolve selector qua 4-tier fallback (ARIA → testid → text → visual)
 FR21: Hệ thống pull hot config selector đã ký Ed25519 và verify signature trước khi áp dụng
@@ -79,7 +91,7 @@ FR35: Hệ thống nhắc user backup định kỳ
 FR36: User phải accept EULA (acknowledge rủi ro FB ToS) trước khi sử dụng
 FR37: Hệ thống hiển thị privacy policy và phạm vi telemetry minh bạch
 
-Total FRs: 44 entries (FR1-FR37 plus seven post-validation expansion FRs FR-P3-12→18). Note: numbering overlaps conceptually because FR-P3-12 starts a post-validation namespace and should not be confused with original FR12.
+Total FRs: 45 entries (FR1-FR37 plus eight post-validation expansion FRs FR-P3-12→19). Note: FR-P3 namespace is separate from original FR numbering.
 
 ### Non-Functional Requirements
 
@@ -110,7 +122,7 @@ NFR24: Mọi business logic truy cập framework qua adapter layer (R-D16), khô
 NFR25: Mọi IPC payload validate Zod schema 2 chiều
 NFR26: Test coverage ≥ 70% cho main process service logic (cho AI agent tự verify)
 NFR27: Lint rule enforce: no-restricted-imports, no-secret-in-ipc-payload, no-secret-tostring, no-direct-logger
-NFR28: Phase 3.0 → 3.9 UI + error message + EULA + privacy policy lock tiếng Việt (i18n defer sau Phase 3.9)
+NFR28: Phase 3.0 → 3.10 UI + error message + EULA + privacy policy lock tiếng Việt (i18n defer sau Phase 3.10)
 NFR29: Hỗ trợ Windows 10+ (x64) và macOS 12+ (Apple Silicon + Intel)
 NFR30: Update adoption ≥ 90% user lên min_supported_version trong 7 ngày forced update
 
@@ -118,104 +130,85 @@ Total NFRs: 30.
 
 ### Additional Requirements
 
-- Tool vendor model: user is operator; EULA must acknowledge Facebook ToS risk.
-- Phase 3 must remain independent from Phase 1+2 Graph API SaaS; product flow, distribution, billing entity, and liability are separated.
-- High-blast domains (Messenger, group, Page, Marketplace, livestream, invite, live watcher) require caps/cooldown/warmup/risk scoring before live execution.
-- Content/lead redaction applies to message body, post/comment body, Page inbox body, Marketplace message body, live comment body, phone/email, member private data, and raw scraped profile details.
-- 6-week SLO stability gate between sub-phases.
-- Open business decisions remain: paid user targets, churn, pricing, Apple Developer entity, EULA/legal draft, GitHub public/private mix, legal entity for sell-as-service.
+- Capability contract: FR1-FR37 and FR-P3-12→19 define the product scope; features outside this contract should not exist unless explicitly added.
+- Compliance: user must accept Facebook ToS risk; vendor model shifts operational responsibility to user; Phase 3 billing/entity/EULA must be separated from Phase 1+2.
+- Anti-detection constraints: residential proxy, fingerprint diversification, random delays, warmup, session isolation, 4-tier selector resolver, hot config, canary rollout.
+- High-blast gating: Messenger, group, Page, Marketplace, livestream, invite, live watcher, and mobile script actions require caps/cooldown/warmup/risk scoring before live execution.
+- Privacy/security: cookie/2FA/key material in OS keychain; no plaintext SQLite/logs; content/lead redaction by default; mandatory telemetry count-only.
+- Integration constraints: Playwright stealth, proxyfb/tmproxy/shoplike providers, backend license/action-token/selector-config/telemetry/version endpoints, code signing, GitHub Releases + S3 mirror.
+- Mobile optionality: Phase 3.10 connects existing farm phone software first through provider adapter/API/CLI/script runner; Appium/ADB is fallback only; browser automation Epic 1-18 remains unchanged.
+- Working assumptions/open actions: paid user target, churn target, 30-day license pricing, Apple Developer entity, legal EULA/ToS, repo distribution policy, and company/legal entity remain open business decisions.
 
 ### PRD Completeness Assessment
 
-PRD is broadly complete after the post-validation expansion patch. It now includes the Phase 3.4-3.9 full Facebook automation suite scope and aligns at the requirement level with the expanded epics. Primary risk for downstream validation: post-validation FR namespace (`FR-P3-12`→`FR-P3-18`) overlaps numerically with original `FR12`; traceability must treat these as separate namespaces.
+PRD is complete enough for coverage validation. It has explicit FR/NFR inventory, sub-phase rollout, domain constraints, risk mitigations, and open business blockers. The main caveat is namespace complexity: original `FR12` and expansion `FR-P3-12` are different namespaces and must not be conflated in stories or traceability.
 
 ## Epic Coverage Validation
-
-### Epic FR Coverage Extracted
-
-FR1-FR4: Covered in Epic 2 Profile Management.
-FR5, FR6, FR9, FR10, FR36, FR37: Covered in Epic 1 Foundation & Licensing.
-FR7, FR11, FR12, FR13, FR18, FR19: Covered in Epic 4 Automation Core MVP.
-FR20-FR23: Covered in Epic 5 Adaptive Resilience.
-FR30-FR32: Covered in Epic 6 Observability & Telemetry.
-FR8, FR33-FR35: Covered in Epic 7 Backup & Recovery.
-FR27-FR29: Covered in Epic 8 Distribution & Auto-Update.
-FR14, FR17: Covered in Epic 9 Mass Post & Warmup.
-FR15: Covered in Epic 10 Mass Comment & React.
-FR16: Covered in Epic 11 Share & Friend Request.
-FR-P3-12: Covered in Epic 12 Mass Messenger Seeding.
-FR-P3-13: Covered in Epic 13 Facebook Group Growth Automation.
-FR-P3-14: Covered in Epic 14 Facebook Page Automation.
-FR-P3-15: Covered in Epic 15 Marketplace Automation.
-FR-P3-16: Covered in Epic 16 Livestream Automation.
-FR-P3-17: Covered in Epic 17 Advanced Account Farming & Risk.
-FR-P3-18: Covered in Epic 18 Lead, Segment & Campaign Operations.
-
-Total FRs in epics: 44 entries (37 original FRs plus seven post-validation expansion FRs).
 
 ### Coverage Matrix
 
 | FR Number | PRD Requirement | Epic Coverage | Status |
 |---|---|---|---|
-| FR1 | Import hàng loạt profile Facebook | Epic 2 Stories 2.1 | Covered |
+| FR1 | Import hàng loạt profile Facebook | Epic 2 Story 2.1 | Covered |
 | FR2 | Xem/sửa/xóa profile và metadata | Epic 2 Stories 2.2-2.3 | Covered |
-| FR3 | Trạng thái real-time profile | Epic 2 Story 2.2 | Covered |
-| FR4 | Cookie/2FA safeStorage + encrypted DB | Epic 2 Story 2.1, Epic 1 Story 1.1 | Covered |
-| FR5 | License key + HWID | Epic 1 Story 1.3 | Covered |
-| FR6 | Online license check + offline grace | Epic 1 Story 1.4 | Covered |
-| FR7 | Server-side action token tier 2+ | Epic 4 Story 4.5 plus action-specific stories in Epics 9-18 | Covered |
-| FR8 | Extend/rebind/pause license | Epic 7 Story 7.4 | Covered |
-| FR9 | Admin create/revoke license | Epic 1 Story 1.5 | Covered |
-| FR10 | Block action on expired license | Epic 1 Story 1.4 | Covered |
-| FR11 | Cookie login + 2FA/checkpoint | Epic 4 Story 4.3 | Covered |
-| FR12 | CSRF token extraction | Epic 4 Story 4.4 | Covered |
-| FR13 | Self-comment validation action | Epic 4 Story 4.6 split in sprint status | Covered |
+| FR3 | Xem trạng thái real-time từng profile | Epic 2 Story 2.2 | Covered |
+| FR4 | Lưu cookie + 2FA seed an toàn, metadata DB mã hóa | Epic 2 Story 2.1 | Covered |
+| FR5 | Activate license key + HWID binding | Epic 1 Story 1.3 | Covered |
+| FR6 | License online check + offline grace tier 1 | Epic 1 Story 1.4 | Covered |
+| FR7 | Per-action server token tier 2+ | Epic 4 Story 4.5 | Covered |
+| FR8 | Gia hạn/rebind/pause license self-service | Epic 7 Story 7.4 | Covered |
+| FR9 | Admin tạo/thu hồi license key | Epic 1 Story 1.5 | Covered |
+| FR10 | Block action khi license hết hạn + read-only grace | Epic 1 Story 1.4 | Covered |
+| FR11 | Login Facebook bằng cookie + 2FA/checkpoint | Epic 4 Story 4.3; Epic 5 Stories 5.5-5.6 enhancement | Covered |
+| FR12 | Trích xuất CSRF token qua HTTP | Epic 4 Story 4.4 | Covered |
+| FR13 | Self-comment validation action | Epic 4 Story 4.6 | Covered |
 | FR14 | Mass post timeline | Epic 9 Story 9.2 | Covered |
-| FR15 | Mass comment + react | Epic 10 Stories 10.1-10.2 | Covered |
+| FR15 | Mass comment 3rd party + mass react | Epic 10 Stories 10.1-10.2 | Covered |
 | FR16 | Share + friend request | Epic 11 Stories 11.1-11.2 | Covered |
-| FR17 | Warmup behavior | Epic 9 Story 9.1 and referenced by high-risk stories | Covered |
-| FR18 | Automation job state machine | Epic 4 Story 4.2 | Covered |
-| FR19 | Fingerprint diversified | Epic 4 Story 4.1 | Covered |
-| FR20 | Selector resolver 4-tier | Epic 5 Story 5.1 | Covered |
-| FR21 | Pull signed hot config | Epic 5 Story 5.2 | Covered |
-| FR22 | Canary cohort 5% | Epic 5 Story 5.3 | Covered |
-| FR23 | Canary profile drift detection | Epic 5 Story 5.4 | Covered |
-| FR24 | Proxy providers | Epic 3 Story 3.1, Epic 9 Story 9.3, Epic 10 Story 10.3 | Covered |
-| FR25 | Proxy health/circuit breaker | Epic 3 Story 3.2 | Covered |
-| FR26 | Proxy per profile session | Epic 3 Story 3.3 | Covered |
-| FR27 | Auto-update signed channel | Epic 8 Story 8.2 | Covered |
-| FR28 | Forced update | Epic 8 Story 8.3 | Covered |
-| FR29 | Admin publish app version | Epic 8 Story 8.4 | Covered |
-| FR30 | Mandatory anonymous beacon | Epic 6 Story 6.1 | Covered |
-| FR31 | Opt-in detailed telemetry | Epic 6 Story 6.2 | Covered |
-| FR32 | SLO dashboard | Epic 6 Story 6.3 | Covered |
-| FR33 | Export encrypted backup | Epic 7 Story 7.1 | Covered |
-| FR34 | Import/restore backup | Epic 7 Story 7.2 | Covered |
-| FR35 | Backup reminder | Epic 7 Story 7.3 | Covered |
-| FR36 | EULA acceptance | Epic 1 Story 1.2 | Covered |
-| FR37 | Privacy policy/telemetry scope | Epic 1 Story 1.2 and Epic 6 | Covered |
-| FR-P3-12 | Messenger seeding + C# parity | Epic 12 Stories 12.1-12.4 | Covered |
+| FR17 | Warmup behavior trước action thật | Epic 9 Story 9.1 | Covered |
+| FR18 | Job automation state machine checkpoint/resume | Epic 4 Story 4.2 | Covered |
+| FR-P3-12 | Messenger seeding + C# share-link parity | Epic 12 Stories 12.0-12.4 | Covered |
 | FR-P3-13 | Group growth automation | Epic 13 Stories 13.1-13.10 | Covered |
 | FR-P3-14 | Page automation | Epic 14 Stories 14.1-14.5 | Covered |
 | FR-P3-15 | Marketplace automation | Epic 15 Stories 15.1-15.5 | Covered |
 | FR-P3-16 | Livestream automation | Epic 16 Stories 16.1-16.5 | Covered |
 | FR-P3-17 | Advanced farming/risk | Epic 17 Stories 17.1-17.5 | Covered |
 | FR-P3-18 | Lead/campaign operations | Epic 18 Stories 18.1-18.5 | Covered |
+| FR-P3-19 | Mobile device farming/account binding | Epic 19 Stories 19.1-19.8 | Covered |
+| FR19 | Fingerprint diversified per user/profile | Epic 4 Story 4.1 | Covered |
+| FR20 | Selector resolver 4-tier fallback | Epic 5 Story 5.1 | Covered |
+| FR21 | Pull hot config selector Ed25519 verify | Epic 5 Story 5.2 | Covered |
+| FR22 | Canary cohort 5% hot config rollout | Epic 5 Story 5.3 | Covered |
+| FR23 | Canary profile drift detection | Epic 5 Story 5.4 | Covered |
+| FR24 | Proxy multi-provider configuration/rotation | Epic 3 Story 3.1; Epic 9 Story 9.3; Epic 10 Story 10.3 | Covered |
+| FR25 | Proxy health-check + circuit breaker | Epic 3 Story 3.2 | Covered |
+| FR26 | Bind proxy riêng mỗi profile session | Epic 3 Story 3.3 | Covered |
+| FR27 | Auto check/install signed update | Epic 8 Story 8.2 | Covered |
+| FR28 | Forced update when version below min_supported | Epic 8 Story 8.3 | Covered |
+| FR29 | Admin publish app version/release notes/min_supported | Epic 8 Story 8.4 | Covered |
+| FR30 | Mandatory anonymous beacon after EULA | Epic 6 Story 6.1 | Covered |
+| FR31 | Opt-in detailed telemetry toggle | Epic 6 Story 6.2 | Covered |
+| FR32 | Admin SLO dashboard | Epic 6 Story 6.3 | Covered |
+| FR33 | Export encrypted backup | Epic 7 Story 7.1 | Covered |
+| FR34 | Import/restore backup | Epic 7 Story 7.2 | Covered |
+| FR35 | Backup reminder | Epic 7 Story 7.3 | Covered |
+| FR36 | EULA acceptance before use | Epic 1 Story 1.2 | Covered |
+| FR37 | Privacy policy + telemetry scope | Epic 1 Story 1.2 and Epic 6 | Covered |
 
 ### Missing Requirements
 
-No PRD FR is missing from the epics coverage map.
+No missing FR coverage found in `epics-phase3.md` for the PRD FR inventory.
 
 ### Coverage Statistics
 
-- Total PRD FR entries: 44
-- FRs covered in epics: 44
+- Total PRD FRs: 45 entries
+- FRs covered in epics: 45 entries
 - Coverage percentage: 100%
 
 ### Coverage Notes
 
-- Namespace warning: original `FR12` and post-validation `FR-P3-12` are distinct. Traceability tools must not collapse them.
-- Epics include all post-validation expansion requirements, but story quality and architecture alignment for Epic 14-18 still require later steps in this readiness assessment.
+- The epic file includes additional implementation stories that are not standalone PRD FRs but support covered FRs, for example Story 5.5/5.6 CAPTCHA auto-solver supporting FR11/FR20 and Story 12.0 safety primitives supporting FR-P3-12→19 high-blast execution.
+- The PRD also uses Phase 3 shorthand labels `FR-P3-01`→`FR-P3-09` in scoping text. These map onto the original FR1-FR37 inventory and do not represent separate uncovered requirements.
 
 ## UX Alignment Assessment
 
@@ -223,162 +216,125 @@ No PRD FR is missing from the epics coverage map.
 
 Found: `_bmad-output/planning-artifacts/ux-design-specification.md`.
 
-The UX document is complete for `automation-desktop` Phase 3.0 IA/visual redesign, focused on the operator console for profile management and bulk self-comment. It includes information architecture, visual tokens, component strategy, bulk action bar, status pills, dashboard/profiles/templates/proxy/settings navigation, accessibility, responsive desktop constraints, and implementation change map.
+The UX document contains a detailed Phase 3.0 operator-console redesign plus a `Phase 3.4-3.10 UX Addendum — Full Suite Operations`. The addendum covers the expanded suite surfaces: Messenger, Groups, Pages, Marketplace, Live, Farming/Risk, Devices/Mobile Farming, Leads/Campaigns, reporting/export, safety bar, kill switch, dry-run preview, and execution mode `Browser / Mobile / Mixed`.
 
 ### UX ↔ PRD Alignment
 
-Aligned for Phase 3.0:
+Aligned:
 
-- PRD J1/J2/J3/J4 are reflected in onboarding, dashboard, profiles table, license/EULA gate, status/error feedback, and recovery UX.
-- PRD metrics time-to-first-action <15 minutes, ≥10 profile sessions, real-time status, and Vietnamese lock are reflected.
-- PRD security/privacy trust needs are reflected through copyable data, keychain messaging, calm error states, and redaction awareness.
+- PRD J1/J2/J3/J4 are reflected in onboarding, EULA/license gates, profile table, bulk self-comment, real-time status, backup/recovery affordances, calm error states, and telemetry/privacy copy.
+- PRD metrics time-to-first-action <15 minutes and ≥10 profile sessions are reflected by first-run onboarding, table layout, multi-select, bulk action bar, status counters, and desktop-wide layout.
+- PRD FR-P3-12→19 are represented at surface-pattern level by the Phase 3.4-3.10 addendum.
+- NFR28 Vietnamese lock through Phase 3.10 is reflected in UX text/error/toast/confirm requirements.
 
-Not fully aligned for expanded Phase 3.4-3.9 scope:
+Gaps/risks:
 
-- PRD now includes Messenger, group, Page, Marketplace, livestream, farming/risk, and lead/campaign operations.
-- UX document scope remains Phase 3.0 self-comment/operator console and does not define dedicated screens or flows for Epic 12-18.
-- Epics include surfaces for Group, Page, Marketplace, Live, Farming Calendar, and Operator Dashboard, but UX has not yet specified their IA, controls, empty states, error states, or report/export patterns.
+- No blocking UX ↔ PRD alignment gap found after remediation.
+- The Phase 3.4-3.10 addendum is an IA/surface-pattern spec, not screen-by-screen wireframes for every domain. It is enough for story creation; complex UI story files should still pin concrete controls/states/testids before development.
 
 ### UX ↔ Architecture Alignment
 
-Aligned for Phase 3.0:
+Aligned:
 
-- UX uses Electron desktop, sidebar, data table, bulk action bar, status counters, and IPC-compatible test IDs, which architecture supports.
-- UX requirements around async button disable, loading-shell separation, ErrorEnvelope Vietnamese, copyable data, and no new dependency match `automation-desktop/project-context.md` and architecture guardrails.
-- Accessibility/desktop responsiveness constraints are compatible with the architecture.
+- Architecture supports Electron + React 19 + renderer/preload/main IPC boundaries, matching UX AppShell/DataTable/BulkActionBar/component strategy.
+- Architecture ADR-P3-D8 supports Zod-validated `phase3:*` IPC and Vietnamese ErrorEnvelope, matching UX form/error requirements.
+- Architecture addendum supports Epic 12-19 module boundaries and IPC domains, including `phase3:mobile-farm:*` and `phase3:devices:*`, matching UX Devices/Mobile Farming surfaces.
+- Architecture safety/scheduling and redaction requirements support UX safety bar, kill switch, dry-run, Browser/Mobile/Mixed mode, and export redaction patterns.
 
-Architecture supports expanded domains via the Full Facebook Automation Suite addendum, but UX does not yet provide domain-specific designs for those modules.
+Alignment issue:
 
-### Alignment Issues
-
-1. UX scope is stale relative to expanded PRD/Epics.
-   - Impact: Implementation agents for Epic 12-18 may invent inconsistent screens and workflows.
-   - Recommendation: create UX addendum for Phase 3.4-3.9 before implementing Epic 12+ surfaces.
-
-2. UX document states NFR28 lock Phase 3.0→3.4 in early sections, while PRD/Epics/Architecture now lock Vietnamese through Phase 3.9.
-   - Impact: minor textual inconsistency; implementation rule remains clear elsewhere.
-   - Recommendation: patch UX document to Phase 3.0→3.9.
-
-3. UX navigation currently lists Dashboard / Profiles / Templates / Proxy / Settings, but expanded product needs Messenger, Groups, Pages, Marketplace, Live, Farming, Leads/Campaigns.
-   - Impact: IA expansion is not specified.
-   - Recommendation: add navigation grouping pattern, likely core operations vs growth modules vs settings/admin.
+- None blocking after remediation. `automation-desktop` source of truth is now React 19 + custom plain CSS design tokens. Tailwind v4 remains documented only for the existing web/admin frontend, not for the Electron desktop UI.
 
 ### Warnings
 
-- UX is sufficient for Phase 3.0 implementation readiness.
-- UX is not sufficient for full Phase 3.4-3.9 suite readiness.
+- No missing UX document warning: UX exists.
+- Implementation agents should not invent new domain layouts for Epic 12-19; they should reuse the addendum’s shared campaign surface pattern and safety UX contract.
+- Before coding a large UI story (`13.6`, `14.5`, `15.5`, `16.5`, `17.5`, `18.5`, `19.8`), the story should include concrete component states/testids derived from the addendum.
 
 ## Epic Quality Review
 
 ### Overall Structure Assessment
 
-The epic set is mostly user-value oriented. Epic 1 and Epic 5 contain technical foundation/resilience work, but they are justified because the product cannot deliver licensed desktop automation or adapt-time value without them. Epic 6 is admin/operator value. Epic 12-18 are organized by user-facing product domains rather than technical layers.
+The epic set is mostly sound for phased implementation. The first 8 epics establish the licensed desktop automation platform, Epics 9-18 add browser-based Facebook automation/product operations by user-facing domain, and Epic 19 adds optional mobile execution without replacing the browser executor. The expanded suite preserves the intended split: browser DOM automation remains Epic 1-18, while phone-farm integration is isolated in Epic 19.
+
+Several epics are technical/foundational by nature (`Foundation & Licensing`, `Adaptive Resilience`, `Distribution & Auto-Update`), but they are justified because the product cannot deliver licensed local automation, adapt-time value, safe distribution, or revenue protection without them. Story 1.1 satisfies the architecture starter-template requirement.
 
 ### Critical Violations
 
-None found that invalidate the full epics file. No epic is purely database/API work with no product value, and no PRD FR lacks an implementation path.
+None found.
+
+No epic is purely database/API work with no product value, and no PRD FR lacks an implementation path. No unresolved forward dependency breaks implementation order.
 
 ### Major Issues
 
-1. **Forward dependency in Story 4.6 content templates**
-   - Evidence: Story 4.6 says self-comment content uses `content_templates` and “quản lý template dùng chung với Story 12.1”. Story 12.1 is a future Phase 3.4 story.
-   - Why this matters: Epic 4 Phase 3.0 must be independently implementable. Referencing a future story violates the no-forward-dependency rule.
-   - Recommendation: Move minimal `content_templates` table + template CRUD needed for self-comment into Epic 4/4.6b, then make Story 12.1 an enhancement/reuse story. Alternatively rename Story 12.1 as the canonical earlier story and move it before 4.6, but that disrupts phase ordering.
+None found after remediation.
 
-2. **Story 5.5 depends on Story 5.6 for API key/feature flag configuration**
-   - Evidence: Story 5.5 CAPTCHA solver requires feature flag ON and API key in safeStorage; Story 5.6 defines configuring those keys and flag.
-   - Why this matters: Within-epic story order should be sequentially implementable. 5.5 cannot be fully exercised without 5.6 unless key injection is provided manually.
-   - Recommendation: Swap order: 5.5 becomes “Cấu hình API key CAPTCHA solver”, 5.6 becomes “Tự giải checkpoint CAPTCHA”, or explicitly add a dev-only fake key injection task in 5.5 and defer UI config to 5.6.
+Previously identified Story 12.0 and Story 19.1 issues have been patched:
 
-3. **Global risk gate is introduced after several high-blast domains**
-   - Evidence: Epic 17 provides risk score/eligibility/global kill switch, while Epic 12-16 include Messenger, group, Page, Marketplace, and livestream actions. Architecture says high-blast domains require caps/cooldown/warmup/risk scoring before live execution.
-   - Why this matters: If Epic 12-16 are implemented live before Epic 17, the suite may ship high-blast actions without the global risk gate.
-   - Recommendation: Split a minimal “Safety/Risk Primitives” story before Epic 12 or fold mandatory caps/cooldown/kill-switch primitives into Epic 9/12. Keep Epic 17 as advanced farming/risk, not the first place where global risk gating exists.
+- Story 12.0 now covers Epic 12-19 browser/mobile high-blast workflows, includes `executor_kind='browser'|'mobile'|'mixed'` where counters need separation, and explicitly bans live Facebook/real phone farm devices in CI.
+- Story 19.1 is now `Configure Mobile Farm Provider Connection`, framed as an operator-verifiable provider setup/test-connection story while preserving `MobileFarmProvider` as architecture contract.
 
 ### Minor Concerns
 
-1. **UX coverage is Phase 3.0-only**
-   - Evidence: UX doc scopes itself to Phase 3.0 self-comment/operator console, while epics include Phase 3.4-3.9 surfaces.
-   - Recommendation: Create Phase 3.4-3.9 UX addendum before implementing UI stories 12.2b, 13.6, 14.5, 15.5, 16.5, 17.5, and 18.5.
+1. **Some technical stories are justified but should stay tightly scoped**
+   - Examples: Story 4.2 state machine, Story 5.1 selector resolver, Story 6.3 telemetry sink, Story 8.2 auto-update. These are acceptable because they map to explicit product outcomes/NFRs, but implementation stories should include user/admin-visible verification where possible.
 
-2. **FR namespace can confuse implementation agents**
-   - Evidence: Original `FR12` and expansion `FR-P3-12` are both present.
-   - Recommendation: In story files, always use the full expansion namespace (`FR-P3-12`) and never abbreviate it to `FR12`.
-
-3. **Final validation text in epics still says READY FOR DEVELOPMENT globally**
-   - Evidence: Final Validation Results states READY FOR DEVELOPMENT despite post-validation scope expansion and identified UX/risk gaps.
-   - Recommendation: Change global status wording to “READY FOR PHASE 3.0 DEVELOPMENT; EXPANDED PHASE 3.4-3.9 READY FOR STORY CREATION / NEEDS UX + SAFETY PRIMITIVE REVIEW”.
+2. **Large surface stories still need story-level UI specificity**
+   - Examples: `13.6`, `14.5`, `15.5`, `16.5`, `17.5`, `18.5`, `19.8`.
+   - Recommendation: when creating each story file, include concrete controls/states/testids from the UX addendum.
 
 ### Best Practices Checklist
 
 | Check | Result | Notes |
 |---|---|---|
-| Epics deliver user value | Pass | All epics have identifiable user/admin/operator outcomes. |
-| No technical-only epics | Pass with caveat | Foundational/resilience epics are technical but product-critical. |
-| Epic independence | Partial | Epic 4 has a forward reference to Story 12.1; Epic 17 risk gate timing affects Epic 12-16. |
-| Story sizing | Mostly pass | 13.10/18.5 may be large but still bounded. |
-| Acceptance criteria testable | Mostly pass | Newer Epic 14-18 ACs are testable but need UX addendum for surface stories. |
-| Database created when needed | Mostly pass | Story 13.1 and expansion stories create domain tables lazily; Story 4.6/12.1 template ownership needs cleanup. |
+| Epics deliver user value | Pass with caveat | Foundational technical epics are product-critical and tied to FR/NFR outcomes. |
+| Epic independence | Pass | Later browser/mobile epics build on prior platform primitives intentionally; no Epic N requires Epic N+1. |
+| No unresolved forward dependencies | Pass | Prior 4.6/12.1, 5.5/5.6, and 12.0/Epic19 safety scope issues are resolved. |
+| Story sizing | Mostly pass | 13.10, 18.5, and 19.8 are larger surface/control stories but still bounded by AC. |
+| Acceptance criteria testable | Pass | Most ACs include fake adapters/no-live-CI tests. Story 19.1 now includes operator-verifiable setup/test connection. |
+| Database/entity timing | Pass | Tables are introduced by the story/domain that first needs them; no global upfront schema dump is required. |
 | Starter template requirement | Pass | Epic 1 Story 1.1 explicitly covers electron-vite scaffold and security baseline. |
-| Traceability to FRs | Pass | 44/44 FR entries covered. |
+| Traceability to FRs | Pass | 45/45 PRD FR entries covered. |
+
+### Quality Recommendations
+
+1. Proceed to create Story 12.0 before any live high-blast Epic 12-16 or Epic 19 mobile script work.
+2. Start Epic 19 with provider connection/device sync only; defer live mobile script trigger until Story 12.0 safety primitives exist.
+3. For large UI stories, include concrete controls/states/testids from the UX addendum in the story file before dev starts.
 
 ## Summary and Recommendations
 
-### Post-Remediation Update — 2026-06-04
-
-The immediate remediation requested after this readiness check has been applied:
-
-1. `epics-phase3.md` now resolves Story 4.6/12.1 template ownership. Story 4.6b owns the base `content_templates` primitive; Story 12.1 reuses/extends it for Messenger placeholders.
-2. `epics-phase3.md` now resolves Story 5.5/5.6 sequencing without renumbering the in-progress story. Story 5.5 can compile/test with injected fake/manual config; Story 5.6 remains user-facing Settings + safeStorage persistence.
-3. `epics-phase3.md` now adds Story 12.0, `High-Blast Safety Primitives & Global Kill Switch Foundation`, before Story 12.1 and before live Epic 12-16 high-blast execution.
-4. `ux-design-specification.md` now includes `Phase 3.4-3.9 UX Addendum — Full Suite Operations`, covering IA, shared campaign surfaces, safety UX contract, Messenger, Groups, Pages, Marketplace, Live, Farming/Risk, Leads/Campaigns, reporting/export, and implementation order.
-5. `sprint-status-phase3.yaml` now tracks `12-0-high-blast-safety-primitives-global-kill-switch-foundation: backlog`.
-
-Current post-remediation status: **READY FOR STORY CREATION / PHASED DEVELOPMENT**. Phase 3.0 remains development-ready. Phase 3.4-3.9 live high-blast implementation is gated by Story 12.0 safety primitives before executing Messenger/group/Page/Marketplace/live workflows against real Facebook.
-
 ### Overall Readiness Status
 
-**POST-REMEDIATION: READY FOR STORY CREATION / PHASED DEVELOPMENT.**
+**READY FOR STORY CREATION / PHASED DEVELOPMENT.**
 
-**READY for continued Phase 3.0 implementation**, assuming the current in-progress implementation stories remain scoped to Phase 3.0 primitives and do not require the expanded suite surfaces.
+**READY for continued Phase 3.0 implementation. READY for Phase 3.4-3.10 story creation with Story 12.0 as the mandatory live high-blast safety gate.**
 
-Rationale: PRD, architecture, epics, sprint status, and UX addendum now align at the FR coverage and planning level. Expanded suite live execution remains intentionally gated by Story 12.0 safety primitives before implementing Epic 12-16 live high-blast workflows.
+Rationale: FR traceability is complete at 100% coverage (45/45 PRD FR entries). PRD, architecture, epics, sprint status, UX, and automation-desktop project context are aligned after remediation. The safety boundary now covers browser/mobile high-blast workflows, and Epic 19 is an optional mobile execution channel that does not replace Epic 1-18 browser automation.
 
 ### Critical Issues Requiring Immediate Action
 
-No critical blocker invalidates the entire planning set.
+No critical issue invalidates the planning set.
 
 ### Major Issues Requiring Action
 
-1. **Fix Story 4.6 template forward dependency**
-   - Current issue: Story 4.6 references template management from future Story 12.1.
-   - Required action: Move minimal `content_templates` ownership into Phase 3.0 / Story 4.6b, and make Story 12.1 reuse/enhance it.
-   - Status: **Resolved in `epics-phase3.md`.**
+None.
 
-2. **Reorder Story 5.5 and Story 5.6**
-   - Current issue: CAPTCHA solver story depends on API key/feature flag configured by the later story.
-   - Required action: Put API key/feature flag configuration before solver execution, or explicitly add dev-only injection to the solver story.
-   - Status: **Resolved by sequencing note in `epics-phase3.md`; no renumbering needed because Story 5.5 is already in progress.**
+### Minor Issues Requiring Cleanup
 
-3. **Add safety/risk primitives before Epic 12-16 live execution**
-   - Current issue: Epic 17 defines risk score/global kill switch after Messenger/group/Page/Marketplace/live domains.
-   - Required action: Create a minimal earlier story for global safety primitives, or fold mandatory caps/cooldown/kill-switch into Epic 12 before high-blast live actions.
-   - Status: **Resolved by adding Story 12.0 and sprint status key.**
-
-4. **Create UX addendum for Phase 3.4-3.9**
-   - Current issue: UX document only covers Phase 3.0 operator console.
-   - Required action: Define IA and surface patterns for Messenger, Groups, Pages, Marketplace, Live, Farming, Leads/Campaigns.
-   - Status: **Resolved by appending Phase 3.4-3.9 UX addendum.**
+1. For large UI stories, include concrete states/testids from the UX addendum in story files before dev starts.
+2. Keep parent web/admin Tailwind references separate from `automation-desktop`, whose UI source of truth is custom plain CSS design tokens.
 
 ### Recommended Next Steps
 
-1. Create Story 12.0 before creating additional live high-blast Epic 12-16 implementation stories.
-2. Re-run implementation readiness if PRD/architecture/epics are changed again after this remediation.
-3. Keep UI story files aligned with the Phase 3.4-3.9 UX addendum; do not invent separate domain-specific patterns without patching UX first.
+1. Create Story 12.0 next and implement safety primitives before any live high-blast browser/mobile execution.
+2. After Story 12.0, create Epic 19 stories in order: 19.1 provider connection, 19.2 device sync, 19.3 profile-device binding.
+3. Keep live mobile scripts (`19.6`) gated until device health, binding, and safety policy are implemented.
+4. For UI-heavy stories, generate story-level AC/testids from the Phase 3.4-3.10 UX addendum.
 
 ### Final Note
 
-This assessment originally identified **4 issues** across **3 categories**: story dependency/order, UX scope alignment, and safety/risk sequencing. The post-remediation patch addresses those issues at the planning artifact level. FR traceability remains complete at 100%; full-suite live execution is still gated by Story 12.0 safety primitives as intended.
+This rerun finds **0 critical blockers** and **0 major readiness blockers**. It leaves **2 minor implementation advisories**: keep large UI story files concrete, and keep parent web/admin Tailwind references separate from the `automation-desktop` plain-CSS token strategy. Product scope and planning artifacts are ready for story creation and phased implementation.
 
 **Assessor:** BMad Implementation Readiness workflow
 **Completed:** 2026-06-04

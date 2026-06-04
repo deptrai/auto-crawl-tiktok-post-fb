@@ -152,7 +152,7 @@ User cá nhân (affiliate/creator) cảm thấy tool "đáng tiền" khi:
 | J3 Admin | License CRUD, SLO dashboard, selector editor, Ed25519 sign, canary control, version console |
 | J4 Recovery | HWID rebind, self-service portal, backup export/import, passphrase recovery |
 
-→ Toàn bộ FR1-FR37 ban đầu và FR-P3-12→18 expansion đều được "kích hoạt" bởi ít nhất 1 journey hoặc post-validation product-scope addendum. Không có FR mồ côi.
+→ Toàn bộ FR1-FR37 ban đầu và FR-P3-12→19 expansion đều được "kích hoạt" bởi ít nhất 1 journey hoặc post-validation product-scope addendum. Không có FR mồ côi.
 
 ## Domain-Specific Requirements
 
@@ -339,9 +339,11 @@ Electron desktop app distributed qua license-by-days, target cá nhân, cross-pl
 
 **Phase 3.9 (Product ops)**: FR-P3-17 Advanced account farming/risk + FR-P3-18 unified lead/segment/campaign ops.
 
+**Phase 3.10 (Optional mobile execution channel)**: FR-P3-19 Mobile device farming & account binding qua box farm phone/phần mềm điều khiển hiện có. Đây là module optional, không thay thế browser automation Epic 1-18.
+
 ### Risk Mitigation Strategy
 
-**Technical Risks**: Selector brittleness → 4-tier resolver + hot config (R-D2); stealth detection → fingerprint diversification + aged canary (R-D15, R-D1); license crack → server-side per-action token (R-D9).
+**Technical Risks**: Selector brittleness → 4-tier resolver + hot config (R-D2); stealth detection → fingerprint diversification + aged canary (R-D15, R-D1); license crack → server-side per-action token (R-D9); farm phone software dependency → provider adapter abstraction + Appium/ADB fallback only if no reliable API/CLI/script runner exists (FR-P3-19).
 
 **Market Risks**: VN niche → architecture cho i18n SEA expansion; user churn về tool C# → migration path + parallel support đến Q4/2027.
 
@@ -349,7 +351,7 @@ Electron desktop app distributed qua license-by-days, target cá nhân, cross-pl
 
 ## Functional Requirements
 
-> **CAPABILITY CONTRACT** — FR1-FR37 binding for Phase 3.0-3.3, plus FR-P3-12→18 post-validation expansion for full Facebook automation suite scope. Tính năng không có ở đây sẽ KHÔNG tồn tại trừ khi thêm vào explicitly.
+> **CAPABILITY CONTRACT** — FR1-FR37 binding for Phase 3.0-3.3, plus FR-P3-12→19 post-validation expansion for full Facebook automation suite scope and optional mobile device farming module. Tính năng không có ở đây sẽ KHÔNG tồn tại trừ khi thêm vào explicitly.
 
 ### Profile Management
 
@@ -387,6 +389,7 @@ Electron desktop app distributed qua license-by-days, target cá nhân, cross-pl
 - FR-P3-16: User có thể chạy live watcher, live comment/react/share, và dừng campaign live qua safety kill switch *(Phase 3.8)*
 - FR-P3-17: User có thể tạo lịch nuôi nick dài ngày, low-risk behavior runner, risk score, eligibility gate, và global safety policy *(Phase 3.9)*
 - FR-P3-18: User có thể gom lead đa nguồn, segment/suppression, campaign presets, attribution report, và operator dashboard *(Phase 3.9)*
+- FR-P3-19: User có thể kết nối box farm phone/phần mềm điều khiển điện thoại hiện có, sync device registry, bind profile↔device, trigger mobile farming scripts, ghi logs/risk, và dùng mobile execution như option riêng bên cạnh browser automation *(Phase 3.10 optional)*
 
 ### Anti-Detection & Resilience
 
@@ -471,7 +474,7 @@ Electron desktop app distributed qua license-by-days, target cá nhân, cross-pl
 
 ### Localization
 
-- NFR28: Phase 3.0 → 3.9 UI + error message + EULA + privacy policy lock tiếng Việt (i18n defer sau Phase 3.9)
+- NFR28: Phase 3.0 → 3.10 UI + error message + EULA + privacy policy lock tiếng Việt (i18n defer sau Phase 3.10)
 
 ### Compatibility
 
@@ -506,7 +509,7 @@ Các điểm cần Luisphan quyết/validate trước hoặc trong quá trình i
 
 ## References
 
-- **Architecture**: `architecture.md` § Phase 3 Architecture Addendum + Full Facebook Automation Suite Addendum (16 ADR-D, 16 R-D anchor, status READY_FOR_IMPLEMENTATION / READY_FOR_STORY_CREATION)
+- **Architecture**: `architecture.md` § Phase 3 Architecture Addendum + Full Facebook Automation Suite Addendum + Mobile Device Farming Addendum (16 ADR-D, 16 R-D anchor, status READY_FOR_IMPLEMENTATION / READY_FOR_STORY_CREATION)
 - **Source tool**: `automation-facebook/SST_TOOL_FB/` (C# WinForms) + `automation-facebook/docs/`
 - **POC**: `automation-facebook/poc-nodejs/` (Playwright + stealth verified)
 - **Parent PRD**: `prd.md` (Phase 1+2 SaaS, độc lập)
