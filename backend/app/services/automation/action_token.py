@@ -14,7 +14,7 @@ from app.schemas.automation.action_token import ActionTokenConsumeResponse, Acti
 from app.services.automation.hwid import validate_hwid
 from app.services.automation.license import _as_utc, _latest_activation, _utc_now
 
-TIER2_ACTIONS = frozenset({"post", "comment", "react", "share", "friend"})
+TIER2_ACTIONS = frozenset({"post", "comment", "react", "share", "friend", "message"})
 ACTION_TOKEN_TTL_SECONDS = 60
 
 

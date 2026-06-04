@@ -83,7 +83,10 @@ export {
 } from './messenger-seed-executor'
 export {
   createMessengerSeedOrchestrator,
+  type CsharpShareLinkConfig,
+  type CsharpShareLinkStopReason,
   type MessengerSeedLoginResult,
+  type MessengerSeedMode,
   type MessengerSeedOrchestrator,
   type MessengerSeedOrchestratorDeps,
   type MessengerSeedResult,
@@ -92,6 +95,30 @@ export {
   type MessengerTarget,
   type RunMessengerSeedOptions
 } from './messenger-seed-orchestrator'
+export {
+  parseLegacyLines,
+  removeSurrogatePairs,
+  splitMessageLines,
+  chooseLegacyContent,
+  chooseLegacyShareLink
+} from './messenger-legacy-input'
+export {
+  buildBusinessCtaRequest,
+  createBusinessCtaClient,
+  isBusinessCtaSuccess,
+  type BusinessCtaClient,
+  type BusinessCtaRequest,
+  type BusinessCtaRequestInput,
+  type BusinessCtaResult,
+  type BusinessCtaTokens
+} from './messenger-business-cta'
+export {
+  CSHARP_SHARE_LINK_SELECTORS,
+  executeMessengerShareLink,
+  type CsharpShareLinkSelectors,
+  type MessengerShareLinkResult,
+  type ShareLinkPageLike
+} from './messenger-share-link-executor'
 export {
   runMessengerSeedBatch,
   type MessengerSeedBatchInput,

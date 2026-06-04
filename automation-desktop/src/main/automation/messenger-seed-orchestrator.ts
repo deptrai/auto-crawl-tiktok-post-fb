@@ -33,6 +33,26 @@ export interface MessengerSeedResult {
   perTarget: MessengerSeedTargetResult[]
 }
 
+export type MessengerSeedMode = 'direct_dm' | 'csharp_share_link'
+
+export type CsharpShareLinkStopReason =
+  | 'SAFETY_GATE_UNAVAILABLE'
+  | 'BUSINESS_CTA_FAILED'
+  | 'MESSENGER_CLICK_FAILED'
+  | 'SEND_FAILED'
+  | 'BLOCKED_COULDNT_SEND'
+  | 'TOKEN_MISSING'
+  | 'ERROR_LIMIT_REACHED'
+
+export interface CsharpShareLinkConfig {
+  shareLinks: string[]
+  contentText: string
+  randomContent: boolean
+  delaySeconds: number
+  stopAfterErrorEnabled: boolean
+  stopAfterErrorCount: number
+}
+
 export interface MessengerSeedSession {
   page: CommentPageLike & {
     goto?: (
@@ -60,9 +80,19 @@ export type MessengerSeedLoginResult =
       keepSessionOpen?: boolean
     }
 
-export interface RunMessengerSeedOptions {
+export interface RunDirectDmMessengerSeedOptions {
+  mode?: 'direct_dm'
   targets: MessengerTarget[]
 }
+
+export interface RunCsharpShareLinkMessengerSeedOptions extends CsharpShareLinkConfig {
+  mode: 'csharp_share_link'
+  targets: MessengerTarget[]
+}
+
+export type RunMessengerSeedOptions =
+  | RunDirectDmMessengerSeedOptions
+  | RunCsharpShareLinkMessengerSeedOptions
 
 export interface MessengerSeedOrchestratorDeps {
   stateMachine: Pick<AutomationStateMachine, 'transition'>
@@ -181,6 +211,14 @@ export function createMessengerSeedOrchestrator(
       let sent = 0
       let failed = 0
       let keepSessionOpen = false
+
+      if (options.mode === 'csharp_share_link') {
+        failed = total
+        transition(deps, jobId, 'FAILED', {
+          result: safeResult({ outcome: 'error', reason: 'SAFETY_GATE_UNAVAILABLE', sent, total })
+        })
+        return { profileId, sent, failed, stoppedReason: 'SAFETY_GATE_UNAVAILABLE', perTarget }
+      }
 
       if (deps.isProfileWarm && !deps.isProfileWarm(profileId)) {
         failed = total

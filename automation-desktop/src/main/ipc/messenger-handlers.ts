@@ -12,6 +12,7 @@ import type {
   AutomationStateMachine,
   MessengerSeedOrchestrator,
   MessengerTarget,
+  RunMessengerSeedOptions,
   runMessengerSeedBatch
 } from '../automation'
 import { isTerminal } from '../automation'
@@ -132,8 +133,22 @@ export function registerMessengerHandlers(
             profiles: parsedRequest.data.profileIds,
             targets,
             createJobId: (profileId) => jobByProfile.get(profileId) ?? randomUUID(),
-            runProfile: (jobId, profileId, slice) =>
-              deps.orchestrator.runMessengerSeed(jobId, profileId, { targets: slice })
+            runProfile: (jobId, profileId, slice) => {
+              const runOptions: RunMessengerSeedOptions =
+                parsedRequest.data.mode === 'csharp_share_link'
+                  ? {
+                      mode: 'csharp_share_link',
+                      targets: slice,
+                      shareLinks: parsedRequest.data.shareLinks,
+                      contentText: parsedRequest.data.contentText,
+                      randomContent: parsedRequest.data.randomContent,
+                      delaySeconds: parsedRequest.data.delaySeconds,
+                      stopAfterErrorEnabled: parsedRequest.data.stopAfterErrorEnabled,
+                      stopAfterErrorCount: parsedRequest.data.stopAfterErrorCount
+                    }
+                  : { mode: 'direct_dm', targets: slice }
+              return deps.orchestrator.runMessengerSeed(jobId, profileId, runOptions)
+            }
           })
           .finally(() => {
             if (!parsedRequest.data.targetListId) return

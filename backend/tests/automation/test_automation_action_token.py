@@ -66,6 +66,36 @@ def test_action_token_issue_success_persists_jti_and_jwt_claims(client: TestClie
     assert row.used_at is None
 
 
+def test_action_token_issue_and_consume_message_action(client: TestClient, db_session: Session):
+    from app.core.config import settings
+    from app.models.automation.action_token import ActionToken
+
+    license_record, _activation_response = _activate(db_session, key="LIC-ACTION-MESSAGE")
+
+    issued_response = client.post(
+        "/api/v1/automation/action/token",
+        json={"key": license_record.key, "hwid": VALID_HWID, "action_type": "message"},
+    )
+
+    assert issued_response.status_code == 200
+    issued = issued_response.json()
+    decoded = jwt.decode(issued["token"], settings.JWT_SECRET, algorithms=[settings.JWT_ALGORITHM])
+    assert decoded["action"] == "message"
+
+    row = db_session.query(ActionToken).filter_by(jti=issued["jti"]).one()
+    assert row.action_type == "message"
+    assert row.used_at is None
+
+    consumed_response = client.post(
+        "/api/v1/automation/action/token/consume", json={"token": issued["token"]}
+    )
+
+    assert consumed_response.status_code == 200
+    assert consumed_response.json()["jti"] == issued["jti"]
+    db_session.refresh(row)
+    assert row.used_at is not None
+
+
 def test_action_token_denies_invalid_expired_hwid_and_action(client: TestClient, db_session: Session):
     from app.models.automation.license import LicenseActivation
 

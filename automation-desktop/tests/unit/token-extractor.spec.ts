@@ -8,6 +8,9 @@ import {
 const FB_DTSG = 'fbDTSG_SECRET_123'
 const LSD = 'lsd_SECRET_456'
 const JAZOEST = '22000'
+const HSI = 'hsi_123'
+const SPIN_R = 'spin_r_456'
+const SPIN_T = 'spin_t_789'
 
 function htmlWithTokens(options: { jazoest?: string } = {}): string {
   const jazoestInput = options.jazoest
@@ -18,6 +21,7 @@ function htmlWithTokens(options: { jazoest?: string } = {}): string {
       <head>
         <script>require("DTSGInitialData",[],{"token":"${FB_DTSG}"});</script>
         <script>require("LSD",[],{"token":"${LSD}"});</script>
+        <script>"hsi":"${HSI}","__spin_r":"${SPIN_R}","__spin_t":"${SPIN_T}"</script>
       </head>
       <body>
         ${jazoestInput}
@@ -29,7 +33,14 @@ function htmlWithTokens(options: { jazoest?: string } = {}): string {
 test('[P0] parseTokens extracts fb_dtsg, lsd, and jazoest from authenticated HTML', () => {
   const tokens = parseTokens(htmlWithTokens({ jazoest: JAZOEST }))
 
-  expect(tokens).toEqual({ fbDtsg: FB_DTSG, lsd: LSD, jazoest: JAZOEST })
+  expect(tokens).toEqual({
+    fbDtsg: FB_DTSG,
+    lsd: LSD,
+    jazoest: JAZOEST,
+    hsi: HSI,
+    spinR: SPIN_R,
+    spinT: SPIN_T
+  })
 })
 
 test('[P0] parseTokens supports input fallback patterns and computes jazoest when missing', () => {
@@ -61,7 +72,10 @@ test('[P0] extract retries boundedly, emits selector_miss name only, then return
   await expect(extractor.extract()).resolves.toEqual({
     fbDtsg: FB_DTSG,
     lsd: LSD,
-    jazoest: JAZOEST
+    jazoest: JAZOEST,
+    hsi: HSI,
+    spinR: SPIN_R,
+    spinT: SPIN_T
   })
   expect(selectorMisses).toEqual(['fb_dtsg+lsd'])
   expect(JSON.stringify(selectorMisses)).not.toContain(FB_DTSG)

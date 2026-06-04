@@ -47,7 +47,7 @@ project: auto-crawl-tiktok-post-fb-phase3
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
-last_updated: 2026-06-04 (Story 12.3 Target List Management done)
+last_updated: 2026-06-04 (Story 12.4 C# Messenger Share-Link Parity review)
 
 development_status:
   # ===== Phase 3.0 MVP =====
@@ -157,7 +157,7 @@ development_status:
   12-2a-messenger-seeding-engine-core: done
   12-2b-messenger-seeding-surface: done
   12-3-target-list-management: done
-  12-4-csharp-messenger-share-link-parity: ready-for-dev
+  12-4-csharp-messenger-share-link-parity: review
   epic-12-retrospective: optional
 
   # ===== Phase 3.5 Growth =====

@@ -9,18 +9,37 @@ export const MessengerTargetSchema = z
   })
   .strict()
 
-export const MessengerStartRequestSchema = z
-  .object({
-    profileIds: z
-      .array(z.string().trim().min(1))
-      .min(1)
-      .refine((profileIds) => new Set(profileIds).size === profileIds.length, {
-        message: 'profileIds must be unique'
-      }),
-    targets: z.array(MessengerTargetSchema).min(1),
-    targetListId: z.string().trim().min(1).optional()
-  })
-  .strict()
+export const MessengerSeedModeSchema = z.enum(['direct_dm', 'csharp_share_link'])
+
+const BaseMessengerStartRequestSchema = z.object({
+  profileIds: z
+    .array(z.string().trim().min(1))
+    .min(1)
+    .refine((profileIds) => new Set(profileIds).size === profileIds.length, {
+      message: 'profileIds must be unique'
+    }),
+  targets: z.array(MessengerTargetSchema).min(1),
+  targetListId: z.string().trim().min(1).optional()
+})
+
+export const DirectDmMessengerStartRequestSchema = BaseMessengerStartRequestSchema.extend({
+  mode: z.literal('direct_dm').optional().default('direct_dm')
+}).strict()
+
+export const CsharpShareLinkMessengerStartRequestSchema = BaseMessengerStartRequestSchema.extend({
+  mode: z.literal('csharp_share_link'),
+  shareLinks: z.array(z.string().trim().min(1)).min(1),
+  contentText: z.string().trim().min(1),
+  randomContent: z.boolean().optional().default(false),
+  delaySeconds: z.number().int().min(0).max(3_600).optional().default(0),
+  stopAfterErrorEnabled: z.boolean().optional().default(false),
+  stopAfterErrorCount: z.number().int().min(1).max(10_000).optional().default(1)
+}).strict()
+
+export const MessengerStartRequestSchema = z.union([
+  CsharpShareLinkMessengerStartRequestSchema,
+  DirectDmMessengerStartRequestSchema
+])
 
 export const MessengerStatusRequestSchema = z
   .object({
@@ -57,6 +76,7 @@ export const MessengerStatusResponseSchema = z.union([
 ])
 
 export type MessengerTargetPayload = z.infer<typeof MessengerTargetSchema>
+export type MessengerSeedMode = z.infer<typeof MessengerSeedModeSchema>
 export type MessengerStartRequest = z.infer<typeof MessengerStartRequestSchema>
 export type MessengerStatusRequest = z.infer<typeof MessengerStatusRequestSchema>
 export type MessengerJobStatus = z.infer<typeof MessengerJobStatusSchema>

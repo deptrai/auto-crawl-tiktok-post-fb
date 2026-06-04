@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type {
   MessengerJobStatus,
+  MessengerSeedMode,
   MessengerTargetPayload,
   ProfileSummary,
   TargetListEntry,
@@ -46,6 +47,13 @@ interface TrackedMessengerJob extends MessengerJobStatus {
 
 type MessengerSourceMode = 'paste' | 'target-list'
 
+function parseNonEmptyLines(text: string): string[] {
+  return text
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0)
+}
+
 function stateVariant(state: AutomationJobState): StatusPillVariant {
   if (state === 'DONE') return 'idle'
   if (state === 'CHECKPOINT_BLOCKED') return 'checkpoint'
@@ -77,6 +85,13 @@ export function MessengerSeedingView(): React.JSX.Element {
   const [profilesLoading, setProfilesLoading] = useState(true)
   const [profilesError, setProfilesError] = useState<string | null>(null)
   const [targetText, setTargetText] = useState('')
+  const [messengerMode, setMessengerMode] = useState<MessengerSeedMode>('direct_dm')
+  const [shareLinksText, setShareLinksText] = useState('')
+  const [contentText, setContentText] = useState('')
+  const [randomContent, setRandomContent] = useState(false)
+  const [delaySeconds, setDelaySeconds] = useState('0')
+  const [stopAfterErrorEnabled, setStopAfterErrorEnabled] = useState(false)
+  const [stopAfterErrorCount, setStopAfterErrorCount] = useState('1')
   const [sourceMode, setSourceMode] = useState<MessengerSourceMode>('paste')
   const [targetLists, setTargetLists] = useState<TargetListSummary[]>([])
   const [targetListsLoading, setTargetListsLoading] = useState(true)
@@ -99,6 +114,7 @@ export function MessengerSeedingView(): React.JSX.Element {
   )
   const activeTargets = sourceMode === 'paste' ? pastedTargets.targets : targetListTargets
   const activeTargetError = sourceMode === 'paste' ? pastedTargets.error : null
+  const shareLinks = useMemo(() => parseNonEmptyLines(shareLinksText), [shareLinksText])
   const canStart =
     selectedIds.size > 0 &&
     activeTargets.length > 0 &&
@@ -265,6 +281,26 @@ export function MessengerSeedingView(): React.JSX.Element {
       setFormError('Hãy chọn ít nhất một target hợp lệ để chạy seeding.')
       return
     }
+    const parsedDelaySeconds = Number(delaySeconds.trim())
+    const parsedStopAfterErrorCount = Number(stopAfterErrorCount.trim())
+    if (messengerMode === 'csharp_share_link') {
+      if (shareLinks.length === 0) {
+        setFormError('Hãy dán ít nhất một share link cho mode C# share-link.')
+        return
+      }
+      if (!contentText.trim()) {
+        setFormError('Hãy nhập nội dung tin nhắn cho mode C# share-link.')
+        return
+      }
+      if (!Number.isInteger(parsedDelaySeconds) || parsedDelaySeconds < 0) {
+        setFormError('Delay phải là số nguyên không âm.')
+        return
+      }
+      if (!Number.isInteger(parsedStopAfterErrorCount) || parsedStopAfterErrorCount < 1) {
+        setFormError('Số lỗi dừng phải là số nguyên từ 1 trở lên.')
+        return
+      }
+    }
 
     setStarting(true)
     setFormError(null)
@@ -273,7 +309,18 @@ export function MessengerSeedingView(): React.JSX.Element {
       const response = await startMessengerSeeding({
         profileIds: selectedProfiles.map((profile) => profile.id),
         targets: activeTargets,
-        ...(sourceMode === 'target-list' ? { targetListId: selectedTargetListId } : {})
+        ...(sourceMode === 'target-list' ? { targetListId: selectedTargetListId } : {}),
+        ...(messengerMode === 'csharp_share_link'
+          ? {
+              mode: 'csharp_share_link' as const,
+              shareLinks,
+              contentText,
+              randomContent,
+              delaySeconds: parsedDelaySeconds,
+              stopAfterErrorEnabled,
+              stopAfterErrorCount: parsedStopAfterErrorCount
+            }
+          : { mode: 'direct_dm' as const })
       })
       const nextJobs = response.jobIds.map((jobId, index) => {
         const profile = selectedProfiles[index]
@@ -323,6 +370,27 @@ export function MessengerSeedingView(): React.JSX.Element {
         Placeholder {'{uid}'} và {'{name}'} chỉ được resolve khi Messenger seeding; self-comment sẽ
         post nguyên văn các placeholder này.
       </p>
+
+      <div className="messenger-source-toggle" role="group" aria-label="Mode Messenger">
+        <button
+          className={`target-filter-button ${messengerMode === 'direct_dm' ? 'is-active' : ''}`}
+          data-testid="messenger-mode-direct-dm"
+          type="button"
+          aria-pressed={messengerMode === 'direct_dm'}
+          onClick={() => setMessengerMode('direct_dm')}
+        >
+          Direct DM
+        </button>
+        <button
+          className={`target-filter-button ${messengerMode === 'csharp_share_link' ? 'is-active' : ''}`}
+          data-testid="messenger-mode-csharp-share-link"
+          type="button"
+          aria-pressed={messengerMode === 'csharp_share_link'}
+          onClick={() => setMessengerMode('csharp_share_link')}
+        >
+          C# share-link
+        </button>
+      </div>
 
       {profilesError ? (
         <p className="error-message list-error" data-testid="messenger-profiles-error">
@@ -454,6 +522,99 @@ export function MessengerSeedingView(): React.JSX.Element {
           ))}
         </div>
       </div>
+
+      {messengerMode === 'csharp_share_link' ? (
+        <div className="messenger-grid" data-testid="messenger-csharp-share-link-options">
+          <label
+            className="field-label messenger-targets-field"
+            htmlFor="messenger-share-links-input"
+          >
+            Share links
+            <textarea
+              id="messenger-share-links-input"
+              data-testid="messenger-share-links-input"
+              className="import-textarea messenger-targets-input"
+              value={shareLinksText}
+              rows={5}
+              placeholder={
+                'https://www.facebook.com/share/p/abc\nhttps://www.facebook.com/share/v/xyz'
+              }
+              onChange={(event) => {
+                setShareLinksText(event.target.value)
+                setFormError(null)
+              }}
+            />
+            <span className="template-placeholder-hint">
+              Một dòng một link, chọn ngẫu nhiên mỗi target.
+            </span>
+          </label>
+          <label className="field-label messenger-targets-field" htmlFor="messenger-content-input">
+            Nội dung
+            <textarea
+              id="messenger-content-input"
+              data-testid="messenger-content-input"
+              className="import-textarea messenger-targets-input"
+              value={contentText}
+              rows={5}
+              placeholder={'Tin nhắn A\nDòng 2\n**\nTin nhắn B'}
+              onChange={(event) => {
+                setContentText(event.target.value)
+                setFormError(null)
+              }}
+            />
+          </label>
+          <label className="messenger-profile-option">
+            <input
+              data-testid="messenger-random-content-toggle"
+              type="checkbox"
+              checked={randomContent}
+              onChange={(event) => setRandomContent(event.target.checked)}
+            />
+            <span>Random content theo dấu **</span>
+          </label>
+          <label
+            className="field-label template-field-label"
+            htmlFor="messenger-delay-seconds-input"
+          >
+            Delay giây
+            <input
+              id="messenger-delay-seconds-input"
+              data-testid="messenger-delay-seconds-input"
+              className="license-input"
+              type="number"
+              min="0"
+              step="1"
+              value={delaySeconds}
+              onChange={(event) => setDelaySeconds(event.target.value)}
+            />
+          </label>
+          <label className="messenger-profile-option">
+            <input
+              data-testid="messenger-stop-after-error-toggle"
+              type="checkbox"
+              checked={stopAfterErrorEnabled}
+              onChange={(event) => setStopAfterErrorEnabled(event.target.checked)}
+            />
+            <span>Dừng khi đạt số lỗi</span>
+          </label>
+          <label
+            className="field-label template-field-label"
+            htmlFor="messenger-stop-after-error-count-input"
+          >
+            Số lỗi
+            <input
+              id="messenger-stop-after-error-count-input"
+              data-testid="messenger-stop-after-error-count-input"
+              className="license-input"
+              type="number"
+              min="1"
+              step="1"
+              value={stopAfterErrorCount}
+              onChange={(event) => setStopAfterErrorCount(event.target.value)}
+            />
+          </label>
+        </div>
+      ) : null}
 
       {formError ? (
         <p className="error-message list-error" data-testid="messenger-form-error">

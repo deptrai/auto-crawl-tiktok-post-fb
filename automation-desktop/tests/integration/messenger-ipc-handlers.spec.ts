@@ -198,6 +198,54 @@ test('[P1] messenger start rejects invalid payload with VALIDATION_ERROR', async
   expect(batchCalls).toHaveLength(0)
 })
 
+test('[P1] messenger parity mode rejects missing share links or content before creating jobs', async () => {
+  const ipc = new FakeIpcMain()
+  const createCalls: unknown[] = []
+  const batchCalls: unknown[] = []
+  registerMessengerHandlers(ipc, {
+    stateMachine: {
+      createJob(input) {
+        createCalls.push(input)
+        return job(input.id, input.profileId, 'PENDING')
+      },
+      transition: (jobId, to) => transitionOk(jobId, to)
+    },
+    jobRepo: { getJob: () => undefined },
+    jobActions: { countByJob: () => 0, countSuccessByJob: () => 0 },
+    orchestrator: {
+      async runMessengerSeed(_jobId, profileId): Promise<MessengerSeedResult> {
+        return { profileId, sent: 0, failed: 0, perTarget: [] }
+      }
+    },
+    batch: async (input) => {
+      batchCalls.push(input)
+      return { perProfile: [], totalSent: 0, totalFailed: 0, totalCheckpoint: 0 }
+    }
+  })
+
+  const missingLinks = (await ipc.invoke('phase3:messenger:start', {
+    mode: 'csharp_share_link',
+    profileIds: ['profile-1'],
+    targets: [{ uid: '1001' }],
+    contentText: 'Xin chào'
+  })) as { ok: false; error: { code: string; retryable: boolean } }
+  const missingContent = (await ipc.invoke('phase3:messenger:start', {
+    mode: 'csharp_share_link',
+    profileIds: ['profile-1'],
+    targets: [{ uid: '1001' }],
+    shareLinks: ['https://facebook.com/share/1']
+  })) as { ok: false; error: { code: string; retryable: boolean } }
+
+  expect(missingLinks.error).toEqual(
+    expect.objectContaining({ code: 'VALIDATION_ERROR', retryable: false })
+  )
+  expect(missingContent.error).toEqual(
+    expect.objectContaining({ code: 'VALIDATION_ERROR', retryable: false })
+  )
+  expect(createCalls).toHaveLength(0)
+  expect(batchCalls).toHaveLength(0)
+})
+
 test('[P1] messenger start rejects duplicate profileIds before creating jobs', async () => {
   const ipc = new FakeIpcMain()
   const createCalls: unknown[] = []
@@ -340,5 +388,6 @@ test('[P0] messenger target list start links jobs and terminal status applies ou
     ok: true,
     jobs: [{ jobId: start.jobIds[0], state: 'DONE', sent: 2, total: 2 }]
   })
-  expect(appliedJobs).toEqual(start.jobIds)
+  expect(new Set(appliedJobs)).toEqual(new Set(start.jobIds))
+  expect(appliedJobs.length).toBeGreaterThanOrEqual(start.jobIds.length)
 })

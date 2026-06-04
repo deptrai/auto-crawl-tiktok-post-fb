@@ -1,8 +1,26 @@
 import type {
+  MessengerSeedMode,
   MessengerStartResponse,
   MessengerStatusResponse,
   MessengerTargetPayload
 } from '../../../shared/ipc-schemas'
+
+export type StartMessengerSeedingInput = {
+  profileIds: string[]
+  targets: MessengerTargetPayload[]
+  targetListId?: string
+} & (
+  | { mode?: Extract<MessengerSeedMode, 'direct_dm'> }
+  | {
+      mode: Extract<MessengerSeedMode, 'csharp_share_link'>
+      shareLinks: string[]
+      contentText: string
+      randomContent: boolean
+      delaySeconds: number
+      stopAfterErrorEnabled: boolean
+      stopAfterErrorCount: number
+    }
+)
 
 function assertOk<T extends { ok: boolean; error?: { message: string } }>(
   response: T
@@ -10,14 +28,12 @@ function assertOk<T extends { ok: boolean; error?: { message: string } }>(
   if (!response.ok) throw new Error(response.error?.message ?? 'IPC request failed')
 }
 
-export async function startMessengerSeeding(input: {
-  profileIds: string[]
-  targets: MessengerTargetPayload[]
-  targetListId?: string
-}): Promise<{ jobIds: string[] }> {
+export async function startMessengerSeeding(
+  input: StartMessengerSeedingInput
+): Promise<{ jobIds: string[] }> {
   const response = await window.api.ipc.call<
     'phase3:messenger:start',
-    { profileIds: string[]; targets: MessengerTargetPayload[]; targetListId?: string },
+    StartMessengerSeedingInput,
     MessengerStartResponse
   >('phase3:messenger:start', input)
   assertOk(response)

@@ -115,6 +115,62 @@ test('[P0] messenger seeding UI pastes targets selects profile triggers stub bat
   }
 })
 
+test('[P0] messenger csharp share-link mode accepts legacy inputs and runs stub batch', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-messenger-share-link-'))
+  const license = await startLicenseServer()
+  let app: ElectronApplication | null = null
+
+  try {
+    app = await launchWithActiveLicense(join(dir, 'phase3.db'), license.url)
+    const window = await app.firstWindow()
+
+    await expect(window.getByTestId('license-view')).toBeVisible({ timeout: 10_000 })
+    await window.getByRole('textbox', { name: /license key/i }).fill('LIC-MESSENGER-SHARE-OK')
+    await window.getByRole('button', { name: /kích hoạt/i }).click()
+    await expect(window.getByTestId('profiles-view')).toBeVisible({ timeout: 10_000 })
+
+    await setTextareaValue(
+      window.getByTestId('import-textarea'),
+      'uid_msg_share_1|pass-secret|seed-secret|c_user=uid_msg_share_1;xs=secret|mail@example.com|mailpass'
+    )
+    await window.getByTestId('import-button').click()
+    await expect(window.getByTestId('profile-row-uid_msg_share_1')).toBeVisible({ timeout: 10_000 })
+
+    await window.getByTestId('nav-messenger').click()
+    await window.getByTestId('messenger-mode-csharp-share-link').click()
+    await expect(window.getByTestId('messenger-csharp-share-link-options')).toBeVisible()
+    await setTextareaValue(window.getByTestId('messenger-targets-input'), '777\n888')
+    await setTextareaValue(
+      window.getByTestId('messenger-share-links-input'),
+      'https://www.facebook.com/share/p/abc\nhttps://www.facebook.com/share/v/xyz'
+    )
+    await setTextareaValue(
+      window.getByTestId('messenger-content-input'),
+      'Nội dung A\n**\nNội dung B'
+    )
+    await window.getByTestId('messenger-random-content-toggle').check()
+    await window.getByTestId('messenger-delay-seconds-input').fill('2')
+    await window.getByTestId('messenger-stop-after-error-toggle').check()
+    await window.getByTestId('messenger-stop-after-error-count-input').fill('3')
+    await window.getByTestId('messenger-profile-checkbox-uid_msg_share_1').check()
+    await window.getByTestId('messenger-start-button').click()
+
+    await expect(window.getByTestId('messenger-job-row-uid_msg_share_1')).toContainText(
+      'Hoàn tất',
+      {
+        timeout: 10_000
+      }
+    )
+    await expect(window.getByTestId('messenger-job-row-uid_msg_share_1')).toContainText(/\d+\/\d+/)
+    await expect(window.getByTestId('messenger-seeding-view')).not.toContainText('pass-secret')
+    await expect(window.getByTestId('messenger-seeding-view')).not.toContainText('xs=secret')
+  } finally {
+    if (app) await app.close()
+    await closeServer(license.server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('[P0] messenger seeding uses target list and marks entries sent after stub batch', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'phase3-messenger-target-list-'))
   const license = await startLicenseServer()

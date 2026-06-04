@@ -1,6 +1,6 @@
 # Story 12.4: C# Messenger Share-Link Parity
 
-Status: ready-for-dev
+Status: review
 
 Epic: 12 — Mass Messenger Seeding (Phase 3.4 Growth) · Story: 12.4 · ID: 12.4
 
@@ -18,6 +18,7 @@ So that existing operators can run the same campaign pattern, input files/settin
    - Add explicit Messenger mode, e.g. `mode: 'direct_dm' | 'csharp_share_link'`, to IPC/UI/orchestrator surface.
    - Existing 12.2 direct-DM path must remain unchanged and regression tests must still pass.
    - C# parity mode must be selected deliberately in UI; default may remain direct-DM unless UX chooses otherwise.
+   - Live `csharp_share_link` execution is high-blast and must be blocked unless Story 12.0 safety primitives are available and pass validation for the profile/campaign/run.
 
 2. **Legacy inputs mapped 1:1**
    - Target input supports legacy `uid.txt` semantics: one target/page UID per line, processed in order with no silent reordering inside a profile slice.
@@ -80,39 +81,40 @@ So that existing operators can run the same campaign pattern, input files/settin
 ## Tasks / Subtasks
 
 ### Planning and contracts
-- [ ] **T1** — Extend shared Messenger IPC schemas with explicit mode and parity inputs: targets, shareLinks, contentText, randomContent, delaySeconds, stopAfterErrorEnabled, stopAfterErrorCount. Keep direct-DM request backward compatible. (AC1/AC2/AC10)
-- [ ] **T2** — Add/extend types in `src/main/automation/` for `MessengerSeedMode`, `CsharpShareLinkTarget`, `CsharpShareLinkConfig`, per-target reasons, and safe result metadata. (AC1/AC7/AC9)
+- [x] **T0** — Integrate or prepare the Story 12.0 high-blast safety gate before any live parity token extraction, GraphQL mutation, share navigation, or send action. If Story 12.0 is not implemented yet, production live parity mode must be blocked/deferred while unit/E2E stubs may exercise the contract. Add tests for safety unavailable, kill-switch/cap failure when available, and direct-DM non-regression. (AC1/AC7/AC9/AC10)
+- [x] **T1** — Extend shared Messenger IPC schemas with explicit mode and parity inputs: targets, shareLinks, contentText, randomContent, delaySeconds, stopAfterErrorEnabled, stopAfterErrorCount. Keep direct-DM request backward compatible. (AC1/AC2/AC10)
+- [x] **T2** — Add/extend types in `src/main/automation/` for `MessengerSeedMode`, `CsharpShareLinkTarget`, `CsharpShareLinkConfig`, per-target reasons, and safe result metadata. (AC1/AC7/AC9)
 
 ### Legacy content/input parser
-- [ ] **T3** — Create pure parser helpers for legacy target/link/content behavior; use structured functions instead of ad hoc string handling inside React or orchestrator. (AC2/AC6/AC10)
-- [ ] **T4** — Unit tests for target/link trimming, random `**` segment selection via injected rng, multiline `Shift+Enter` line model, and surrogate removal. (AC2/AC6/AC10)
+- [x] **T3** — Create pure parser helpers for legacy target/link/content behavior; use structured functions instead of ad hoc string handling inside React or orchestrator. (AC2/AC6/AC10)
+- [x] **T4** — Unit tests for target/link trimming, random `**` segment selection via injected rng, multiline `Shift+Enter` line model, and surrogate removal. (AC2/AC6/AC10)
 
 ### Token and GraphQL parity
-- [ ] **T5** — Extend `token-extractor.ts` to return `hsi`, `spinR`, `spinT` in addition to `fbDtsg`, `lsd`, `jazoest`; keep existing self-comment behavior compatible. (AC3)
-- [ ] **T6** — Implement injected GraphQL business CTA adapter/client under `src/main/automation/` or adjacent messenger module. It must build the `MWChatBusinessCTAAdsSenderMutation` request and detect `messenger_business_ads_sender` success. (AC4)
-- [ ] **T7** — Add tests for token extraction and GraphQL adapter/body builder, including missing token and no-secret error behavior. (AC3/AC4/AC9/AC10)
+- [x] **T5** — Extend `token-extractor.ts` to return `hsi`, `spinR`, `spinT` in addition to `fbDtsg`, `lsd`, `jazoest`; keep existing self-comment behavior compatible. (AC3)
+- [x] **T6** — Implement injected GraphQL business CTA adapter/client under `src/main/automation/` or adjacent messenger module. It must build the `MWChatBusinessCTAAdsSenderMutation` request and detect `messenger_business_ads_sender` success. (AC4)
+- [x] **T7** — Add tests for token extraction and GraphQL adapter/body builder, including missing token and no-secret error behavior. (AC3/AC4/AC9/AC10)
 
 ### Share-link executor parity
-- [ ] **T8** — Add a new executor such as `messenger-share-link-executor.ts` instead of overloading `executeMessengerSeed` beyond clarity. It owns share-click, Messenger fallback, message typing, send, and `Couldn't send` detection. (AC5/AC6)
-- [ ] **T9** — Include bundled fragile selector set with comments pointing to Epic 5; preserve fallback order from C# and expose injection for tests. (AC5/AC10)
-- [ ] **T10** — Unit tests for fallback click paths, duplicate aria-label increments, `More share options`, send XPath fallback, JS icon fallback, and `Couldn't send`. (AC5/AC6/AC7/AC10)
+- [x] **T8** — Add a new executor such as `messenger-share-link-executor.ts` instead of overloading `executeMessengerSeed` beyond clarity. It owns share-click, Messenger fallback, message typing, send, and `Couldn't send` detection. (AC5/AC6)
+- [x] **T9** — Include bundled fragile selector set with comments pointing to Epic 5; preserve fallback order from C# and expose injection for tests. (AC5/AC10)
+- [x] **T10** — Unit tests for fallback click paths, duplicate aria-label increments, `More share options`, send XPath fallback, JS icon fallback, and `Couldn't send`. (AC5/AC6/AC7/AC10)
 
 ### Orchestrator and batch integration
-- [ ] **T11** — Extend/create orchestrator path for `mode:'csharp_share_link'`: login, token extraction, per-target GraphQL gate, random share link, share-link executor, record action, delay, stop conditions. (AC1/AC3-AC7/AC9)
-- [ ] **T12** — Preserve `runMessengerSeedBatch` profile isolation and round-robin. Do not regress no-profile, checkpoint aggregate, missing job status fixes from 12.2a/12.2b. (AC1/AC7)
-- [ ] **T13** — Orchestrator tests for GraphQL fail, error limit, checkpoint URL, logout HTML, `Couldn't send`, success, delay, record action, and safe result JSON. (AC7/AC9/AC10)
+- [x] **T11** — Extend/create orchestrator path for `mode:'csharp_share_link'`: login, token extraction, per-target GraphQL gate, random share link, share-link executor, record action, delay, stop conditions. (AC1/AC3-AC7/AC9)
+- [x] **T12** — Preserve `runMessengerSeedBatch` profile isolation and round-robin. Do not regress no-profile, checkpoint aggregate, missing job status fixes from 12.2a/12.2b. (AC1/AC7)
+- [x] **T13** — Orchestrator tests for GraphQL fail, error limit, checkpoint URL, logout HTML, `Couldn't send`, success, delay, record action, and safe result JSON. (AC7/AC9/AC10)
 
 ### Backend action token
-- [ ] **T14** — Patch backend `TIER2_ACTIONS` or equivalent action policy to accept `message`; add backend tests for issue/consume `message` token. (AC8)
-- [ ] **T15** — Ensure desktop tests using real `ActionTokenClient` fake server include `action_type: 'message'`. (AC8)
+- [x] **T14** — Patch backend `TIER2_ACTIONS` or equivalent action policy to accept `message`; add backend tests for issue/consume `message` token. (AC8)
+- [x] **T15** — Ensure desktop tests using real `ActionTokenClient` fake server include `action_type: 'message'`. (AC8)
 
 ### UI and IPC surface
-- [ ] **T16** — Update `MessengerSeedingView` with parity mode controls: mode selector, share links input, content input, random content toggle, delay seconds, stop-after-error controls. Existing direct-DM UI remains usable. (AC1/AC2)
-- [ ] **T17** — Update `messenger-api.ts`, `messenger-handlers.ts`, and bootstrap stub to pass parity config into orchestrator and provide deterministic stub progress for E2E. (AC1/AC10)
-- [ ] **T18** — Integration + E2E tests for parity mode validation and stub flow. (AC10)
+- [x] **T16** — Update `MessengerSeedingView` with parity mode controls: mode selector, share links input, content input, random content toggle, delay seconds, stop-after-error controls. Existing direct-DM UI remains usable. (AC1/AC2)
+- [x] **T17** — Update `messenger-api.ts`, `messenger-handlers.ts`, and bootstrap stub to pass parity config into orchestrator and provide deterministic stub progress for E2E. (AC1/AC10)
+- [x] **T18** — Integration + E2E tests for parity mode validation and stub flow. (AC10)
 
 ### Verification
-- [ ] **V** — Run targeted tests: messenger unit/integration/e2e, backend action-token tests, `npm run typecheck`, `npm run lint`, and relevant backend pytest. No `test.fixme`. Document all commands in Dev Agent Record.
+- [x] **V** — Run targeted tests: messenger unit/integration/e2e, backend action-token tests, `npm run typecheck`, `npm run lint`, and relevant backend pytest. No `test.fixme`. Document all commands in Dev Agent Record.
 
 ## Dev Notes
 
@@ -121,6 +123,13 @@ So that existing operators can run the same campaign pattern, input files/settin
 - User explicitly requested **port đúng 100%** from C# legacy. Do not reinterpret this as “improve direct-DM flow”. Implement a parity mode matching observable C# behavior.
 - Current 12.2 direct-DM mode is valid but not parity. Keep it as an existing mode and add parity mode.
 - “100%” here means behavior-level parity while still obeying Phase 3 security rules: no secret leaks, DI for tests, no raw Electron imports in domain logic, no silent test placeholders.
+
+### Story 12.0 Safety Dependency
+
+- Story 12.4 is a high-blast live Facebook workflow because it can message many targets through multiple profiles. It must not become the first path that bypasses the global kill switch, daily caps, profile warmup/cooldown, checkpoint pause, duplicate-action guard, or operator confirmation policy planned in Story 12.0.
+- Before production live execution, call the Story 12.0 safety validation boundary once it exists and fail closed when the safety service is unavailable, disabled by kill switch, over cap, checkpoint-paused, or missing required campaign approval.
+- Until Story 12.0 is implemented, dev may build pure parsers, adapters, fake GraphQL/share executors, IPC validation, and stub E2E flows, but live Facebook execution for `mode:'csharp_share_link'` must remain blocked or explicitly wired through the safety gate as part of the same implementation.
+- Tests must distinguish stub/test-only parity from production live parity so a future developer cannot accidentally ship real send behavior without the safety foundation.
 
 ### C# Source Behavior To Port
 
@@ -144,6 +153,9 @@ So that existing operators can run the same campaign pattern, input files/settin
 - Existing batch coordinator does profile round-robin and isolation. Reuse it. [Source: `automation-desktop/src/main/automation/messenger-seed-batch.ts`]
 - Existing bootstrap wires `createMessengerSeedOrchestrator` and `PHASE3_AUTOMATION_STUB=1` stub. Extend stub to cover parity mode deterministically. [Source: `automation-desktop/src/main/adapters/electron-bootstrap.ts`:431-456]
 - Existing Messenger UI parses `uid` / `uid|name`. Add parity controls without removing current trigger. [Source: `automation-desktop/src/renderer/src/views/MessengerSeedingView.tsx`]
+- Current shared Messenger start request already has optional `targetListId`; keep it optional and preserve direct paste mode. Do not make C# parity require target-list storage. [Source: `automation-desktop/src/shared/ipc-schemas/messenger.ts`]
+- Current IPC handler validates `targetListId` before job creation, creates one `messenger_seed` job per profile, links `target_list_jobs`, and applies target-list outcomes after batch completion and terminal status. Do not bypass these outcome sync paths when adding parity mode. [Source: `automation-desktop/src/main/ipc/messenger-handlers.ts`]
+- Current Messenger UI removes submitted target-list entries immediately after enqueue to prevent stale target-list resend. Do not reintroduce a duplicate resend path when adding parity controls. [Source: `automation-desktop/src/renderer/src/views/MessengerSeedingView.tsx`]
 
 ### Backend Action Token Context
 
@@ -180,6 +192,7 @@ So that existing operators can run the same campaign pattern, input files/settin
 ### Testing Commands
 
 - `cd automation-desktop && npx playwright test tests/unit/messenger-seed-executor.spec.ts tests/unit/messenger-seed-orchestrator.spec.ts tests/unit/messenger-seed-batch.spec.ts tests/integration/messenger-ipc-handlers.spec.ts tests/e2e/messenger-seeding.spec.ts --reporter=line`
+- `cd automation-desktop && npm run build && npx playwright test tests/e2e/messenger-seeding.spec.ts tests/e2e/target-lists.spec.ts --reporter=line --workers=1`
 - `cd automation-desktop && npm run typecheck`
 - `cd automation-desktop && npm run lint`
 - `cd backend && pytest tests/automation/test_automation_action_token.py -q`
@@ -188,6 +201,8 @@ So that existing operators can run the same campaign pattern, input files/settin
 
 - 12.2a review already fixed invalid terminal transitions, parseable checkpoint selector, draft-safe readback, checkpoint aggregate, and no-profile batch failure accounting. Do not regress these.
 - 12.2b review already fixed duplicate profileIds validation and missing job status returning terminal `JOB_NOT_FOUND`. Do not regress these.
+- 12.3 review fixed target-list source mode regressions: submitted target-list entries are removed from the Messenger UI immediately after enqueue, and `messenger-handlers.ts` applies target-list outcomes after batch completion plus terminal job status updates. Preserve this behavior for both `direct_dm` and `csharp_share_link`.
+- 12.3 established `targetListId?: string` as optional request metadata and records outcome sync through `target_list_jobs` + `job_actions`; parity mode should reuse that contract instead of creating a second target-list result mechanism.
 - 12.1 deferred placeholder robustness remains separate; parity mode should support current exact `{uid}`/`{name}` rendering only if it uses content templates. Legacy text randomization by `**` is required here.
 
 ### Project Structure Notes
@@ -213,12 +228,56 @@ So that existing operators can run the same campaign pattern, input files/settin
 
 ### Agent Model Used
 
-{{agent_model_name_version}}
+GPT-5 Codex
 
 ### Debug Log References
+
+- `cd automation-desktop && npx playwright test tests/unit/messenger-legacy-input.spec.ts tests/unit/messenger-business-cta.spec.ts tests/unit/messenger-share-link-executor.spec.ts tests/unit/token-extractor.spec.ts tests/unit/messenger-seed-orchestrator.spec.ts tests/integration/messenger-ipc-handlers.spec.ts --reporter=line` — 27 passed.
+- `cd automation-desktop && npm run typecheck` — passed.
+- `cd automation-desktop && npm run lint` — passed with one pre-existing `phase3-security/no-direct-logger` warning in `src/main/adapters/electron-bootstrap.ts:314`.
+- `cd backend && venv/bin/python -m pip install -r requirements-dev.txt` — installed missing `testcontainers` into the Python 3.9 venv because global pytest lacked Alembic and `.venv` Python 3.12 pip was blocked by a Homebrew `pyexpat` dynamic library error.
+- `cd backend && venv/bin/python -m pytest tests/automation/test_automation_action_token.py -q` — 12 passed, 3 deprecation warnings.
+- `cd automation-desktop && npm run build` — passed.
+- `cd automation-desktop && npx playwright test tests/e2e/messenger-seeding.spec.ts tests/e2e/target-lists.spec.ts --reporter=line --workers=1` — 4 passed.
+- `cd automation-desktop && npm run test:automation -- --reporter=line` — mixed Node/Electron ABI run is not stable as a single command on this repo; after Node rebuild it produced 283 passed and 11 Electron-runtime failures due the `better-sqlite3-multiple-ciphers` ABI toggle.
+- `cd automation-desktop && npx electron-rebuild -f -w better-sqlite3-multiple-ciphers` — rebuilt native module for Electron ABI.
+- `cd automation-desktop && npx playwright test tests/e2e/smoke.spec.ts tests/integration/automation-job-repo.spec.ts tests/integration/content-template-repo.spec.ts tests/integration/fingerprint-service.spec.ts tests/integration/job-action-repo.spec.ts tests/integration/profile-repo.spec.ts tests/integration/proxy-repo.spec.ts tests/integration/safe-storage.spec.ts tests/integration/settings-repo.spec.ts tests/e2e/messenger-seeding.spec.ts tests/e2e/target-lists.spec.ts --reporter=line --workers=1` — 16 passed.
 
 ### Completion Notes List
 
 - Ultimate context engine analysis completed - comprehensive developer guide created.
+- Added explicit Messenger modes and parity IPC fields while preserving no-mode/direct-DM backward compatibility.
+- Added C# parity pure helpers for legacy line parsing, `**` random content, share-link choice, and surrogate removal.
+- Extended token extraction with `hsi`, `spinR`, and `spinT`; added injected Business CTA GraphQL request/client builder with secret-safe failure behavior.
+- Added isolated share-link Messenger executor with bundled fragile C# selectors, fallback order, duplicate aria-label handling, Shift+Enter typing, send fallback, and `Couldn't send` detection.
+- Added fail-closed orchestrator branch for production `csharp_share_link` while Story 12.0 safety primitives are unavailable; stub/E2E contract remains exercisable without live Facebook sends.
+- Added renderer parity controls and API/IPC forwarding for share links, content, random content, delay, and stop-after-error settings.
+- Patched backend action-token policy to accept `message` and added issue/consume coverage.
 
 ### File List
+
+- `_bmad-output/implementation-artifacts/12-4-csharp-messenger-share-link-parity.md`
+- `_bmad-output/implementation-artifacts/sprint-status-phase3.yaml`
+- `automation-desktop/src/main/automation/index.ts`
+- `automation-desktop/src/main/automation/messenger-business-cta.ts`
+- `automation-desktop/src/main/automation/messenger-legacy-input.ts`
+- `automation-desktop/src/main/automation/messenger-seed-orchestrator.ts`
+- `automation-desktop/src/main/automation/messenger-share-link-executor.ts`
+- `automation-desktop/src/main/automation/token-extractor.ts`
+- `automation-desktop/src/main/ipc/messenger-handlers.ts`
+- `automation-desktop/src/renderer/src/api/messenger-api.ts`
+- `automation-desktop/src/renderer/src/views/MessengerSeedingView.tsx`
+- `automation-desktop/src/shared/ipc-schemas/messenger.ts`
+- `automation-desktop/tests/e2e/messenger-seeding.spec.ts`
+- `automation-desktop/tests/integration/messenger-ipc-handlers.spec.ts`
+- `automation-desktop/tests/unit/messenger-business-cta.spec.ts`
+- `automation-desktop/tests/unit/messenger-legacy-input.spec.ts`
+- `automation-desktop/tests/unit/messenger-seed-orchestrator.spec.ts`
+- `automation-desktop/tests/unit/messenger-share-link-executor.spec.ts`
+- `automation-desktop/tests/unit/token-extractor.spec.ts`
+- `backend/app/services/automation/action_token.py`
+- `backend/tests/automation/test_automation_action_token.py`
+
+### Change Log
+
+- 2026-06-04 — Implemented Story 12.4 C# Messenger share-link parity contract, fail-closed live safety behavior, parity UI/API/IPC surface, pure token/GraphQL/share-link helpers, backend `message` action token support, and tests. Status moved to review.

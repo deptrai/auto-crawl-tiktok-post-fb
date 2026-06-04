@@ -2,6 +2,9 @@ export interface SessionTokens {
   fbDtsg: string
   lsd: string
   jazoest: string
+  hsi?: string
+  spinR?: string
+  spinT?: string
 }
 
 export interface TokenExtractor {
@@ -55,6 +58,18 @@ function computeJazoest(fbDtsg: string): string {
   return `2${sum}`
 }
 
+function matchHsi(html: string): string | null {
+  return matchFirst(html, [/"hsi"\s*:\s*"([^"']+)"/, /hsi[=:]([0-9A-Za-z_-]+)/])
+}
+
+function matchSpinR(html: string): string | null {
+  return matchFirst(html, [/"__spin_r"\s*:\s*"?([^,"'}]+)"?/, /__spin_r[=:]([0-9A-Za-z_-]+)/])
+}
+
+function matchSpinT(html: string): string | null {
+  return matchFirst(html, [/"__spin_t"\s*:\s*"?([^,"'}]+)"?/, /__spin_t[=:]([0-9A-Za-z_-]+)/])
+}
+
 /** Token NAMES (never values) missing from the HTML — safe to send to telemetry. */
 export function missingTokenNames(html: string): string[] {
   const missing: string[] = []
@@ -75,7 +90,14 @@ export function parseTokens(html: string): SessionTokens | null {
       /value=["'](\d+)["'][^>]*name=["']jazoest["']/
     ]) ?? computeJazoest(fbDtsg)
 
-  return { fbDtsg, lsd, jazoest }
+  return {
+    fbDtsg,
+    lsd,
+    jazoest,
+    ...(matchHsi(html) ? { hsi: matchHsi(html)! } : {}),
+    ...(matchSpinR(html) ? { spinR: matchSpinR(html)! } : {}),
+    ...(matchSpinT(html) ? { spinT: matchSpinT(html)! } : {})
+  }
 }
 
 export function createTokenExtractor(deps: TokenExtractorDeps): TokenExtractor {

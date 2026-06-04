@@ -159,6 +159,36 @@ test('[P0] messenger seed orchestrator sends three targets with rendered content
   expect(deps.closed.value).toBe(true)
 })
 
+test('[P0] csharp share-link mode fails closed while safety gate is unavailable', async () => {
+  const deps = createDeps()
+  const orchestrator = createMessengerSeedOrchestrator(deps)
+
+  const result = await orchestrator.runMessengerSeed('job-1', 'profile-1', {
+    mode: 'csharp_share_link',
+    targets: [{ uid: '1001' }, { uid: '1002' }],
+    shareLinks: ['https://facebook.com/post/1'],
+    contentText: 'Xin chào',
+    randomContent: false,
+    delaySeconds: 0,
+    stopAfterErrorEnabled: true,
+    stopAfterErrorCount: 1
+  })
+
+  expect(result).toEqual({
+    profileId: 'profile-1',
+    sent: 0,
+    failed: 2,
+    stoppedReason: 'SAFETY_GATE_UNAVAILABLE',
+    perTarget: []
+  })
+  expect(deps.transitions).toEqual(['FAILED'])
+  expect(deps.transitionResults.at(-1)).toContain('SAFETY_GATE_UNAVAILABLE')
+  expect(deps.navigated).toEqual([])
+  expect(deps.executed).toEqual([])
+  expect(deps.records).toEqual([])
+  expect(deps.closed.value).toBe(false)
+})
+
 test('[P0] messenger seed orchestrator stops current profile on checkpoint and does not send later targets', async () => {
   let calls = 0
   const deps = createDeps({
