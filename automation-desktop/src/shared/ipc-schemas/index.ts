@@ -115,6 +115,16 @@ import {
   type MessengerStatusRequest,
   type MessengerStatusResponse
 } from './messenger'
+import {
+  CaptchaSetKeyRequestSchema,
+  CaptchaSetKeyResponseSchema,
+  CaptchaStatusRequestSchema,
+  CaptchaStatusResponseSchema,
+  type CaptchaSetKeyRequest,
+  type CaptchaSetKeyResponse,
+  type CaptchaStatusRequest,
+  type CaptchaStatusResponse
+} from './captcha'
 
 export type Phase3ChannelName = `phase3:${string}:${string}`
 
@@ -253,7 +263,17 @@ export const channelRegistry = [
     channel: 'phase3:messenger:status',
     requestSchema: MessengerStatusRequestSchema,
     responseSchema: MessengerStatusResponseSchema
-  } satisfies ChannelRegistryEntry<MessengerStatusRequest, MessengerStatusResponse>
+  } satisfies ChannelRegistryEntry<MessengerStatusRequest, MessengerStatusResponse>,
+  {
+    channel: 'phase3:captcha:set-key',
+    requestSchema: CaptchaSetKeyRequestSchema,
+    responseSchema: CaptchaSetKeyResponseSchema
+  } satisfies ChannelRegistryEntry<CaptchaSetKeyRequest, CaptchaSetKeyResponse>,
+  {
+    channel: 'phase3:captcha:status',
+    requestSchema: CaptchaStatusRequestSchema,
+    responseSchema: CaptchaStatusResponseSchema
+  } satisfies ChannelRegistryEntry<CaptchaStatusRequest, CaptchaStatusResponse>
 ] as const satisfies ReadonlyArray<ChannelRegistryEntry>
 
 export * from './common'
@@ -265,3 +285,4 @@ export * from './proxy'
 export * from './content-template'
 export * from './automation'
 export * from './messenger'
+export * from './captcha'

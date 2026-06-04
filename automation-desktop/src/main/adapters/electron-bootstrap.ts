@@ -62,6 +62,7 @@ import {
 import {
   registerLicenseHandlers,
   registerAutomationHandlers,
+  registerCaptchaHandlers,
   registerContentTemplateHandlers,
   registerMessengerHandlers,
   registerProfileHandlers,
@@ -776,6 +777,10 @@ export async function bootstrapApplication(): Promise<void> {
     stateMachine: deps.automation.stateMachine,
     jobRepo: deps.repos.automationJob,
     jobActions: deps.repos.jobAction
+  })
+  registerCaptchaHandlers(ipcMain, {
+    storage: deps.adapters.storage,
+    settings: deps.services.settings
   })
   registerProxyHandlers(
     ipcMain,

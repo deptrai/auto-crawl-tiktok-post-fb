@@ -379,6 +379,17 @@ button,
   opacity: 0.62;
 }
 
+.settings-row-captcha {
+  align-items: flex-start;
+}
+
+.settings-captcha-controls {
+  display: grid;
+  flex: 0 1 360px;
+  gap: var(--sp-3);
+  min-width: min(360px, 100%);
+}
+
 .settings-toggle {
   display: inline-flex;
   flex: 0 0 auto;

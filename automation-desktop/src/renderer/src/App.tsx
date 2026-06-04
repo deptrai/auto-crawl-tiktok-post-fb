@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
 import { EULA_VERSION, needsEulaAcceptance } from '../../shared/eula-version'
 import type { LicensePublicStatus } from '../../shared/ipc-schemas'
+import type { CaptchaProvider } from '../../shared/ipc-schemas'
 import { activateLicense, getLicenseStatus, subscribeLicenseChanges } from './api/license-api'
+import { getCaptchaStatus, setCaptchaEnabled, setCaptchaKey } from './api/captcha-api'
 import { getSetting, openPrivacyPolicy, setSetting } from './api/settings-api'
 import { EulaAcceptanceView } from './views/EulaAcceptanceView'
 import { LicenseView } from './views/LicenseView'
@@ -42,6 +44,14 @@ function MainShell({
   const [automationBrowserHeadless, setAutomationBrowserHeadless] = useState(false)
   const [automationBrowserModeSaving, setAutomationBrowserModeSaving] = useState(false)
   const [settingsError, setSettingsError] = useState<string | null>(null)
+  const [captchaCapsolverKey, setCaptchaCapsolverKey] = useState('')
+  const [captchaTwoCaptchaKey, setCaptchaTwoCaptchaKey] = useState('')
+  const [captchaCapsolverConfigured, setCaptchaCapsolverConfigured] = useState(false)
+  const [captchaTwoCaptchaConfigured, setCaptchaTwoCaptchaConfigured] = useState(false)
+  const [captchaEnabled, setCaptchaEnabledState] = useState(false)
+  const [captchaSavingProvider, setCaptchaSavingProvider] = useState<CaptchaProvider | null>(null)
+  const [captchaEnabledSaving, setCaptchaEnabledSaving] = useState(false)
+  const [captchaLoading, setCaptchaLoading] = useState(true)
 
   useEffect(() => {
     let cancelled = false
@@ -62,6 +72,32 @@ function MainShell({
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    void getCaptchaStatus()
+      .then((status) => {
+        if (!cancelled) {
+          setCaptchaCapsolverConfigured(status.capsolverConfigured)
+          setCaptchaTwoCaptchaConfigured(status.twoCaptchaConfigured)
+          setCaptchaEnabledState(status.enabled)
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setSettingsError(
+            err instanceof Error ? err.message : 'Không thể đọc trạng thái CAPTCHA solver.'
+          )
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCaptchaLoading(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
   async function handleAutomationBrowserModeChange(nextHeadless: boolean): Promise<void> {
     if (automationBrowserModeSaving) return
     const previous = automationBrowserHeadless
@@ -75,6 +111,48 @@ function MainShell({
       setSettingsError(err instanceof Error ? err.message : 'Không thể lưu chế độ trình duyệt.')
     } finally {
       setAutomationBrowserModeSaving(false)
+    }
+  }
+
+  async function handleCaptchaKeySave(provider: CaptchaProvider): Promise<void> {
+    if (captchaSavingProvider) return
+    const value = provider === 'capsolver' ? captchaCapsolverKey : captchaTwoCaptchaKey
+    const trimmed = value.trim()
+    if (!trimmed) return
+
+    setCaptchaSavingProvider(provider)
+    setSettingsError(null)
+    try {
+      await setCaptchaKey(provider, trimmed)
+      if (provider === 'capsolver') {
+        setCaptchaCapsolverConfigured(true)
+        setCaptchaCapsolverKey('')
+      } else {
+        setCaptchaTwoCaptchaConfigured(true)
+        setCaptchaTwoCaptchaKey('')
+      }
+    } catch (err) {
+      setSettingsError(err instanceof Error ? err.message : 'Không thể lưu API key CAPTCHA.')
+    } finally {
+      setCaptchaSavingProvider(null)
+    }
+  }
+
+  async function handleCaptchaEnabledChange(nextEnabled: boolean): Promise<void> {
+    if (captchaEnabledSaving) return
+    const previous = captchaEnabled
+    setCaptchaEnabledState(nextEnabled)
+    setCaptchaEnabledSaving(true)
+    setSettingsError(null)
+    try {
+      await setCaptchaEnabled(nextEnabled)
+    } catch (err) {
+      setCaptchaEnabledState(previous)
+      setSettingsError(
+        err instanceof Error ? err.message : 'Không thể lưu trạng thái CAPTCHA solver.'
+      )
+    } finally {
+      setCaptchaEnabledSaving(false)
     }
   }
 
@@ -182,6 +260,96 @@ function MainShell({
                 />
                 <span>Gửi dữ liệu ẩn danh</span>
               </label>
+            </div>
+            <div className="settings-row settings-row-captcha">
+              <div>
+                <strong>CAPTCHA solver</strong>
+                <p className="profiles-list-subtitle">
+                  Mặc định tắt. Khi bật, solver có thể tốn tiền thật và gửi proxy đang dùng sang
+                  provider trong lúc giải CAPTCHA.
+                </p>
+                <p className="profiles-list-subtitle" data-testid="captcha-capsolver-status">
+                  CapSolver:{' '}
+                  {captchaLoading
+                    ? 'đang kiểm tra'
+                    : captchaCapsolverConfigured
+                      ? 'đã cấu hình'
+                      : 'chưa cấu hình'}
+                </p>
+                <p className="profiles-list-subtitle" data-testid="captcha-2captcha-status">
+                  2captcha:{' '}
+                  {captchaLoading
+                    ? 'đang kiểm tra'
+                    : captchaTwoCaptchaConfigured
+                      ? 'đã cấu hình'
+                      : 'chưa cấu hình'}
+                </p>
+              </div>
+              <div className="settings-captcha-controls">
+                <label className="field-label proxy-field-label" htmlFor="captcha-capsolver-key">
+                  API key CapSolver
+                  <input
+                    id="captcha-capsolver-key"
+                    data-testid="captcha-capsolver-key-input"
+                    className="license-input"
+                    type="password"
+                    value={captchaCapsolverKey}
+                    placeholder="Dán API key CapSolver"
+                    disabled={captchaSavingProvider === 'capsolver'}
+                    onChange={(event) => setCaptchaCapsolverKey(event.target.value)}
+                  />
+                </label>
+                <button
+                  data-testid="captcha-capsolver-save-button"
+                  className="secondary-button proxy-action-button"
+                  type="button"
+                  disabled={captchaSavingProvider !== null || !captchaCapsolverKey.trim()}
+                  onClick={(event) => {
+                    ;(event.currentTarget as HTMLButtonElement).disabled = true
+                    void handleCaptchaKeySave('capsolver')
+                  }}
+                >
+                  {captchaSavingProvider === 'capsolver' ? 'Đang lưu...' : 'Lưu CapSolver'}
+                </button>
+                <label className="field-label proxy-field-label" htmlFor="captcha-2captcha-key">
+                  API key 2captcha
+                  <input
+                    id="captcha-2captcha-key"
+                    data-testid="captcha-2captcha-key-input"
+                    className="license-input"
+                    type="password"
+                    value={captchaTwoCaptchaKey}
+                    placeholder="Dán API key 2captcha"
+                    disabled={captchaSavingProvider === '2captcha'}
+                    onChange={(event) => setCaptchaTwoCaptchaKey(event.target.value)}
+                  />
+                </label>
+                <button
+                  data-testid="captcha-2captcha-save-button"
+                  className="secondary-button proxy-action-button"
+                  type="button"
+                  disabled={captchaSavingProvider !== null || !captchaTwoCaptchaKey.trim()}
+                  onClick={(event) => {
+                    ;(event.currentTarget as HTMLButtonElement).disabled = true
+                    void handleCaptchaKeySave('2captcha')
+                  }}
+                >
+                  {captchaSavingProvider === '2captcha' ? 'Đang lưu...' : 'Lưu 2captcha'}
+                </button>
+                <label className="settings-toggle" htmlFor="captcha-solver-enabled-toggle">
+                  <input
+                    id="captcha-solver-enabled-toggle"
+                    data-testid="captcha-solver-enabled-toggle"
+                    type="checkbox"
+                    checked={captchaEnabled}
+                    disabled={captchaEnabledSaving}
+                    onChange={(event) => {
+                      void handleCaptchaEnabledChange(event.target.checked)
+                    }}
+                  />
+                  <span>Bật CAPTCHA solver</span>
+                </label>
+              </div>
             </div>
           </div>
           {settingsError ? (

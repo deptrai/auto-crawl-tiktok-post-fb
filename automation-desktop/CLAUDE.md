@@ -6,7 +6,7 @@
 ## Tech Stack
 
 - **Electron + electron-vite** (KHÔNG phải electron-react-boilerplate)
-- **TypeScript strict**, React 19, Vite, Tailwind v4
+- **TypeScript strict**, React 19, Vite, custom plain CSS design tokens
 - **zod v4** cho schema validation (`z.object`, `z.infer`)
 - **better-sqlite3-multiple-ciphers** cho SQLCipher DB
 - **@playwright/test** cho cả unit/integration/E2E (KHÔNG Vitest cho đến khi trigger condition met)
@@ -229,6 +229,18 @@ toErrorResponse('SETTINGS_GET_FAILED', 'Không thể đọc cài đặt cục b�
 
 ## UI Rules
 
+### Desktop styling source of truth
+
+`automation-desktop` dùng **plain CSS design tokens + component classes** trong renderer, KHÔNG dùng Tailwind cho Electron desktop UI. Tailwind v4 chỉ còn là reference cho web/admin frontend hiện hữu ngoài desktop app.
+
+```tsx
+// ❌ SAI — thêm Tailwind utility mới trong desktop renderer
+<button className="rounded-lg bg-blue-600 px-4 py-2 text-white">
+
+// ✅ ĐÚNG — dùng class/token CSS của desktop app
+<button className="primary-button">
+```
+
 ### 16. Loading state — KHÔNG dùng cùng class/testid với main shell
 
 ```tsx
@@ -276,7 +288,50 @@ Lint fail trên test file = AC lint pass KHÔNG được tick. ESLint config áp
 
 ## File Structure Rules
 
-### 21. Mỗi service = 1 folder + `index.ts` barrel
+## High-Blast Safety Rules — Story 12.0
+
+Story 12.0 là safety gate bắt buộc trước mọi workflow high-blast Epic 12-19: Messenger, group join/post/comment, Page, Marketplace, livestream, mobile script, hoặc mixed browser/mobile execution.
+
+### 21. High-blast action PHẢI gọi safety primitive trước khi chạy
+
+Trước khi start job hoặc execute action tier 2+, scheduler/orchestrator phải validate tối thiểu:
+
+- warmup eligibility
+- per-profile daily cap
+- per-action cooldown
+- per-target duplicate guard
+- one high-blast action active per profile
+- checkpoint/rate-limit/risk pause state
+- global kill switch
+
+Safety failure phải block trước khi consume action token nếu có thể.
+
+```ts
+// ❌ SAI — request token / navigate Facebook trước khi check safety
+const token = await actionTokenClient.requestActionToken({ actionType: 'message' })
+await navigate(page, targetUrl)
+
+// ✅ ĐÚNG — safety gate trước token + navigation
+const decision = await safety.validateHighBlastAction({ profileId, actionType: 'message', target, executorKind: 'browser' })
+if (!decision.ok) return stopWithSafetyReason(decision.reason)
+const token = await actionTokenClient.requestActionToken({ actionType: 'message' })
+```
+
+### 22. Safety state dùng shared repository, không tạo policy riêng theo feature
+
+Các flow Epic 12-19 phải reuse repository/schema chung như `safety_policies`, `profile_action_counters`, `global_kill_switch_state` hoặc equivalent đã được Story 12.0 implement. Không tạo kill switch/cap/cooldown riêng cho Messenger, Group, Page, Marketplace, Live hoặc Mobile.
+
+### 23. Executor kind phải rõ ràng
+
+Browser/mobile/mixed counters phải phân tách bằng `executor_kind='browser'|'mobile'|'mixed'` khi safety policy cần tách quota. Một profile không được chạy đồng thời browser + mobile high-blast action.
+
+### 24. Mobile farm boundary — Epic 19 optional, không thay browser automation
+
+Epic 19 là channel mobile riêng. App desktop chỉ làm control plane qua `MobileFarmProvider` adapter (`listDevices`, `runScript`, `stop`, `getLogs`) khi phần mềm farm phone có API/CLI/script runner. Appium/ADB chỉ là fallback, không hardcode vào domain module.
+
+Browser automation Epic 1-18 phải giữ nguyên behavior; mobile không được mutate browser execution path ngoài shared safety/profile/risk/control-plane primitives.
+
+### 25. Mỗi service = 1 folder + `index.ts` barrel
 
 ```
 src/main/license/
@@ -285,11 +340,11 @@ src/main/license/
 └── index.ts          ← barrel export
 ```
 
-### 22. Dev Notes trong story hứa tạo file → file PHẢI tồn tại trong commit
+### 26. Dev Notes trong story hứa tạo file → file PHẢI tồn tại trong commit
 
 Nếu Dev Notes nói "dùng placeholder content rõ ràng đánh dấu DRAFT", file placeholder PHẢI có trong commit (không chỉ trong text). Bài học: `LICENSE-EULA.md` thiếu trong review Story 1.2.
 
-### 23. Native module rebuild — dùng đúng cú pháp `electron-rebuild`
+### 27. Native module rebuild — dùng đúng cú pháp `electron-rebuild`
 
 ```ts
 // ❌ SAI — sai cú pháp, rebuild fail silently, native module không hoạt động
@@ -301,7 +356,7 @@ exec('npx electron-rebuild -f -w better-sqlite3,better-sqlite3-multiple-ciphers'
 
 Sau khi thêm native module mới (`better-sqlite3`, node-machine-id, ...) phải chạy rebuild và verify `.node` file tồn tại trong `node_modules/*/build/Release/`. Bài học từ review Story 1.1.
 
-### 24. CI workflow — PHẢI nằm ở root `.github/workflows/`, KHÔNG trong subfolder
+### 28. CI workflow — PHẢI nằm ở root `.github/workflows/`, KHÔNG trong subfolder
 
 ```
 ❌ SAI: automation-desktop/.github/workflows/ci.yml  ← GitHub Actions KHÔNG chạy
@@ -310,7 +365,7 @@ Sau khi thêm native module mới (`better-sqlite3`, node-machine-id, ...) phả
 
 Root CI phải có explicit job cho `automation-desktop` (lint + typecheck + test). Bài học từ review Story 1.1.
 
-### 25. Test script regex `[P0]` — escape brackets khi grep tag literal
+### 29. Test script regex `[P0]` — escape brackets khi grep tag literal
 
 ```json
 // ❌ SAI — regex [P0] match ký tự P hoặc 0, không phải tag literal "[P0]"
@@ -333,6 +388,10 @@ Trước khi submit story cho review, agent PHẢI tự check:
 - [ ] preload không có `globalThis` fallback
 - [ ] Tất cả IPC handler Zod parse request + response
 - [ ] Tất cả error response có `retryable` field + message tiếng Việt
+- [ ] Desktop renderer dùng plain CSS tokens/classes, không thêm Tailwind utility mới
+- [ ] High-blast Epic 12-19 gọi Story 12.0 safety gate trước token/navigation/action
+- [ ] Kill switch/cap/cooldown dùng shared safety repository, không tạo policy riêng theo feature
+- [ ] Browser/mobile/mixed execution ghi đúng `executor_kind`; không cho một profile chạy đồng thời high-blast browser + mobile
 - [ ] Mọi AC trong story có test tương ứng (E2E cho UI behavior)
 - [ ] Mọi file được hứa trong Dev Notes đã có trong commit
 - [ ] KHÔNG `test.fixme` trên task đã tick verify

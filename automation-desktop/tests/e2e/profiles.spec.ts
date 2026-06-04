@@ -460,6 +460,69 @@ test('[P0] power-user shortcuts context menu and settings stay in sync', async (
   }
 })
 
+test('[P0] settings CAPTCHA solver saves write-only keys and toggles enabled flag', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-captcha-settings-'))
+  let app: ElectronApplication | null = null
+  let server: Server | null = null
+  const capsolverSecret = 'CAPSOLVER_SECRET_123'
+  const twoCaptchaSecret = 'TWO_CAPTCHA_SECRET_456'
+
+  try {
+    const launched = await launchWithActiveLicense(join(dir, 'phase3.db'))
+    app = launched.app
+    server = launched.server
+    const window = launched.window
+
+    await window.getByTestId('nav-settings').click()
+    await expect(window.getByTestId('settings-view')).toBeVisible({ timeout: 10_000 })
+    await expect(window.getByTestId('captcha-solver-enabled-toggle')).not.toBeChecked()
+    await expect(window.getByTestId('captcha-capsolver-status')).toContainText('chưa cấu hình')
+    await expect(window.getByTestId('captcha-2captcha-status')).toContainText('chưa cấu hình')
+    await expect(window.getByTestId('settings-view')).toContainText('tốn tiền thật')
+
+    await window.getByTestId('captcha-capsolver-key-input').fill(`  ${capsolverSecret}  `)
+    await window.getByTestId('captcha-capsolver-save-button').click()
+    await expect(window.getByTestId('captcha-capsolver-key-input')).toHaveValue('', {
+      timeout: 10_000
+    })
+    await expect(window.getByTestId('captcha-capsolver-status')).toContainText('đã cấu hình')
+    await expect(window.getByTestId('captcha-solver-enabled-toggle')).not.toBeChecked()
+
+    await window.getByTestId('captcha-2captcha-key-input').fill(`  ${twoCaptchaSecret}  `)
+    await window.getByTestId('captcha-2captcha-save-button').click()
+    await expect(window.getByTestId('captcha-2captcha-key-input')).toHaveValue('', {
+      timeout: 10_000
+    })
+    await expect(window.getByTestId('captcha-2captcha-status')).toContainText('đã cấu hình')
+
+    await expect(window.getByTestId('settings-view')).not.toContainText(capsolverSecret)
+    await expect(window.getByTestId('settings-view')).not.toContainText(twoCaptchaSecret)
+
+    await window.getByTestId('captcha-solver-enabled-toggle').check()
+    await expect
+      .poll(() =>
+        window.evaluate(() =>
+          window.api.ipc.call('phase3:settings:get', { key: 'captcha.solver.enabled' })
+        )
+      )
+      .toEqual({ ok: true, value: 'true' })
+
+    const status = await window.evaluate(() => window.api.ipc.call('phase3:captcha:status', {}))
+    expect(status).toEqual({
+      ok: true,
+      capsolverConfigured: true,
+      twoCaptchaConfigured: true,
+      enabled: true
+    })
+    expect(JSON.stringify(status)).not.toContain(capsolverSecret)
+    expect(JSON.stringify(status)).not.toContain(twoCaptchaSecret)
+  } finally {
+    if (app) await app.close()
+    await closeServer(server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
 test('[P0] profile row can visibly acquire and release a unique proxy assignment', async () => {
   const dir = mkdtempSync(join(tmpdir(), 'phase3-profiles-proxy-assign-'))
   const proxyfb = await startProxyfbServer()
