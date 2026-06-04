@@ -14,8 +14,10 @@ import type {
   MessengerTarget,
   runMessengerSeedBatch
 } from '../automation'
+import { isTerminal } from '../automation'
 import type { AutomationJobRepository } from '../db/repositories/automation-job-repo'
 import type { JobActionRepository } from '../db/repositories/job-action-repo'
+import type { TargetListRepository } from '../db/repositories/target-list-repo'
 import type { IpcMainLike } from './settings-handlers'
 
 type MessengerBatchRunner = typeof runMessengerSeedBatch
@@ -36,6 +38,10 @@ function parseError(details: unknown): IpcErrorResponse {
 function normalizeError(error: unknown): IpcErrorResponse {
   void error
   return toErrorResponse('MESSENGER_ERROR', 'Không thể xử lý Messenger seeding.', false)
+}
+
+function missingTargetList(): IpcErrorResponse {
+  return toErrorResponse('TARGET_LIST_NOT_FOUND', 'Không tìm thấy danh sách target.', false)
 }
 
 function parseJobReason(result: string | null): string | undefined {
@@ -64,9 +70,10 @@ export function registerMessengerHandlers(
   deps: {
     orchestrator: Pick<MessengerSeedOrchestrator, 'runMessengerSeed'>
     batch: MessengerBatchRunner
-    stateMachine: Pick<AutomationStateMachine, 'createJob'>
+    stateMachine: Pick<AutomationStateMachine, 'createJob' | 'transition'>
     jobRepo: Pick<AutomationJobRepository, 'getJob'>
     jobActions: Pick<JobActionRepository, 'countByJob' | 'countSuccessByJob'>
+    targetLists?: Pick<TargetListRepository, 'listExists' | 'linkJobs' | 'applyJobOutcomes'>
   }
 ): void {
   ipcMain.handle(
@@ -77,6 +84,12 @@ export function registerMessengerHandlers(
         return MessengerStartResponseSchema.parse(parseError(parsedRequest.error.flatten()))
 
       try {
+        if (parsedRequest.data.targetListId) {
+          if (!deps.targetLists?.listExists(parsedRequest.data.targetListId)) {
+            return MessengerStartResponseSchema.parse(missingTargetList())
+          }
+        }
+
         const jobIds = parsedRequest.data.profileIds.map((profileId) => {
           const jobId = randomUUID()
           deps.stateMachine.createJob({ id: jobId, profileId, type: 'messenger_seed' })
@@ -89,6 +102,30 @@ export function registerMessengerHandlers(
           uid: target.uid,
           ...(target.name ? { name: target.name } : {})
         }))
+
+        if (parsedRequest.data.targetListId) {
+          try {
+            const linked = deps.targetLists?.linkJobs({
+              listId: parsedRequest.data.targetListId,
+              jobIds,
+              createdAt: new Date().toISOString()
+            })
+            if (linked !== jobIds.length) throw new Error('target list job link mismatch')
+          } catch {
+            for (const jobId of jobIds) {
+              deps.stateMachine.transition(jobId, 'FAILED', {
+                result: JSON.stringify({ reason: 'TARGET_LIST_LINK_FAILED' })
+              })
+            }
+            return MessengerStartResponseSchema.parse(
+              toErrorResponse(
+                'TARGET_LIST_LINK_FAILED',
+                'Không thể liên kết job với danh sách target.',
+                false
+              )
+            )
+          }
+        }
 
         void deps
           .batch({
@@ -119,6 +156,10 @@ export function registerMessengerHandlers(
           const job = deps.jobRepo.getJob(jobId)
           if (!job)
             return { jobId, state: 'FAILED' as const, sent: 0, total: 0, reason: 'JOB_NOT_FOUND' }
+
+          if (isTerminal(job.state)) {
+            deps.targetLists?.applyJobOutcomes(jobId, new Date().toISOString())
+          }
 
           const reason = terminalReason(job.state, job.result)
           return {

@@ -11,6 +11,7 @@ import { ContentTemplatesView } from './views/ContentTemplatesView'
 import { MessengerSeedingView } from './views/MessengerSeedingView'
 import { ProfilesView } from './views/ProfilesView'
 import { ProxyView } from './views/ProxyView'
+import { TargetListsView } from './views/TargetListsView'
 import { AppShell } from './components/AppShell'
 import { EmptyState } from './components/EmptyState'
 import { StatusCounter } from './components/StatusCounter'
@@ -217,6 +218,7 @@ function MainShell({
       )
     }
     if (activeView === 'templates') return <ContentTemplatesView />
+    if (activeView === 'targets') return <TargetListsView />
     if (activeView === 'messenger') return <MessengerSeedingView />
     if (activeView === 'proxy') return <ProxyView />
     if (activeView === 'settings') {

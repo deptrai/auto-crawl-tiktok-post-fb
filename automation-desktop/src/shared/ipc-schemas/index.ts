@@ -96,6 +96,28 @@ import {
   type ContentTemplateUpdateResponse
 } from './content-template'
 import {
+  TargetListCreateRequestSchema,
+  TargetListCreateResponseSchema,
+  TargetListDeleteRequestSchema,
+  TargetListDeleteResponseSchema,
+  TargetListEntriesRequestSchema,
+  TargetListEntriesResponseSchema,
+  TargetListImportRequestSchema,
+  TargetListImportResponseSchema,
+  TargetListListRequestSchema,
+  TargetListListResponseSchema,
+  type TargetListCreateRequest,
+  type TargetListCreateResponse,
+  type TargetListDeleteRequest,
+  type TargetListDeleteResponse,
+  type TargetListEntriesRequest,
+  type TargetListEntriesResponse,
+  type TargetListImportRequest,
+  type TargetListImportResponse,
+  type TargetListListRequest,
+  type TargetListListResponse
+} from './target-list'
+import {
   AutomationStartRequestSchema,
   AutomationStartResponseSchema,
   AutomationStatusRequestSchema,
@@ -245,6 +267,31 @@ export const channelRegistry = [
     responseSchema: ContentTemplateDeleteResponseSchema
   } satisfies ChannelRegistryEntry<ContentTemplateDeleteRequest, ContentTemplateDeleteResponse>,
   {
+    channel: 'phase3:target-list:list',
+    requestSchema: TargetListListRequestSchema,
+    responseSchema: TargetListListResponseSchema
+  } satisfies ChannelRegistryEntry<TargetListListRequest, TargetListListResponse>,
+  {
+    channel: 'phase3:target-list:create',
+    requestSchema: TargetListCreateRequestSchema,
+    responseSchema: TargetListCreateResponseSchema
+  } satisfies ChannelRegistryEntry<TargetListCreateRequest, TargetListCreateResponse>,
+  {
+    channel: 'phase3:target-list:delete',
+    requestSchema: TargetListDeleteRequestSchema,
+    responseSchema: TargetListDeleteResponseSchema
+  } satisfies ChannelRegistryEntry<TargetListDeleteRequest, TargetListDeleteResponse>,
+  {
+    channel: 'phase3:target-list:entries',
+    requestSchema: TargetListEntriesRequestSchema,
+    responseSchema: TargetListEntriesResponseSchema
+  } satisfies ChannelRegistryEntry<TargetListEntriesRequest, TargetListEntriesResponse>,
+  {
+    channel: 'phase3:target-list:import',
+    requestSchema: TargetListImportRequestSchema,
+    responseSchema: TargetListImportResponseSchema
+  } satisfies ChannelRegistryEntry<TargetListImportRequest, TargetListImportResponse>,
+  {
     channel: 'phase3:automation:start',
     requestSchema: AutomationStartRequestSchema,
     responseSchema: AutomationStartResponseSchema
@@ -283,6 +330,7 @@ export * from './license'
 export * from './profile'
 export * from './proxy'
 export * from './content-template'
+export * from './target-list'
 export * from './automation'
 export * from './messenger'
 export * from './captcha'

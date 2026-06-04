@@ -31,6 +31,13 @@ function job(id: string, profileId: string, state: AutomationJobState): Automati
   }
 }
 
+function transitionOk(
+  jobId: string,
+  state: AutomationJobState = 'FAILED'
+): { ok: true; job: AutomationJob } {
+  return { ok: true as const, job: job(jobId, 'profile-1', state) }
+}
+
 test('[P0] messenger start creates one job per profile and returns without awaiting batch', async () => {
   const ipc = new FakeIpcMain()
   const jobs = new Map<string, AutomationJob>()
@@ -43,7 +50,8 @@ test('[P0] messenger start creates one job per profile and returns without await
         const created = job(input.id, input.profileId, 'PENDING')
         jobs.set(input.id, created)
         return created
-      }
+      },
+      transition: (jobId, to) => transitionOk(jobId, to)
     },
     jobRepo: { getJob: (id) => jobs.get(id) },
     jobActions: {
@@ -86,7 +94,10 @@ test('[P0] messenger start creates one job per profile and returns without await
 test('[P0] messenger status returns state counts and no secrets', async () => {
   const ipc = new FakeIpcMain()
   registerMessengerHandlers(ipc, {
-    stateMachine: { createJob: (input) => job(input.id, input.profileId, 'PENDING') },
+    stateMachine: {
+      createJob: (input) => job(input.id, input.profileId, 'PENDING'),
+      transition: (jobId, to) => transitionOk(jobId, to)
+    },
     jobRepo: {
       getJob(id) {
         if (id === 'job-1') return job('job-1', 'profile-1', 'EXECUTING')
@@ -121,7 +132,10 @@ test('[P0] messenger status returns state counts and no secrets', async () => {
 test('[P0] messenger status returns terminal JOB_NOT_FOUND for missing jobs', async () => {
   const ipc = new FakeIpcMain()
   registerMessengerHandlers(ipc, {
-    stateMachine: { createJob: (input) => job(input.id, input.profileId, 'PENDING') },
+    stateMachine: {
+      createJob: (input) => job(input.id, input.profileId, 'PENDING'),
+      transition: (jobId, to) => transitionOk(jobId, to)
+    },
     jobRepo: { getJob: () => undefined },
     jobActions: { countByJob: () => 0, countSuccessByJob: () => 0 },
     orchestrator: {
@@ -149,7 +163,8 @@ test('[P1] messenger start rejects invalid payload with VALIDATION_ERROR', async
       createJob(input) {
         createCalls.push(input)
         return job(input.id, input.profileId, 'PENDING')
-      }
+      },
+      transition: (jobId, to) => transitionOk(jobId, to)
     },
     jobRepo: { getJob: () => undefined },
     jobActions: { countByJob: () => 0, countSuccessByJob: () => 0 },
@@ -192,7 +207,8 @@ test('[P1] messenger start rejects duplicate profileIds before creating jobs', a
       createJob(input) {
         createCalls.push(input)
         return job(input.id, input.profileId, 'PENDING')
-      }
+      },
+      transition: (jobId, to) => transitionOk(jobId, to)
     },
     jobRepo: { getJob: () => undefined },
     jobActions: { countByJob: () => 0, countSuccessByJob: () => 0 },
@@ -217,4 +233,112 @@ test('[P1] messenger start rejects duplicate profileIds before creating jobs', a
   )
   expect(createCalls).toHaveLength(0)
   expect(batchCalls).toHaveLength(0)
+})
+
+test('[P0] messenger start validates targetListId before creating jobs', async () => {
+  const ipc = new FakeIpcMain()
+  const createCalls: unknown[] = []
+  const batchCalls: unknown[] = []
+  registerMessengerHandlers(ipc, {
+    stateMachine: {
+      createJob(input) {
+        createCalls.push(input)
+        return job(input.id, input.profileId, 'PENDING')
+      },
+      transition: (jobId, to) => transitionOk(jobId, to)
+    },
+    jobRepo: { getJob: () => undefined },
+    jobActions: { countByJob: () => 0, countSuccessByJob: () => 0 },
+    targetLists: {
+      listExists: () => false,
+      linkJobs: () => 0,
+      applyJobOutcomes: () => 0
+    },
+    orchestrator: {
+      async runMessengerSeed(_jobId, profileId): Promise<MessengerSeedResult> {
+        return { profileId, sent: 0, failed: 0, perTarget: [] }
+      }
+    },
+    batch: async (input) => {
+      batchCalls.push(input)
+      return { perProfile: [], totalSent: 0, totalFailed: 0, totalCheckpoint: 0 }
+    }
+  })
+
+  const response = (await ipc.invoke('phase3:messenger:start', {
+    profileIds: ['profile-1'],
+    targets: [{ uid: '1001' }],
+    targetListId: 'missing-list'
+  })) as { ok: false; error: { code: string; retryable: boolean } }
+
+  expect(response.error).toEqual(
+    expect.objectContaining({ code: 'TARGET_LIST_NOT_FOUND', retryable: false })
+  )
+  expect(createCalls).toHaveLength(0)
+  expect(batchCalls).toHaveLength(0)
+})
+
+test('[P0] messenger target list start links jobs and terminal status applies outcomes', async () => {
+  const ipc = new FakeIpcMain()
+  const jobs = new Map<string, AutomationJob>()
+  const linkCalls: Array<{ listId: string; jobIds: string[] }> = []
+  const appliedJobs: string[] = []
+  let batchStarted = false
+
+  registerMessengerHandlers(ipc, {
+    stateMachine: {
+      createJob(input) {
+        const created = job(input.id, input.profileId, 'PENDING')
+        jobs.set(input.id, created)
+        return created
+      },
+      transition(jobId, to) {
+        const current = jobs.get(jobId) ?? job(jobId, 'profile-1', 'PENDING')
+        const next = { ...current, state: to, completedAt: '2026-06-04T03:00:00.000Z' }
+        jobs.set(jobId, next)
+        return { ok: true, job: next }
+      }
+    },
+    jobRepo: { getJob: (id) => jobs.get(id) },
+    jobActions: {
+      countByJob: () => 2,
+      countSuccessByJob: () => 2
+    },
+    targetLists: {
+      listExists: (id) => id === 'list-1',
+      linkJobs(params) {
+        linkCalls.push({ listId: params.listId, jobIds: params.jobIds })
+        return params.jobIds.length
+      },
+      applyJobOutcomes(jobId) {
+        appliedJobs.push(jobId)
+        return 2
+      }
+    },
+    orchestrator: {
+      async runMessengerSeed(_jobId, profileId): Promise<MessengerSeedResult> {
+        return { profileId, sent: 2, failed: 0, perTarget: [] }
+      }
+    },
+    batch: async (input) => {
+      batchStarted = true
+      return { perProfile: [], totalSent: input.targets.length, totalFailed: 0, totalCheckpoint: 0 }
+    }
+  })
+
+  const start = (await ipc.invoke('phase3:messenger:start', {
+    profileIds: ['profile-1'],
+    targets: [{ uid: '1001' }, { uid: '1002' }],
+    targetListId: 'list-1'
+  })) as { ok: true; jobIds: string[] }
+  expect(start.ok).toBe(true)
+  expect(linkCalls).toEqual([{ listId: 'list-1', jobIds: start.jobIds }])
+  expect(batchStarted).toBe(true)
+
+  jobs.set(start.jobIds[0], { ...jobs.get(start.jobIds[0])!, state: 'DONE' })
+  await expect(ipc.invoke('phase3:messenger:status', { jobIds: start.jobIds })).resolves.toEqual({
+    ok: true,
+    jobs: [{ jobId: start.jobIds[0], state: 'DONE', sent: 2, total: 2 }]
+  })
+  expect(appliedJobs).toEqual(start.jobIds)
 })

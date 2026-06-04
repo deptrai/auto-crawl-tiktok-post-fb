@@ -2,11 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 import type {
   MessengerJobStatus,
   MessengerTargetPayload,
-  ProfileSummary
+  ProfileSummary,
+  TargetListEntry,
+  TargetListFilter,
+  TargetListSummary
 } from '../../../shared/ipc-schemas'
 import type { AutomationJobState } from '../../../shared/types/automation-job'
 import { listProfiles } from '../api/profile-api'
 import { getMessengerStatus, startMessengerSeeding } from '../api/messenger-api'
+import { listTargetEntries, listTargetLists } from '../api/target-list-api'
 import { EmptyState } from '../components/EmptyState'
 import { StatusPill, type StatusPillVariant } from '../components/StatusPill'
 
@@ -40,6 +44,8 @@ interface TrackedMessengerJob extends MessengerJobStatus {
   profileUid: string
 }
 
+type MessengerSourceMode = 'paste' | 'target-list'
+
 function stateVariant(state: AutomationJobState): StatusPillVariant {
   if (state === 'DONE') return 'idle'
   if (state === 'CHECKPOINT_BLOCKED') return 'checkpoint'
@@ -71,12 +77,34 @@ export function MessengerSeedingView(): React.JSX.Element {
   const [profilesLoading, setProfilesLoading] = useState(true)
   const [profilesError, setProfilesError] = useState<string | null>(null)
   const [targetText, setTargetText] = useState('')
+  const [sourceMode, setSourceMode] = useState<MessengerSourceMode>('paste')
+  const [targetLists, setTargetLists] = useState<TargetListSummary[]>([])
+  const [targetListsLoading, setTargetListsLoading] = useState(true)
+  const [selectedTargetListId, setSelectedTargetListId] = useState('')
+  const [targetListFilter, setTargetListFilter] = useState<TargetListFilter>('unsent')
+  const [targetListEntries, setTargetListEntries] = useState<TargetListEntry[]>([])
+  const [targetListEntriesLoading, setTargetListEntriesLoading] = useState(false)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set())
   const [starting, setStarting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
   const [jobs, setJobs] = useState<TrackedMessengerJob[]>([])
-  const parsedTargets = useMemo(() => parseTargets(targetText), [targetText])
-  const canStart = selectedIds.size > 0 && !parsedTargets.error && !starting
+  const pastedTargets = useMemo(() => parseTargets(targetText), [targetText])
+  const targetListTargets = useMemo<MessengerTargetPayload[]>(
+    () =>
+      targetListEntries.map((entry) => ({
+        uid: entry.uid,
+        ...(entry.name ? { name: entry.name } : {})
+      })),
+    [targetListEntries]
+  )
+  const activeTargets = sourceMode === 'paste' ? pastedTargets.targets : targetListTargets
+  const activeTargetError = sourceMode === 'paste' ? pastedTargets.error : null
+  const canStart =
+    selectedIds.size > 0 &&
+    activeTargets.length > 0 &&
+    !activeTargetError &&
+    !starting &&
+    !targetListEntriesLoading
 
   useEffect(() => {
     let cancelled = false
@@ -100,6 +128,61 @@ export function MessengerSeedingView(): React.JSX.Element {
       cancelled = true
     }
   }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadTargetLists(): Promise<void> {
+      try {
+        const next = await listTargetLists()
+        if (!cancelled) {
+          setTargetLists(next)
+          setSelectedTargetListId((current) => current || next[0]?.id || '')
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setFormError(err instanceof Error ? err.message : 'Không thể tải Target Lists.')
+        }
+      } finally {
+        if (!cancelled) setTargetListsLoading(false)
+      }
+    }
+    void loadTargetLists()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedTargetListId) {
+      let cancelled = false
+      queueMicrotask(() => {
+        if (!cancelled) setTargetListEntries([])
+      })
+      return () => {
+        cancelled = true
+      }
+    }
+    let cancelled = false
+    void Promise.resolve().then(async () => {
+      setTargetListEntriesLoading(true)
+      try {
+        const entries = await listTargetEntries({
+          listId: selectedTargetListId,
+          filter: targetListFilter
+        })
+        if (!cancelled) setTargetListEntries(entries)
+      } catch (err) {
+        if (!cancelled) {
+          setFormError(err instanceof Error ? err.message : 'Không thể tải target từ list.')
+        }
+      } finally {
+        if (!cancelled) setTargetListEntriesLoading(false)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [selectedTargetListId, targetListFilter])
 
   useEffect(() => {
     const activeJobs = jobs.filter((job) => !TERMINAL_STATES.has(job.state))
@@ -143,13 +226,17 @@ export function MessengerSeedingView(): React.JSX.Element {
 
   async function handleStart(): Promise<void> {
     if (starting) return
-    if (parsedTargets.error) {
-      setFormError(parsedTargets.error)
+    if (activeTargetError) {
+      setFormError(activeTargetError)
       return
     }
     const selectedProfiles = profiles.filter((profile) => selectedIds.has(profile.id))
     if (selectedProfiles.length === 0) {
       setFormError('Hãy chọn ít nhất một profile để chạy seeding.')
+      return
+    }
+    if (activeTargets.length === 0) {
+      setFormError('Hãy chọn ít nhất một target hợp lệ để chạy seeding.')
       return
     }
 
@@ -158,7 +245,8 @@ export function MessengerSeedingView(): React.JSX.Element {
     try {
       const response = await startMessengerSeeding({
         profileIds: selectedProfiles.map((profile) => profile.id),
-        targets: parsedTargets.targets
+        targets: activeTargets,
+        ...(sourceMode === 'target-list' ? { targetListId: selectedTargetListId } : {})
       })
       const nextJobs = response.jobIds.map((jobId, index) => {
         const profile = selectedProfiles[index]
@@ -219,23 +307,104 @@ export function MessengerSeedingView(): React.JSX.Element {
         />
       ) : null}
 
+      <div className="messenger-source-toggle" role="group" aria-label="Nguồn target Messenger">
+        <button
+          className={`target-filter-button ${sourceMode === 'paste' ? 'is-active' : ''}`}
+          data-testid="messenger-source-paste"
+          type="button"
+          aria-pressed={sourceMode === 'paste'}
+          onClick={() => setSourceMode('paste')}
+        >
+          Dán UID
+        </button>
+        <button
+          className={`target-filter-button ${sourceMode === 'target-list' ? 'is-active' : ''}`}
+          data-testid="messenger-source-target-list"
+          type="button"
+          aria-pressed={sourceMode === 'target-list'}
+          onClick={() => setSourceMode('target-list')}
+        >
+          Target List
+        </button>
+      </div>
+
       <div className="messenger-grid">
-        <label className="field-label messenger-targets-field" htmlFor="messenger-targets-input">
-          Target UID
-          <textarea
-            id="messenger-targets-input"
-            data-testid="messenger-targets-input"
-            className="import-textarea messenger-targets-input"
-            value={targetText}
-            rows={8}
-            placeholder={'123456789\n987654321|Nguyễn Văn A'}
-            onChange={(event) => {
-              setTargetText(event.target.value)
-              setFormError(null)
-            }}
-          />
-          <span className="template-placeholder-hint">Một dòng một UID, có thể dùng uid|name.</span>
-        </label>
+        {sourceMode === 'paste' ? (
+          <label className="field-label messenger-targets-field" htmlFor="messenger-targets-input">
+            Target UID
+            <textarea
+              id="messenger-targets-input"
+              data-testid="messenger-targets-input"
+              className="import-textarea messenger-targets-input"
+              value={targetText}
+              rows={8}
+              placeholder={'123456789\n987654321|Nguyễn Văn A'}
+              onChange={(event) => {
+                setTargetText(event.target.value)
+                setFormError(null)
+              }}
+            />
+            <span className="template-placeholder-hint">
+              Một dòng một UID, có thể dùng uid|name.
+            </span>
+          </label>
+        ) : (
+          <div className="messenger-target-list-source" data-testid="messenger-target-list-source">
+            <label
+              className="field-label template-field-label"
+              htmlFor="messenger-target-list-select"
+            >
+              Target List
+              <select
+                id="messenger-target-list-select"
+                className="license-input"
+                data-testid="messenger-target-list-select"
+                value={selectedTargetListId}
+                disabled={targetListsLoading || targetLists.length === 0}
+                onChange={(event) => setSelectedTargetListId(event.target.value)}
+              >
+                {targetLists.map((list) => (
+                  <option key={list.id} value={list.id}>
+                    {list.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="target-filter-bar" role="group" aria-label="Filter target Messenger">
+              <button
+                className={`target-filter-button ${targetListFilter === 'unsent' ? 'is-active' : ''}`}
+                data-testid="messenger-target-list-filter-unsent"
+                type="button"
+                aria-pressed={targetListFilter === 'unsent'}
+                onClick={() => setTargetListFilter('unsent')}
+              >
+                Chưa gửi
+              </button>
+              <button
+                className={`target-filter-button ${targetListFilter === 'error' ? 'is-active' : ''}`}
+                data-testid="messenger-target-list-filter-error"
+                type="button"
+                aria-pressed={targetListFilter === 'error'}
+                onClick={() => setTargetListFilter('error')}
+              >
+                Lỗi
+              </button>
+            </div>
+            {targetListsLoading || targetListEntriesLoading ? (
+              <span className="profiles-list-loading" data-testid="messenger-target-list-loading">
+                Đang tải target list...
+              </span>
+            ) : null}
+            {!targetListsLoading && targetLists.length === 0 ? (
+              <EmptyState
+                icon="#"
+                title="Chưa có Target List."
+                description="Tạo Target List trước khi chạy seeding theo danh sách."
+                testId="messenger-target-list-empty"
+              />
+            ) : null}
+          </div>
+        )}
 
         <div className="messenger-profile-picker" data-testid="messenger-profile-picker">
           <p className="eyebrow">Profile chạy</p>
@@ -273,7 +442,7 @@ export function MessengerSeedingView(): React.JSX.Element {
         >
           {starting ? 'Đang enqueue...' : 'Chạy seeding'}
         </button>
-        <span className="profiles-list-subtitle">{parsedTargets.targets.length} target hợp lệ</span>
+        <span className="profiles-list-subtitle">{activeTargets.length} target hợp lệ</span>
       </div>
 
       {jobs.length > 0 ? (

@@ -53,3 +53,34 @@ test('[P0] DB schema defines job_actions table with jti reference column', () =>
   expect(match?.[0]).toContain('executed_at TEXT NOT NULL')
   expect(match?.[0]).toContain('outcome TEXT NOT NULL')
 })
+
+test('[P0] DB schema defines target list tables without secret columns', () => {
+  const source = readFileSync(join(process.cwd(), 'src/main/db/client.ts'), 'utf8')
+  const list = source.match(
+    /CREATE TABLE IF NOT EXISTS target_lists\([\s\S]*?created_at TEXT NOT NULL\s*\)/
+  )
+  const entries = source.match(
+    /CREATE TABLE IF NOT EXISTS target_list_entries\([\s\S]*?PRIMARY KEY\(list_id, uid\)\s*\)/
+  )
+  const jobs = source.match(
+    /CREATE TABLE IF NOT EXISTS target_list_jobs\([\s\S]*?PRIMARY KEY\(list_id, job_id\)\s*\)/
+  )
+
+  expect(list?.[0]).toContain('id TEXT PRIMARY KEY')
+  expect(list?.[0]).toContain('label TEXT NOT NULL')
+  expect(entries?.[0]).toContain(
+    'list_id TEXT NOT NULL REFERENCES target_lists(id) ON DELETE CASCADE'
+  )
+  expect(entries?.[0]).toContain('uid TEXT NOT NULL')
+  expect(entries?.[0]).toContain('sent_at TEXT')
+  expect(entries?.[0]).toContain('failed_at TEXT')
+  expect(entries?.[0]).toContain('last_outcome TEXT')
+  expect(entries?.[0]).toContain('last_error_reason TEXT')
+  expect(jobs?.[0]).toContain('list_id TEXT NOT NULL REFERENCES target_lists(id) ON DELETE CASCADE')
+  expect(jobs?.[0]).toContain(
+    'job_id TEXT NOT NULL REFERENCES automation_jobs(id) ON DELETE CASCADE'
+  )
+  expect(`${list?.[0]} ${entries?.[0]} ${jobs?.[0]}`).not.toMatch(
+    /cookie|token|password|twofa|body|rendered/i
+  )
+})

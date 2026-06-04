@@ -4,6 +4,7 @@ export type ConsoleView =
   | 'dashboard'
   | 'profiles'
   | 'templates'
+  | 'targets'
   | 'messenger'
   | 'proxy'
   | 'settings'
@@ -12,6 +13,7 @@ const NAV_ITEMS: Array<{ id: ConsoleView; label: string }> = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'profiles', label: 'Profiles' },
   { id: 'templates', label: 'Templates' },
+  { id: 'targets', label: 'Target Lists' },
   { id: 'messenger', label: 'Messenger' },
   { id: 'proxy', label: 'Proxy' },
   { id: 'settings', label: 'Settings' }

@@ -13,10 +13,11 @@ function assertOk<T extends { ok: boolean; error?: { message: string } }>(
 export async function startMessengerSeeding(input: {
   profileIds: string[]
   targets: MessengerTargetPayload[]
+  targetListId?: string
 }): Promise<{ jobIds: string[] }> {
   const response = await window.api.ipc.call<
     'phase3:messenger:start',
-    { profileIds: string[]; targets: MessengerTargetPayload[] },
+    { profileIds: string[]; targets: MessengerTargetPayload[]; targetListId?: string },
     MessengerStartResponse
   >('phase3:messenger:start', input)
   assertOk(response)

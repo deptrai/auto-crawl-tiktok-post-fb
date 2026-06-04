@@ -114,3 +114,59 @@ test('[P0] messenger seeding UI pastes targets selects profile triggers stub bat
     rmSync(dir, { recursive: true, force: true })
   }
 })
+
+test('[P0] messenger seeding uses target list and marks entries sent after stub batch', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'phase3-messenger-target-list-'))
+  const license = await startLicenseServer()
+  let app: ElectronApplication | null = null
+
+  try {
+    app = await launchWithActiveLicense(join(dir, 'phase3.db'), license.url)
+    const window = await app.firstWindow()
+
+    await expect(window.getByTestId('license-view')).toBeVisible({ timeout: 10_000 })
+    await window.getByRole('textbox', { name: /license key/i }).fill('LIC-MESSENGER-LIST-OK')
+    await window.getByRole('button', { name: /kích hoạt/i }).click()
+    await expect(window.getByTestId('profiles-view')).toBeVisible({ timeout: 10_000 })
+
+    await setTextareaValue(
+      window.getByTestId('import-textarea'),
+      'uid_msg_list_1|pass-secret|seed-secret|c_user=uid_msg_list_1;xs=secret|mail@example.com|mailpass'
+    )
+    await window.getByTestId('import-button').click()
+    await expect(window.getByTestId('profile-row-uid_msg_list_1')).toBeVisible({ timeout: 10_000 })
+
+    await window.getByTestId('nav-targets').click()
+    await expect(window.getByTestId('target-lists-view')).toBeVisible({ timeout: 10_000 })
+    await window.getByTestId('target-list-label-input').fill('Messenger retry set')
+    await window.getByTestId('target-list-create-button').click()
+    await expect(window.getByTestId('target-list-import-textarea')).toBeVisible()
+    await setTextareaValue(window.getByTestId('target-list-import-textarea'), '901\n902|Mai')
+    await window.getByTestId('target-list-import-button').click()
+    await expect(window.getByTestId('target-list-entry-row-901')).toBeVisible()
+    await expect(window.getByTestId('target-list-entry-row-902')).toBeVisible()
+
+    await window.getByTestId('nav-messenger').click()
+    await expect(window.getByTestId('messenger-seeding-view')).toBeVisible()
+    await window.getByTestId('messenger-source-target-list').click()
+    await expect(window.getByTestId('messenger-target-list-source')).toBeVisible()
+    await window.getByTestId('messenger-profile-checkbox-uid_msg_list_1').check()
+    await expect(window.getByText('2 target hợp lệ')).toBeVisible({ timeout: 10_000 })
+    await window.getByTestId('messenger-start-button').click()
+    await expect(window.getByTestId('messenger-job-row-uid_msg_list_1')).toContainText('Hoàn tất', {
+      timeout: 10_000
+    })
+
+    await window.getByTestId('nav-targets').click()
+    await expect(window.getByTestId('target-lists-view')).toBeVisible({ timeout: 10_000 })
+    await window.getByTestId('target-list-filter-unsent').click()
+    await expect(window.getByTestId('target-list-entries-empty')).toBeVisible({ timeout: 10_000 })
+    await window.getByTestId('target-list-filter-sent').click()
+    await expect(window.getByTestId('target-list-entry-row-901')).toContainText('Đã gửi')
+    await expect(window.getByTestId('target-list-entry-row-902')).toContainText('Đã gửi')
+  } finally {
+    if (app) await app.close()
+    await closeServer(license.server)
+    rmSync(dir, { recursive: true, force: true })
+  }
+})

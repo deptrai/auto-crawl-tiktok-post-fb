@@ -14,6 +14,10 @@ import {
   type ContentTemplateRepository
 } from '../db/repositories/content-template-repo'
 import {
+  createTargetListRepository,
+  type TargetListRepository
+} from '../db/repositories/target-list-repo'
+import {
   createJobActionRepository,
   type JobActionRepository
 } from '../db/repositories/job-action-repo'
@@ -68,7 +72,8 @@ import {
   registerProfileHandlers,
   registerProxyHandlers,
   registerSettingsHandlers,
-  registerShellHandlers
+  registerShellHandlers,
+  registerTargetListHandlers
 } from '../ipc'
 import { createLicenseChecker, type LicenseChecker } from '../license/license-checker'
 import { LICENSE_CHANGED_CHANNEL } from '../../shared/ipc-schemas'
@@ -91,6 +96,7 @@ interface BootstrapDeps {
     proxy: ProxyRepository
     automationJob: AutomationJobRepository
     contentTemplate: ContentTemplateRepository
+    targetList: TargetListRepository
     jobAction: JobActionRepository
   }
   automation: {
@@ -417,6 +423,7 @@ function initializeDeps(): BootstrapDeps {
   const proxyRepo = createProxyRepository(db)
   const automationJobRepo = createAutomationJobRepository(db)
   const contentTemplateRepo = createContentTemplateRepository(db)
+  const targetListRepo = createTargetListRepository(db)
   const jobActionRepo = createJobActionRepository(db)
   const nowIso = (): string => new Date().toISOString()
   const automationApiBaseUrl =
@@ -451,6 +458,7 @@ function initializeDeps(): BootstrapDeps {
     proxy: proxyRepo,
     automationJob: automationJobRepo,
     contentTemplate: contentTemplateRepo,
+    targetList: targetListRepo,
     jobAction: jobActionRepo
   }
   contentTemplateRepo.seedDefaults(nowIso())
@@ -765,6 +773,7 @@ export async function bootstrapApplication(): Promise<void> {
   registerLicenseHandlers(ipcMain, deps.services.license)
   registerProfileHandlers(ipcMain, deps.services.profile)
   registerContentTemplateHandlers(ipcMain, deps.repos.contentTemplate)
+  registerTargetListHandlers(ipcMain, deps.repos.targetList)
   registerAutomationHandlers(ipcMain, {
     orchestrator: deps.automation.orchestrator,
     stateMachine: deps.automation.stateMachine,
@@ -776,7 +785,8 @@ export async function bootstrapApplication(): Promise<void> {
     batch: runMessengerSeedBatch,
     stateMachine: deps.automation.stateMachine,
     jobRepo: deps.repos.automationJob,
-    jobActions: deps.repos.jobAction
+    jobActions: deps.repos.jobAction,
+    targetLists: deps.repos.targetList
   })
   registerCaptchaHandlers(ipcMain, {
     storage: deps.adapters.storage,

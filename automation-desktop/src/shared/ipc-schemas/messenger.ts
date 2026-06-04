@@ -17,7 +17,8 @@ export const MessengerStartRequestSchema = z
       .refine((profileIds) => new Set(profileIds).size === profileIds.length, {
         message: 'profileIds must be unique'
       }),
-    targets: z.array(MessengerTargetSchema).min(1)
+    targets: z.array(MessengerTargetSchema).min(1),
+    targetListId: z.string().trim().min(1).optional()
   })
   .strict()
 

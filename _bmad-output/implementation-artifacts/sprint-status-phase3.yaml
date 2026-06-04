@@ -47,7 +47,7 @@ project: auto-crawl-tiktok-post-fb-phase3
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
-last_updated: 2026-06-04 (Story 5.6 CAPTCHA solver API key settings review)
+last_updated: 2026-06-04 (Story 12.3 Target List Management review)
 
 development_status:
   # ===== Phase 3.0 MVP =====
@@ -95,7 +95,7 @@ development_status:
   5-4-canary-profile-drift-detection: backlog
   # 5.5/5.6 (checkpoint auto-solver) context trước 5.1-5.4 — ưu tiên user, độc lập selector resolver (2026-06-04)
   5-5-tu-giai-checkpoint-captcha: done
-  5-6-cau-hinh-api-key-captcha-solver: review
+  5-6-cau-hinh-api-key-captcha-solver: done
   epic-5-retrospective: optional
 
   # Epic 6: Giám sát & Telemetry (Observability)
@@ -156,7 +156,7 @@ development_status:
   # 12.2 tách 12.2a (engine core headless) + 12.2b (surface IPC/UI) — mirror 4.6a/4.6b (2026-06-04)
   12-2a-messenger-seeding-engine-core: done
   12-2b-messenger-seeding-surface: done
-  12-3-target-list-management: ready-for-dev
+  12-3-target-list-management: review
   12-4-csharp-messenger-share-link-parity: ready-for-dev
   epic-12-retrospective: optional
 

@@ -1,6 +1,6 @@
 # Story 5.6: Cấu hình API key CAPTCHA solver
 
-Status: review
+Status: done
 
 Epic: 5 — Khả năng Tự phục hồi (Adaptive Resilience) · Story: 5.6 · ID: 5.6
 

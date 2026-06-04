@@ -224,8 +224,132 @@ button,
   gap: var(--sp-4);
 }
 
+.target-lists-view {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.target-list-layout {
+  display: grid;
+  grid-template-columns: minmax(260px, 340px) minmax(0, 1fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.target-list-panel,
+.target-list-detail {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  background: var(--surface);
+}
+
+.target-list-items,
+.target-list-detail,
+.target-import-actions {
+  display: grid;
+  gap: var(--sp-3);
+}
+
+.target-list-item {
+  display: grid;
+  gap: 4px;
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: var(--sp-3);
+  color: var(--text);
+  background: var(--surface-2);
+  cursor: pointer;
+  text-align: left;
+}
+
+.target-list-item.is-active,
+.target-filter-button.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.target-list-item strong,
+.target-list-item span,
+.target-list-item small,
+.target-list-cell-uid {
+  overflow-wrap: anywhere;
+}
+
+.target-list-item small {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
+.target-list-detail-header,
+.target-import-grid,
+.target-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.target-list-detail-header h3 {
+  margin: 0;
+  font-size: 20px;
+}
+
+.target-import-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 280px);
+}
+
+.target-list-import-textarea {
+  min-height: 160px;
+}
+
+.target-filter-bar {
+  justify-content: flex-start;
+}
+
+.target-filter-button {
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  padding: 10px 12px;
+  color: var(--text);
+  background: var(--surface-2);
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.target-list-table {
+  min-width: 720px;
+}
+
+.target-import-result {
+  margin: 0;
+}
+
 .messenger-placeholder-warning {
   margin: 0;
+}
+
+.messenger-source-toggle,
+.messenger-target-list-source {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: flex-start;
+}
+
+.messenger-target-list-source {
+  display: grid;
+  align-content: start;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  background: var(--surface);
 }
 
 .messenger-grid {
@@ -1418,6 +1542,12 @@ h1 {
   }
 
   .dashboard-onboarding {
+    grid-template-columns: 1fr;
+  }
+
+  .target-list-layout,
+  .target-import-grid,
+  .messenger-grid {
     grid-template-columns: 1fr;
   }
 

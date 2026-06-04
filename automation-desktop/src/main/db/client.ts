@@ -65,6 +65,34 @@ export function openEncryptedDatabase(options: EncryptedDbOptions): Database.Dat
     )`
   ).run()
   db.prepare(
+    `CREATE TABLE IF NOT EXISTS target_lists(
+      id TEXT PRIMARY KEY,
+      label TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )`
+  ).run()
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS target_list_entries(
+      list_id TEXT NOT NULL REFERENCES target_lists(id) ON DELETE CASCADE,
+      uid TEXT NOT NULL,
+      name TEXT,
+      sent_at TEXT,
+      failed_at TEXT,
+      last_outcome TEXT,
+      last_error_reason TEXT,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(list_id, uid)
+    )`
+  ).run()
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS target_list_jobs(
+      list_id TEXT NOT NULL REFERENCES target_lists(id) ON DELETE CASCADE,
+      job_id TEXT NOT NULL REFERENCES automation_jobs(id) ON DELETE CASCADE,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY(list_id, job_id)
+    )`
+  ).run()
+  db.prepare(
     `CREATE TABLE IF NOT EXISTS job_actions(
       id TEXT PRIMARY KEY,
       job_id TEXT NOT NULL REFERENCES automation_jobs(id) ON DELETE CASCADE,
