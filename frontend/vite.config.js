@@ -1,5 +1,8 @@
+/* global process */
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+
+const env = typeof process !== 'undefined' ? process.env : {}
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -9,7 +12,7 @@ export default defineConfig({
     allowedHosts: ['medirus.167.172.66.16.traefik.me'],
     proxy: {
       '/api': {
-        target: process.env.VITE_API_URL || 'http://localhost:8000',
+        target: env.VITE_API_URL || 'http://localhost:8000',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/api/, '')
       }

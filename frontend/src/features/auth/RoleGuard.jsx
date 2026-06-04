@@ -1,10 +1,5 @@
 import React from 'react';
-import { useAuthStore } from '../../store/authStore';
-
-export const useRole = () => {
-  const user = useAuthStore(state => state.user);
-  return user?.role || 'viewer';
-};
+import { useRole } from './useRole';
 
 export const RoleGuard = ({ allowedRoles, children, fallback = null }) => {
   const currentRole = useRole();

@@ -76,3 +76,24 @@ export {
   type SelfCommentSession
 } from './self-comment-orchestrator'
 export { resolveOwnPostTarget, type OwnPostTargetPageLike } from './own-post-target-resolver'
+export {
+  MESSENGER_SEED_SELECTORS,
+  executeMessengerSeed,
+  type MessengerSeedSelectors
+} from './messenger-seed-executor'
+export {
+  createMessengerSeedOrchestrator,
+  type MessengerSeedLoginResult,
+  type MessengerSeedOrchestrator,
+  type MessengerSeedOrchestratorDeps,
+  type MessengerSeedResult,
+  type MessengerSeedSession,
+  type MessengerSeedTargetResult,
+  type MessengerTarget,
+  type RunMessengerSeedOptions
+} from './messenger-seed-orchestrator'
+export {
+  runMessengerSeedBatch,
+  type MessengerSeedBatchInput,
+  type MessengerSeedBatchResult
+} from './messenger-seed-batch'

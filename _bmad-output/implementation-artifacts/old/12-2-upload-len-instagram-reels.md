@@ -68,13 +68,33 @@ Status: `done`
 ## 6. Dev Agent Record
 ### Agent Model Used
 Gemini 2.0 Flash
+Codex GPT-5 (2026-06-04 review follow-up)
 
 ### Change Log
 - 2026-05-04: Bắt đầu triển khai Story 12.2. Thêm tasks.
+- 2026-06-04: Hoàn tất review finding còn mở về Publish Destinations checkbox; dọn lỗi lint frontend liên quan để validation pass.
+
+### Debug Log
+- 2026-06-04: Xác nhận `frontend/src/App.jsx` đã dùng checkbox đa lựa chọn cho `facebook`, `youtube`, `instagram` và render target select theo từng platform đã chọn.
+- 2026-06-04: Chạy `npm run lint` trong `frontend/` pass exit code 0; còn 4 warning React Hook dependency cũ.
+- 2026-06-04: Chạy `npm run build` trong `frontend/` pass.
+- 2026-06-04: Chạy `./.venv/bin/python -m pytest tests/test_instagram_publisher.py` trong `backend/` pass 1 test.
+
+### Completion Notes
+- Resolved review decision item: Publish Destinations UI hiện là checkbox đa lựa chọn, không còn dropdown đơn cho nền tảng xuất bản.
+- Tách `useRole` khỏi `RoleGuard.jsx` để thỏa rule React Fast Refresh, dọn biến/prop không dùng và khai báo `process` trong Vite config để frontend lint không còn error.
+
+### File List
+- `frontend/src/App.jsx`
+- `frontend/src/features/auth/RoleGuard.jsx`
+- `frontend/src/features/auth/useRole.js`
+- `frontend/src/features/organizations/OrganizationManagement.jsx`
+- `frontend/vite.config.js`
+- `_bmad-output/implementation-artifacts/old/12-2-upload-len-instagram-reels.md`
 
 ### Review Findings (2026-05-06)
 
-- [ ] [Review][Decision] Frontend Uses Dropdown instead of Checkboxes for Destinations (Violates AC "checkbox đa lựa chọn") [frontend/src/App.jsx]
+- [x] [Review][Decision] Frontend Uses Dropdown instead of Checkboxes for Destinations (Violates AC "checkbox đa lựa chọn") [frontend/src/App.jsx]
 - [x] [Review][Patch] Liskov Substitution Principle Violation in `upload_video` (relies on `**kwargs` for `video_url`) [backend/app/services/publishers/instagram.py]
 - [x] [Review][Patch] Missing `get_public_url` in Base/Local Storage [backend/app/services/storage_backend.py]
 - [x] [Review][Patch] `storage.get_public_url()` raises Exception outside `try` in `cron.py` [backend/app/worker/cron.py:216]
@@ -86,4 +106,3 @@ Gemini 2.0 Flash
 - [x] [Review][Defer] Missing Async/Non-blocking Implementation (`time.sleep` blocks worker thread) [backend/app/services/publishers/instagram.py:75] — deferred, pre-existing
 - [x] [Review][Defer] Brittle Polling Loop (hardcoded 12 polls/10s might not be enough) [backend/app/services/publishers/instagram.py] — deferred, pre-existing
 - [x] [Review][Defer] Missing Video Aspect Ratio Validation (9:16) [backend/app/services/publishers/instagram.py] — deferred, pre-existing
-

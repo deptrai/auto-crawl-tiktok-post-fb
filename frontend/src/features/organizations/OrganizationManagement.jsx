@@ -7,7 +7,7 @@ const BUTTON_DANGER = "flex items-center gap-2 rounded-2xl border border-rose-50
 
 const API_URL = '/api';
 
-export default function OrganizationManagement({ requestJson, authFetch, showNotice }) {
+export default function OrganizationManagement({ requestJson, showNotice }) {
   const [organizations, setOrganizations] = useState([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isModalOpen, setIsModalOpen] = useState(false);

@@ -43,7 +43,8 @@ import {
   Tooltip,
   ResponsiveContainer,
 } from 'recharts';
-import { RoleGuard, useRole } from './features/auth/RoleGuard';
+import { RoleGuard } from './features/auth/RoleGuard';
+import { useRole } from './features/auth/useRole';
 
 const API_URL = '/api';
 const AUTO_REFRESH_MS = 5000;
@@ -718,7 +719,7 @@ function App() {
       // Refresh page list ngay sau khi save để UI hiện brand_voice mới.
       try {
         await fetchDashboard();
-      } catch (e) {
+      } catch {
         // fetchDashboard tự show notice; không cần handle thêm.
       }
       return payload;
