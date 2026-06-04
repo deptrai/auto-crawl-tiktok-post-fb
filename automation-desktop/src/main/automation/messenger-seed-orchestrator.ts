@@ -50,8 +50,15 @@ export type MessengerSeedLoginResult =
       state: 'CHECKPOINT' | 'TWO_FA_REQUIRED' | 'LOGIN_FAILED'
       session?: MessengerSeedSession
       reason?: string
+      keepSessionOpen?: boolean
     }
-  | { ok: false; code: 'LOGIN_FAILED'; session?: MessengerSeedSession; reason?: string }
+  | {
+      ok: false
+      code: 'LOGIN_FAILED'
+      session?: MessengerSeedSession
+      reason?: string
+      keepSessionOpen?: boolean
+    }
 
 export interface RunMessengerSeedOptions {
   targets: MessengerTarget[]
@@ -173,6 +180,7 @@ export function createMessengerSeedOrchestrator(
       let session: MessengerSeedSession | undefined
       let sent = 0
       let failed = 0
+      let keepSessionOpen = false
 
       if (deps.isProfileWarm && !deps.isProfileWarm(profileId)) {
         failed = total
@@ -208,6 +216,7 @@ export function createMessengerSeedOrchestrator(
           return { profileId, sent, failed, stoppedReason: 'LOGIN_FAILED', perTarget }
         }
         if (loginResult.state === 'CHECKPOINT' || loginResult.state === 'TWO_FA_REQUIRED') {
+          keepSessionOpen = loginResult.keepSessionOpen ?? Boolean(loginResult.session)
           failed = total
           const reason = loginResult.reason ?? loginResult.state
           transition(deps, jobId, 'CHECKPOINT_BLOCKED', {
@@ -260,6 +269,7 @@ export function createMessengerSeedOrchestrator(
             if (outcome === 'success') sent += 1
             if (countFailedTarget(outcome)) failed += 1
             if (outcome === 'checkpoint') {
+              keepSessionOpen = true
               transition(deps, jobId, 'CHECKPOINT_BLOCKED', {
                 result: safeResult({ outcome, reason: 'CHECKPOINT', sent, total })
               })
@@ -291,7 +301,7 @@ export function createMessengerSeedOrchestrator(
         })
         return { profileId, sent, failed, stoppedReason: 'AUTOMATION_FAILED', perTarget }
       } finally {
-        await session?.close().catch(() => undefined)
+        if (!keepSessionOpen) await session?.close().catch(() => undefined)
       }
     }
   }

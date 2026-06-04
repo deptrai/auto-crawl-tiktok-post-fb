@@ -10,7 +10,9 @@ import type { PlaywrightProxyConfig, PlaywrightRunner } from './playwright-runne
 
 export type LoginCheckpointKind = 'checkpoint' | 'two_fa_no_seed' | 'two_fa_failed'
 
-export type LoginResult = { ok: true; state: LoginState } | { ok: false; code: 'LOGIN_FAILED' }
+export type LoginResult =
+  | { ok: true; state: LoginState; keepSessionOpen?: boolean }
+  | { ok: false; code: 'LOGIN_FAILED'; keepSessionOpen?: boolean }
 
 export interface LoginService {
   login(jobId: string, profileId: string): Promise<LoginResult>
@@ -67,6 +69,7 @@ export function createLoginService(deps: LoginServiceDeps): LoginService {
       const twoFaRaw = await deps.secureStorage.get(secretKey(profileId, 'twofa'))
       const twoFaSecret = twoFaRaw && twoFaRaw.trim() ? brandSecret(twoFaRaw) : null
       let session: Awaited<ReturnType<PlaywrightRunner['launchSession']>> | undefined
+      let keepSessionOpen = false
 
       try {
         const cookies = parseCookieHeader(revealSecret(cookieSecret))
@@ -81,7 +84,8 @@ export function createLoginService(deps: LoginServiceDeps): LoginService {
         if (state === 'TWO_FA_REQUIRED') {
           if (!twoFaSecret) {
             transitionToCheckpointBlocked(deps, jobId, profileId, 'two_fa_no_seed')
-            return { ok: true, state }
+            keepSessionOpen = true
+            return { ok: true, state, keepSessionOpen }
           }
 
           try {
@@ -90,7 +94,8 @@ export function createLoginService(deps: LoginServiceDeps): LoginService {
             state = await detectLoginState(session.page)
           } catch {
             transitionToCheckpointBlocked(deps, jobId, profileId, 'two_fa_failed')
-            return { ok: true, state: 'TWO_FA_REQUIRED' }
+            keepSessionOpen = true
+            return { ok: true, state: 'TWO_FA_REQUIRED', keepSessionOpen }
           }
         }
 
@@ -106,7 +111,8 @@ export function createLoginService(deps: LoginServiceDeps): LoginService {
             profileId,
             state === 'CHECKPOINT' ? 'checkpoint' : 'two_fa_failed'
           )
-          return { ok: true, state }
+          keepSessionOpen = true
+          return { ok: true, state, keepSessionOpen }
         }
 
         transitionToFailed(deps, jobId)
@@ -115,7 +121,7 @@ export function createLoginService(deps: LoginServiceDeps): LoginService {
         transitionToFailed(deps, jobId)
         return { ok: false, code: 'LOGIN_FAILED' }
       } finally {
-        await session?.close().catch(() => undefined)
+        if (!keepSessionOpen) await session?.close().catch(() => undefined)
       }
     }
   }

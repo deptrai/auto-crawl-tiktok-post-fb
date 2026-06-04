@@ -15,6 +15,8 @@ phase3CompletedAt: '2026-06-01'
 phase3ReadinessStatus: 'READY_FOR_IMPLEMENTATION'
 phase3Status: 'in-progress'
 phase3Model: 'desktop-first-electron'
+checkpointSolverAddedAt: '2026-06-04'
+checkpointSolverStatus: 'documented'
 ---
 
 # Architecture Decision Document
@@ -2194,4 +2196,254 @@ Acceptance Criteria:
 | Decide đăng ký công ty (TNHH 1TV VN hoặc offshore HK/SG/Delaware) — nếu sell-as-a-service | EULA legal entity | OPEN |
 
 ---
+
+## Phase 3 Addendum — Checkpoint Auto-Solver (FunCaptcha / reCAPTCHA)
+
+> Thêm 2026-06-04. Bổ sung lớp **SOLVE** vào kiến trúc chống checkpoint 4 lớp của Phase 3.
+> Reviewed bởi Winston (System Architect) — quyết định D13 (proxy binding), D14 (safety rails)
+> được Luisphan chốt qua phiên review.
+
+### Checkpoint Context & Scope
+
+**Vấn đề:** Khi login bằng cookie, Facebook có thể bung trang checkpoint. Hiện tại
+`login-service.ts` và `createSelfCommentLoginAdapter` (trong `electron-bootstrap.ts`) gặp
+`CHECKPOINT` là transition **thẳng** sang `CHECKPOINT_BLOCKED` — account coi như chết, bỏ qua
+hoàn toàn state `SOLVING_CHECKPOINT` đã được định nghĩa sẵn trong state machine.
+
+**Kiến trúc chống checkpoint 4 lớp (3/4 đã có trước addendum này):**
+
+| Lớp | Trạng thái | Vị trí |
+|---|---|---|
+| PREVENT (stealth, fingerprint, proxy) | ✅ Đã có | `playwright-runner.ts` + `playwright-extra` stealth |
+| DETECT (phát hiện checkpoint) | ✅ Đã có | `checkpoint-handler.ts::detectLoginState()` |
+| **SOLVE (giải captcha tự động)** | ❌ **Addendum này** | `src/main/automation/checkpoint/` (mới) |
+| FALLBACK (mark CHECKPOINT_BLOCKED) | ✅ Đã có | `login-service.ts` + orchestrator |
+
+**Triết lý kiến trúc (Winston):** Checkpoint là *triệu chứng* khi PREVENT bị nghi ngờ, không
+phải bệnh. Solver là **tầng phòng thủ cuối có giới hạn**, không phải động cơ tăng trưởng. Mọi
+quyết định bên dưới đều bám nguyên tắc này: best-effort, có rào an toàn, đo được, mặc định OFF.
+
+**State machine integration:** Tận dụng state `SOLVING_CHECKPOINT` có sẵn. Transition mới khi
+phát hiện checkpoint solvable: `LOGGING_IN → SOLVING_CHECKPOINT → WARMING_UP` (pass) hoặc
+`→ CHECKPOINT_BLOCKED` (fail / không giải được). Không thêm state mới, không sửa TRANSITIONS map.
+
+#### Summary table (5 ADR-D mới)
+
+| ADR | Category | Decision |
+|---|---|---|
+| P3-D12 | Scope | Chỉ tự giải FUNCAPTCHA + RECAPTCHA_V2; OTP/IDENTITY/UNKNOWN → fallback CHECKPOINT_BLOCKED |
+| P3-D13 | Provider | CapSolver primary + 2captcha fallback sau interface `CaptchaSolverClient` chung |
+| P3-D14 | Anti-detection | Proxy binding: gửi proxy của profile vào solver task (accepted trade-off lộ proxy ra bên thứ 3) |
+| P3-D15 | Reliability | Safety rails: feature flag OFF mặc định + circuit breaker 2 lần/profile + budget cap 10/phiên |
+| P3-D16 | Token/Telemetry | Inject token tức thì → re-verify; telemetry `{provider,type,outcome,durationMs}` không log token |
+
+#### ADR-P3-D12 — Checkpoint Solver Scope
+
+**Context:** FB bung nhiều loại checkpoint. Không phải loại nào cũng giải được bằng CAPTCHA API.
+
+**Decision:** Chỉ tự giải `FUNCAPTCHA` (Arkose Labs) + `RECAPTCHA_V2`. Các loại `OTP`,
+`IDENTITY` (upload CMND/selfie), `UNKNOWN` → fallback `CHECKPOINT_BLOCKED` (giữ nguyên hành vi cũ).
+
+**Rationale:**
+- OTP cần SIM/email thật của account — API không giải được.
+- Identity verification cần con người — không tự động hóa được.
+- FunCaptcha là loại phổ biến nhất khi login cookie FB → giá trị cao nhất.
+- reCAPTCHA v2 hiếm gặp ở FB nhưng chi phí thêm gần như zero (provider hỗ trợ sẵn cùng API surface).
+- **Rule of Three:** không build sẵn handler cho loại checkpoint chưa từng gặp.
+
+**Consequences:**
+- ✅ Scope rõ ràng, không over-engineer.
+- ✅ Loại không giải được vẫn an toàn (fallback cũ), không làm xấu đi tình trạng hiện tại.
+- ⚠️ Tỉ lệ "cứu" account phụ thuộc tỉ trọng FunCaptcha trong tổng checkpoint thực tế — cần telemetry (D16) đo.
+
+#### ADR-P3-D13 — Provider Strategy
+
+**Context:** Cần dịch vụ giải captcha bên ngoài. Một provider đơn lẻ là SPOF (hết credit, downtime, rate limit).
+
+**Decision:** **CapSolver primary + 2captcha fallback**, ẩn sau interface `CaptchaSolverClient` chung.
+
+**Pattern:**
+```ts
+interface CaptchaSolverClient {
+  readonly name: string
+  solve(params: CaptchaParams): Promise<string>  // trả token string
+}
+```
+- Solver orchestrator thử CapSolver trước; lỗi (PROVIDER_ERROR / timeout / no-credit) → thử 2captcha.
+- API key mỗi provider lưu riêng qua SecureStorage (xem D16 persistence).
+- HTTP client viết riêng cho checkpoint — KHÔNG tái dùng `shared/api-client/http-client.ts::postJson`
+  (error message của nó hardcode "license", sai ngữ cảnh).
+
+**Rationale:**
+- CapSolver: AI-driven, rẻ (~$1.8–2.5/1K), nhanh (1–9s) → primary.
+- 2captcha: human-backed, chậm hơn (10–30s) nhưng độ phủ tốt → lưới an toàn.
+- Interface chung = thêm provider thứ 3 sau này không phá vỡ orchestrator (Rule of Three đã thỏa: 2 impl + fallback requirement).
+
+**Consequences:**
+- ✅ Không SPOF provider.
+- ✅ Dễ thêm/đổi provider.
+- ⚠️ Maintain 2 client + 2 API key. Chấp nhận vì fallback là requirement thật.
+
+#### ADR-P3-D14 — Proxy Binding cho Solver
+
+**Context:** Token Arkose/reCAPTCHA bị FB verify gắn với session. Solver giải bằng IP của *họ*,
+trong khi FB verify theo IP *session của profile*. IP mismatch = token bị reject dù giải đúng.
+
+**Decision:** **Truyền proxy của chính profile vào solver task** (CapSolver/2captcha proxy task,
+KHÔNG dùng ProxyLess). Quyết định bởi Luisphan: *chấp nhận trade-off lộ proxy ra bên thứ 3*.
+
+**Rationale:**
+- Đây là yếu tố **#1** quyết định tỉ lệ pass thực tế. ProxyLess → token gần như chắc chắn bị reject.
+- Profile trong Phase 3 đã có proxy (provider `proxyfb`, bind per-profile per-session — ADR Phase 3).
+- Proxy credential lookup tại exec time từ proxy service, truyền vào solver client.
+
+**Consequences:**
+- ✅ Tỉ lệ token pass cao hơn đáng kể.
+- ⚠️ **Proxy credential (user/pass) gửi tới CapSolver/2captcha** — thêm một đường lộ secret ra bên
+  thứ 3. Accepted trade-off. Mitigation: chỉ gửi tại thời điểm solve, không log, không lưu lại phía
+  client ngoài SecureStorage hiện có.
+- ⚠️ Proxy chết/timeout → solve fail; tính vào circuit breaker (D15).
+
+#### ADR-P3-D15 — Safety Rails
+
+**Context:** Solver tốn tiền thật mỗi lần gọi + giải sai lặp lại làm FB nghi ngờ nặng hơn (phản tác
+dụng). Một bug loop có thể đốt sạch credit trong đêm.
+
+**Decision:** Ba lớp rào, **tất cả chốt bởi Luisphan**:
+1. **Feature flag mặc định OFF** — opt-in qua local setting (giống `AUTOMATION_BROWSER_HEADLESS_SETTING`).
+   Không bao giờ bật ngầm. Không có API key cũng coi như OFF.
+2. **Circuit breaker per-profile: 2 lần** — 1 profile fail solve 2 lần → ngừng thử, mark `CHECKPOINT_BLOCKED`.
+3. **Budget cap: 10 lần/phiên** — tối đa 10 lần solve mỗi phiên bulk run; chạm trần → các checkpoint
+   còn lại fallback `CHECKPOINT_BLOCKED` ngay không gọi API.
+
+**Rationale:**
+- Flag OFF: solver là tính năng tốn phí + rủi ro → opt-in là mặc định an toàn.
+- Breaker 2 lần: cân bằng giữa cơ hội pass (lần 2 đôi khi pass) và tránh đốt tiền/account.
+- Cap 10/phiên: trần chặn bug loop, đủ cho batch vừa.
+
+**Consequences:**
+- ✅ Chi phí + rủi ro account bị chặn trên.
+- ✅ Mặc định an toàn cho user chưa cấu hình.
+- ⚠️ Cap có thể chặn phiên bulk rất lớn (>10 checkpoint) — chấp nhận; có thể nâng qua setting sau nếu cần.
+
+#### ADR-P3-D16 — Token Lifecycle, Persistence & Telemetry
+
+**Context:** Token Arkose hết hạn nhanh (gắn session + thời điểm). API key + proxy là secret. Cần đo
+tỉ lệ pass thật để biết feature có đáng giữ.
+
+**Decision:**
+- **Lifecycle:** solve xong **inject token tức thì** vào page → re-verify bằng `detectLoginState()`.
+  `LOGGED_IN` → transition `WARMING_UP`. Còn checkpoint → đếm vào breaker; hết lượt → `CHECKPOINT_BLOCKED`.
+- **Persistence:** API key (`captcha.capsolver.api_key`, `captcha.2captcha.api_key`) lưu qua
+  **SecureStorage** (OS keychain), KHÔNG vào SQLite, KHÔNG đi qua IPC payload (tuân thủ R-D3).
+  IPC chỉ có `set` (write-only) + `status` (báo đã cấu hình chưa) — không bao giờ trả key về renderer.
+- **Telemetry:** ghi `{ provider, checkpointType, outcome, durationMs }` vào job result + beacon.
+  `outcome` khớp enum `action_outcome_category` của ADR-P3-D6 (`success | checkpoint | ...`).
+  **TUYỆT ĐỐI KHÔNG log token, API key, proxy credential** (R-D3 + ESLint `no-direct-logger`).
+
+**Rationale:**
+- Inject tức thì vì token chết nhanh — không cache, không trì hoãn.
+- Write-only IPC cho key = renderer compromised cũng không đọc được key.
+- Telemetry là cách duy nhất biết tỉ lệ pass thật → quyết định giữ/bỏ feature sau này.
+
+**Consequences:**
+- ✅ Token dùng trong cửa sổ còn sống.
+- ✅ Secret discipline nguyên vẹn.
+- ✅ Đo được hiệu quả thực.
+- ⚠️ Phần inject + re-verify chạy trên FB thật → không unit-test tự động được (xem Test Strategy bên dưới).
+
+### Checkpoint Solver — Module Structure & Boundaries
+
+```
+src/main/automation/checkpoint/
+├── types.ts                      # CheckpointType, CaptchaParams, SolveResult,
+│                                 #   CaptchaSolverClient interface, CheckpointPageLike
+├── checkpoint-type-detector.ts   # detectCheckpointType(page) + extractCaptchaParams(page,type)
+├── capsolver-client.ts           # CapSolver REST (primary): createTask + poll getTaskResult
+├── two-captcha-client.ts         # 2captcha REST (fallback): in.php + res.php poll
+├── checkpoint-solver.ts          # orchestrator: detect → extract → solve(provider fallback)
+│                                 #   → inject token → re-verify; circuit breaker + budget
+└── index.ts                      # barrel export
+```
+
+**Boundaries (tuân thủ R-D16 adapter discipline):**
+- Module nằm trong `main/automation/` → KHÔNG import `electron` trực tiếp. HTTP qua `fetch` (Node global) là hợp lệ.
+- API key + proxy credential nhận qua **dependency injection** từ `electron-bootstrap.ts` tại wiring time
+  (bootstrap đọc từ SecureStorage + proxy service), KHÔNG tự đọc adapter bên trong module.
+- `CheckpointPageLike` interface hẹp (subset của Playwright `Page`) → unit test mock được không cần browser.
+- HTTP `postJson` injectable qua deps → test mock được, không gọi mạng thật.
+
+**Integration points (2 login path — sửa CẢ HAI):**
+
+| File | Dòng hiện tại | Thay đổi |
+|---|---|---|
+| `electron-bootstrap.ts::createSelfCommentLoginAdapter` | `if (state === 'CHECKPOINT') return ...CHECKPOINT_BLOCKED` (~L236) | Nếu flag ON + có key: transition `SOLVING_CHECKPOINT`, gọi solver; pass → re-detect → `LOGGED_IN`; fail → giữ fallback |
+| `login-service.ts::login` | transition thẳng `CHECKPOINT_BLOCKED` (L102–110) | Chèn nhánh solver tương tự (path dùng trong test + future) |
+
+> ⚠️ `electron-bootstrap.ts::createSelfCommentLoginAdapter` là path chạy **production thật**.
+> `login-service.ts` là path có sẵn hook `onCheckpoint` (dùng trong unit test). Phải đồng bộ cả hai.
+
+**IPC channels mới (ADR-P3-D8 compliant — Zod 2-way, ErrorEnvelope tiếng Việt + retryable):**
+
+| Channel | Request | Response | Ghi chú |
+|---|---|---|---|
+| `phase3:captcha:set-key` | `{ provider: 'capsolver'\|'2captcha', apiKey: string(min1) }` | `{ ok: true }` \| ErrorEnvelope | Write-only → SecureStorage. KHÔNG echo key. |
+| `phase3:captcha:status` | `{}` | `{ ok: true, capsolver: boolean, twocaptcha: boolean, enabled: boolean }` | Chỉ báo đã-cấu-hình (boolean), KHÔNG trả key. |
+
+### Checkpoint Solver — Test Strategy
+
+**Nghịch lý:** phần dễ test nhất thì test được, phần rủi ro nhất thì không test tự động được.
+
+| Thành phần | Loại test | Cách |
+|---|---|---|
+| `checkpoint-type-detector` | Unit | Feed HTML fixture (FunCaptcha/reCAPTCHA/OTP/identity) → assert type + extracted params |
+| `capsolver-client` / `two-captcha-client` | Unit | Mock `postJson` → assert request shape + parse response + error mapping |
+| `checkpoint-solver` orchestration | Unit | Mock detector + clients + page → assert provider fallback, breaker, budget, transition sequence |
+| IPC `set-key` / `status` | Integration | Real IPC + SecureStorage stub → assert write-only, không leak key, Zod 2-way |
+| **Inject token + re-verify trên FB thật** | **Manual protocol** | KHÔNG tự động được — viết protocol thủ công, gate sau feature flag |
+
+**Manual test protocol (bắt buộc trước khi bật production):**
+1. Cấu hình API key CapSolver (có credit) qua settings.
+2. Bật feature flag. Dùng account thật dính FunCaptcha checkpoint, có proxy bind.
+3. Quan sát: detect đúng type → solve trả token → inject → re-verify → `LOGGED_IN`.
+4. Ghi nhận tỉ lệ pass thực qua telemetry. Tinh chỉnh selector extract nếu params không tìm thấy.
+
+> Tuân thủ project rule: KHÔNG `test.fixme` trên task đã tick verify. Phần manual ghi rõ là manual,
+> không giả vờ có automated coverage.
+
+### Checkpoint Solver — Validation & Risks
+
+**Coherence với Phase 3 hiện có:**
+
+| Liên kết | Trạng thái |
+|---|---|
+| State machine `SOLVING_CHECKPOINT` (đã định nghĩa) | ✅ Tận dụng, không sửa TRANSITIONS |
+| Secret discipline R-D3 (key/proxy không qua IPC payload raw) | ✅ Write-only IPC + SecureStorage |
+| Telemetry enum `action_outcome_category` (D6) | ✅ outcome khớp enum |
+| Adapter layer R-D16 | ✅ DI từ bootstrap, module không import electron |
+| ErrorEnvelope tiếng Việt + retryable (D8) | ✅ Áp dụng cho IPC mới |
+
+**Rủi ro tồn dư (residual risks):**
+- 🔴 **Token pass không đảm bảo 100%** — FB có thể siết binding server-side. Solver là best-effort; D15 breaker chặn đốt tài nguyên.
+- 🟡 **Selector extract FunCaptcha fragile** — FB đổi DOM → extract params fail. Mitigation: detector trả `PARAMS_NOT_FOUND` → fallback sạch; hot-config selector (D4) có thể mở rộng cover sau.
+- 🟡 **Chi phí vận hành** — mỗi solve tốn tiền. D15 budget cap + telemetry chi phí giám sát.
+- 🟢 **Proxy leak** — accepted (D14), giới hạn ở thời điểm solve, không log.
+
+**Implementation sequence đề xuất:**
+```
+1. types.ts + checkpoint-type-detector.ts (+ unit test, HTML fixtures)
+2. capsolver-client.ts + two-captcha-client.ts (+ unit test mock HTTP)
+3. checkpoint-solver.ts orchestrator (+ unit test: fallback, breaker, budget)
+4. IPC set-key + status (+ integration test)
+5. Wiring vào electron-bootstrap.ts + login-service.ts (đồng bộ 2 path)
+6. Feature flag setting + (optional) Settings UI nhập key
+7. Manual test protocol với account thật
+```
+
+**Status: DOCUMENTED — READY FOR IMPLEMENTATION (sau khi user cấp API key + bật flag để test thật)**
+
+
+
+
+
 

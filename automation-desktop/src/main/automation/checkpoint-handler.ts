@@ -5,6 +5,7 @@ export type LoginState = 'LOGGED_IN' | 'TWO_FA_REQUIRED' | 'CHECKPOINT' | 'LOGIN
 export interface PageLike {
   url?: () => string
   locator?: Page['locator']
+  content?: () => Promise<string>
   detectLoginState?: () => Promise<LoginState>
   submitTwoFa?: (code: string) => Promise<void>
 }
@@ -24,10 +25,25 @@ export async function detectLoginState(page: PageLike): Promise<LoginState> {
   const currentUrl = page.url?.() ?? ''
   if (/\/checkpoint\/?/i.test(currentUrl)) return 'CHECKPOINT'
 
+  const html = page.content ? await page.content().catch(() => '') : ''
+  if (/captcha|recaptcha|g-recaptcha|funcaptcha|arkoselabs|arkose-labs/i.test(html)) {
+    return 'CHECKPOINT'
+  }
+
   if (
     (await locatorCount(
       page,
-      '[data-testid="checkpoint"], [id*="checkpoint"], [class*="checkpoint"]'
+      [
+        '[data-testid="checkpoint"]',
+        '[id*="checkpoint"]',
+        '[class*="checkpoint"]',
+        '[id*="captcha"]',
+        '[class*="captcha"]',
+        '.g-recaptcha',
+        'iframe[src*="recaptcha"]',
+        'iframe[src*="arkoselabs"]',
+        'iframe[src*="arkose"]'
+      ].join(', ')
     )) > 0
   ) {
     return 'CHECKPOINT'

@@ -187,6 +187,40 @@ test('[P0] messenger seed orchestrator stops current profile on checkpoint and d
     'https://www.facebook.com/messages/t/1002'
   ])
   expect(deps.transitions.at(-1)).toBe('CHECKPOINT_BLOCKED')
+  expect(deps.closed.value).toBe(false)
+})
+
+test('[P0] messenger seed login checkpoint keeps browser session open for manual captcha', async () => {
+  const checkpointClosed = { value: false }
+  const deps = createDeps({
+    login: async () => ({
+      ok: true,
+      state: 'CHECKPOINT',
+      reason: 'CHECKPOINT_BLOCKED',
+      keepSessionOpen: true,
+      session: {
+        page: { locator: () => ({ first: () => ({ count: async () => 1 }) }) },
+        async close() {
+          checkpointClosed.value = true
+        }
+      }
+    })
+  })
+  const orchestrator = createMessengerSeedOrchestrator(deps)
+
+  const result = await orchestrator.runMessengerSeed('job-1', 'profile-1', {
+    targets: [{ uid: '1001' }, { uid: '1002' }]
+  })
+
+  expect(result).toEqual({
+    profileId: 'profile-1',
+    sent: 0,
+    failed: 2,
+    stoppedReason: 'CHECKPOINT_BLOCKED',
+    perTarget: []
+  })
+  expect(deps.transitions).toEqual(['ACQUIRING_PROXY', 'LOGGING_IN', 'CHECKPOINT_BLOCKED'])
+  expect(checkpointClosed.value).toBe(false)
 })
 
 test('[P0] messenger seed orchestrator fails safely on login failure without sending', async () => {

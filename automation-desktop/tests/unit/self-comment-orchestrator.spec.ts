@@ -152,8 +152,23 @@ test('[P0] self-comment orchestrator drives happy path, consumes token, records 
 })
 
 test('[P0] checkpoint blocks before token extraction and execution', async () => {
+  const checkpointClosed = { value: false }
   const deps = createDeps({
-    login: async () => ({ ok: true, state: 'CHECKPOINT' })
+    login: async () => ({
+      ok: true,
+      state: 'CHECKPOINT',
+      keepSessionOpen: true,
+      session: {
+        page: {
+          async content() {
+            return '<div data-testid="checkpoint">captcha</div>'
+          }
+        },
+        async close() {
+          checkpointClosed.value = true
+        }
+      }
+    })
   })
   const orchestrator = createSelfCommentOrchestrator(deps)
 
@@ -168,6 +183,21 @@ test('[P0] checkpoint blocks before token extraction and execution', async () =>
   expect(deps.records).toEqual([
     expect.objectContaining({ outcome: 'checkpoint', actionTokenJti: null })
   ])
+  expect(checkpointClosed.value).toBe(false)
+})
+
+test('[P0] action checkpoint keeps browser session open for manual captcha', async () => {
+  const deps = createDeps({
+    actionExecutor: { executeSelfComment: async (): Promise<ActionOutcome> => 'checkpoint' }
+  })
+  const orchestrator = createSelfCommentOrchestrator(deps)
+
+  await expect(orchestrator.runSelfComment('job-1', 'profile-1')).resolves.toEqual({
+    outcome: 'checkpoint'
+  })
+
+  expect(deps.transitions.at(-1)).toBe('CHECKPOINT_BLOCKED')
+  expect(deps.closed.value).toBe(false)
 })
 
 test('[P1] login failure persists safe reason in terminal job result', async () => {

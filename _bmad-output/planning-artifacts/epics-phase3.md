@@ -834,6 +834,22 @@ So that tôi tổ chức chiến dịch seeding theo từng nhóm mục tiêu.
 **And** user filter UID đã gửi / chưa gửi / gửi lỗi để không gửi trùng
 **And** link list với job khi trigger seeding
 
+### Story 12.4: C# Messenger Share-Link Parity
+
+As a user migrating from the legacy `SST_TOOL_FB` C# tool,
+I want the Messenger seeding flow to match the legacy share-link Messenger workflow 100%,
+So that existing operators can run the same campaign pattern, inputs, limits, and blocking behavior in the Phase 3 desktop app.
+
+**Acceptance Criteria:**
+
+**Given** user chooses C# parity mode for Messenger seeding
+**When** user supplies target UID/page IDs, share links, message content, random-content setting, delay, and optional stop-after-error limit
+**Then** each profile follows the legacy flow from `automation-facebook/SST_TOOL_FB/Main.cs`: extract Facebook web tokens, call GraphQL `MWChatBusinessCTAAdsSenderMutation`, require `messenger_business_ads_sender` in response, open a random share link, click share/Messenger through the same fallback selector strategy, type message content line-by-line with Shift+Enter, send, check `Couldn't send`, update per-target status, delay, and stop on checkpoint/logout/error limit without crashing other profiles.
+
+**And** this parity mode is explicitly tested against fake Playwright/GraphQL adapters and does not regress direct-DM 12.2 mode.
+
+**And** backend action-token policy accepts `action_type='message'` so real Messenger seeding is not blocked by license gating.
+
 ---
 
 ## Final Validation Results

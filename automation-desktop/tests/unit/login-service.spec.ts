@@ -2,6 +2,7 @@ import { test, expect } from '@playwright/test'
 import type { SecureStorage } from '../../src/adapters/secure-storage'
 import {
   createLoginService,
+  detectLoginState,
   type AutomationStateMachine,
   type AutomationTransitionErrorCode,
   type Fingerprint,
@@ -11,6 +12,17 @@ import {
   type PageLike,
   type SessionHandle
 } from '../../src/main/automation'
+
+test('[P0] captcha markup is treated as checkpoint for manual intervention', async () => {
+  await expect(
+    detectLoginState({
+      url: () => 'https://www.facebook.com/login/',
+      async content() {
+        return '<iframe src="https://www.google.com/recaptcha/api2/anchor"></iframe>'
+      }
+    })
+  ).resolves.toBe('CHECKPOINT')
+})
 
 function createStorage(values: Record<string, string | null>): SecureStorage {
   return {
@@ -141,17 +153,18 @@ test('[P0] login success transitions LOGGING_IN job to WARMING_UP and closes ses
   expect(JSON.stringify(launched)).not.toContain('xs=secret')
 })
 
-test('[P0] checkpoint transitions to CHECKPOINT_BLOCKED, invokes hook, and closes session', async () => {
+test('[P0] checkpoint transitions to CHECKPOINT_BLOCKED, invokes hook, and keeps session open', async () => {
   const { service, session, stateMachine, checkpoints } = createService({ states: ['CHECKPOINT'] })
 
   await expect(service.login('job-1', 'profile-1')).resolves.toEqual({
     ok: true,
-    state: 'CHECKPOINT'
+    state: 'CHECKPOINT',
+    keepSessionOpen: true
   })
 
   expect(stateMachine.transitions).toEqual([{ jobId: 'job-1', to: 'CHECKPOINT_BLOCKED' }])
   expect(checkpoints).toEqual([{ profileId: 'profile-1', kind: 'checkpoint' }])
-  expect(session.closed).toBe(true)
+  expect(session.closed).toBe(false)
 })
 
 test('[P0] 2FA branch generates TOTP, submits it, rechecks DOM, and succeeds', async () => {
@@ -179,11 +192,11 @@ test('[P0] 2FA required without seed blocks checkpoint without leaking cookie or
   const result = await service.login('job-1', 'profile-1')
   const resultText = JSON.stringify(result)
 
-  expect(result).toEqual({ ok: true, state: 'TWO_FA_REQUIRED' })
+  expect(result).toEqual({ ok: true, state: 'TWO_FA_REQUIRED', keepSessionOpen: true })
   expect(resultText).not.toContain('xs=secret')
   expect(stateMachine.transitions).toEqual([{ jobId: 'job-1', to: 'CHECKPOINT_BLOCKED' }])
   expect(checkpoints).toEqual([{ profileId: 'profile-1', kind: 'two_fa_no_seed' }])
-  expect(session.closed).toBe(true)
+  expect(session.closed).toBe(false)
 })
 
 test('[P0] missing cookie fails without launching browser', async () => {

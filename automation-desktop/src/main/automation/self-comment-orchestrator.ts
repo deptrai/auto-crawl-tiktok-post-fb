@@ -32,8 +32,15 @@ export type SelfCommentLoginResult =
       state: 'CHECKPOINT' | 'TWO_FA_REQUIRED' | 'LOGIN_FAILED'
       session?: SelfCommentSession
       reason?: string
+      keepSessionOpen?: boolean
     }
-  | { ok: false; code: 'LOGIN_FAILED'; session?: SelfCommentSession; reason?: string }
+  | {
+      ok: false
+      code: 'LOGIN_FAILED'
+      session?: SelfCommentSession
+      reason?: string
+      keepSessionOpen?: boolean
+    }
 
 export interface SelfCommentOrchestratorDeps {
   stateMachine: Pick<AutomationStateMachine, 'transition'>
@@ -120,6 +127,7 @@ export function createSelfCommentOrchestrator(
       const startedMs = deps.nowMs()
       let session: SelfCommentSession | undefined
       let actionToken: ActionToken | null = null
+      let keepSessionOpen = false
       const explicitTarget = options.target?.trim()
       let target: string = explicitTarget ?? DEFAULT_OWN_FEED_URL
 
@@ -138,6 +146,7 @@ export function createSelfCommentOrchestrator(
           return { outcome: 'error' }
         }
         if (loginResult.state === 'CHECKPOINT' || loginResult.state === 'TWO_FA_REQUIRED') {
+          keepSessionOpen = loginResult.keepSessionOpen ?? Boolean(loginResult.session)
           transition(deps, jobId, 'CHECKPOINT_BLOCKED', {
             result: safeResult('checkpoint', loginResult.reason ?? loginResult.state)
           })
@@ -194,6 +203,13 @@ export function createSelfCommentOrchestrator(
         await deps.actionTokenClient.consumeActionToken(actionToken.token).catch(() => undefined)
         record(deps, jobId, outcome, actionToken, target)
         emit(deps, outcome, startedMs)
+        if (outcome === 'checkpoint') {
+          keepSessionOpen = true
+          transition(deps, jobId, 'CHECKPOINT_BLOCKED', {
+            result: safeResult(outcome, 'CHECKPOINT')
+          })
+          return { outcome }
+        }
         transition(deps, jobId, outcome === 'success' ? 'DONE' : 'FAILED', {
           result: safeResult(outcome, outcome === 'success' ? undefined : 'ACTION_EXECUTION_FAILED')
         })
@@ -206,7 +222,7 @@ export function createSelfCommentOrchestrator(
         emit(deps, 'error', startedMs)
         return { outcome: 'error' }
       } finally {
-        await session?.close().catch(() => undefined)
+        if (!keepSessionOpen) await session?.close().catch(() => undefined)
       }
     }
   }
