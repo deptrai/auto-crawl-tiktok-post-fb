@@ -16,6 +16,8 @@ export interface JobActionRepository {
   getLatestByJob(
     jobId: string
   ): { outcome: ActionOutcome; executedAt: string; target: string | null } | undefined
+  countByJob(jobId: string): number
+  countSuccessByJob(jobId: string): number
 }
 
 interface JobActionOutcomeRow {
@@ -38,6 +40,12 @@ export function createJobActionRepository(db: Database.Database): JobActionRepos
      ORDER BY executed_at DESC, id DESC
      LIMIT 1`
   )
+  const stmtCountByJob = db.prepare<[string], { c: number }>(
+    'SELECT COUNT(*) AS c FROM job_actions WHERE job_id = ?'
+  )
+  const stmtCountSuccessByJob = db.prepare<[string], { c: number }>(
+    "SELECT COUNT(*) AS c FROM job_actions WHERE job_id = ? AND outcome = 'success'"
+  )
 
   return {
     recordAction(params) {
@@ -57,6 +65,14 @@ export function createJobActionRepository(db: Database.Database): JobActionRepos
       return row
         ? { outcome: row.outcome, executedAt: row.executed_at, target: row.target }
         : undefined
+    },
+
+    countByJob(jobId) {
+      return stmtCountByJob.get(jobId)?.c ?? 0
+    },
+
+    countSuccessByJob(jobId) {
+      return stmtCountSuccessByJob.get(jobId)?.c ?? 0
     }
   }
 }

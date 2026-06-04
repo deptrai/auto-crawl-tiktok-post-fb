@@ -8,6 +8,7 @@ const VIEW_TITLES: Record<ConsoleView, string> = {
   dashboard: 'Dashboard',
   profiles: 'Danh sách profile',
   templates: 'Template bình luận',
+  messenger: 'Messenger seeding',
   proxy: 'Proxy provider',
   settings: 'Cài đặt'
 }

@@ -1,11 +1,18 @@
 import type { LicensePublicStatus } from '../../../shared/ipc-schemas'
 
-export type ConsoleView = 'dashboard' | 'profiles' | 'templates' | 'proxy' | 'settings'
+export type ConsoleView =
+  | 'dashboard'
+  | 'profiles'
+  | 'templates'
+  | 'messenger'
+  | 'proxy'
+  | 'settings'
 
 const NAV_ITEMS: Array<{ id: ConsoleView; label: string }> = [
   { id: 'dashboard', label: 'Dashboard' },
   { id: 'profiles', label: 'Profiles' },
   { id: 'templates', label: 'Templates' },
+  { id: 'messenger', label: 'Messenger' },
   { id: 'proxy', label: 'Proxy' },
   { id: 'settings', label: 'Settings' }
 ]

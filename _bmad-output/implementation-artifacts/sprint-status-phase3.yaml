@@ -47,7 +47,7 @@ project: auto-crawl-tiktok-post-fb-phase3
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
-last_updated: 2026-06-04 (Story 12.2a Messenger seeding core reviewed and done)
+last_updated: 2026-06-04 (Story 12.2b Messenger seeding surface moved to review)
 
 development_status:
   # ===== Phase 3.0 MVP =====
@@ -151,6 +151,6 @@ development_status:
   12-1-content-templates: done
   # 12.2 tách 12.2a (engine core headless) + 12.2b (surface IPC/UI) — mirror 4.6a/4.6b (2026-06-04)
   12-2a-messenger-seeding-engine-core: done
-  12-2b-messenger-seeding-surface: backlog
+  12-2b-messenger-seeding-surface: review
   12-3-target-list-management: backlog
   epic-12-retrospective: optional

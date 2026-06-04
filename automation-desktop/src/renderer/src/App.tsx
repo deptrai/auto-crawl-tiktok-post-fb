@@ -6,6 +6,7 @@ import { getSetting, openPrivacyPolicy, setSetting } from './api/settings-api'
 import { EulaAcceptanceView } from './views/EulaAcceptanceView'
 import { LicenseView } from './views/LicenseView'
 import { ContentTemplatesView } from './views/ContentTemplatesView'
+import { MessengerSeedingView } from './views/MessengerSeedingView'
 import { ProfilesView } from './views/ProfilesView'
 import { ProxyView } from './views/ProxyView'
 import { AppShell } from './components/AppShell'
@@ -138,6 +139,7 @@ function MainShell({
       )
     }
     if (activeView === 'templates') return <ContentTemplatesView />
+    if (activeView === 'messenger') return <MessengerSeedingView />
     if (activeView === 'proxy') return <ProxyView />
     if (activeView === 'settings') {
       return (

@@ -19,20 +19,26 @@ import {
 } from '../db/repositories/job-action-repo'
 import {
   createFingerprintService,
+  createMessengerSeedOrchestrator,
   createPlaywrightRunner,
   createSelfCommentOrchestrator,
   createStateMachine,
   createTokenExtractor,
   detectLoginState,
+  executeMessengerSeed,
   executeSelfComment,
   generateTotp,
   MOBILE_BROWSER_WINDOW_SIZE,
   parseCookieHeader,
   resolveOwnPostTarget,
+  runMessengerSeedBatch,
   submitTwoFa,
+  type MessengerSeedLoginResult,
+  type MessengerSeedOrchestrator,
   type SelfCommentLoginResult,
   type SelfCommentOrchestrator
 } from '../automation'
+import { renderContentTemplate } from '../../shared/content-template-render'
 import {
   createFetchLicenseBackendClient,
   createLicenseService,
@@ -52,6 +58,7 @@ import {
   registerLicenseHandlers,
   registerAutomationHandlers,
   registerContentTemplateHandlers,
+  registerMessengerHandlers,
   registerProfileHandlers,
   registerProxyHandlers,
   registerSettingsHandlers,
@@ -82,6 +89,7 @@ interface BootstrapDeps {
   }
   automation: {
     orchestrator: SelfCommentOrchestrator
+    messengerOrchestrator: MessengerSeedOrchestrator
     stateMachine: ReturnType<typeof createStateMachine>
   }
   workers: {
@@ -282,6 +290,44 @@ function createStubSelfCommentOrchestrator(
   }
 }
 
+function createStubMessengerSeedOrchestrator(deps: {
+  stateMachine: ReturnType<typeof createStateMachine>
+  jobActions: JobActionRepository
+  now: () => string
+}): MessengerSeedOrchestrator {
+  return {
+    async runMessengerSeed(jobId, profileId, options) {
+      deps.stateMachine.transition(jobId, 'ACQUIRING_PROXY')
+      deps.stateMachine.transition(jobId, 'LOGGING_IN')
+      deps.stateMachine.transition(jobId, 'WARMING_UP')
+      deps.stateMachine.transition(jobId, 'EXECUTING')
+      for (const target of options.targets) {
+        deps.jobActions.recordAction({
+          jobId,
+          actionType: 'message',
+          target: target.uid,
+          actionTokenJti: null,
+          executedAt: deps.now(),
+          outcome: 'success'
+        })
+      }
+      deps.stateMachine.transition(jobId, 'DONE', {
+        result: JSON.stringify({
+          outcome: 'success',
+          sent: options.targets.length,
+          total: options.targets.length
+        })
+      })
+      return {
+        profileId,
+        sent: options.targets.length,
+        failed: 0,
+        perTarget: options.targets.map((target) => ({ uid: target.uid, outcome: 'success' }))
+      }
+    }
+  }
+}
+
 function initializeDeps(): BootstrapDeps {
   const dbPath = process.env['PHASE3_DB_PATH'] ?? join(app.getPath('userData'), 'phase3.db')
   let db: ReturnType<typeof openEncryptedDatabase>
@@ -349,32 +395,60 @@ function initializeDeps(): BootstrapDeps {
     },
     generateHwid: smokeHwid ? async () => smokeHwid : undefined
   })
-  const orchestrator =
-    !app.isPackaged && process.env['PHASE3_AUTOMATION_STUB'] === '1'
-      ? createStubSelfCommentOrchestrator(stateMachine)
-      : createSelfCommentOrchestrator({
-          stateMachine,
-          login: createSelfCommentLoginAdapter({
-            storage: adapters.storage,
-            profileRepo,
-            settings
-          }),
-          extractTokens: async (page) =>
-            createTokenExtractor({
-              fetchHtml: async () => page.content?.() ?? '',
-              onSelectorMiss: () => undefined
-            }).extract(),
-          resolveOwnPostTarget,
-          actionTokenClient,
-          contentTemplates: contentTemplateRepo,
-          actionExecutor: { executeSelfComment },
-          jobActions: jobActionRepo,
-          now: nowIso,
-          nowMs: () => Date.now(),
-          rng: Math.random
-        })
+  const loginAdapter = createSelfCommentLoginAdapter({
+    storage: adapters.storage,
+    profileRepo,
+    settings
+  })
+  const stubAutomation = !app.isPackaged && process.env['PHASE3_AUTOMATION_STUB'] === '1'
+  const orchestrator = stubAutomation
+    ? createStubSelfCommentOrchestrator(stateMachine)
+    : createSelfCommentOrchestrator({
+        stateMachine,
+        login: loginAdapter,
+        extractTokens: async (page) =>
+          createTokenExtractor({
+            fetchHtml: async () => page.content?.() ?? '',
+            onSelectorMiss: () => undefined
+          }).extract(),
+        resolveOwnPostTarget,
+        actionTokenClient,
+        contentTemplates: contentTemplateRepo,
+        actionExecutor: { executeSelfComment },
+        jobActions: jobActionRepo,
+        now: nowIso,
+        nowMs: () => Date.now(),
+        rng: Math.random
+      })
+  const messengerOrchestrator = stubAutomation
+    ? createStubMessengerSeedOrchestrator({ stateMachine, jobActions: jobActionRepo, now: nowIso })
+    : createMessengerSeedOrchestrator({
+        stateMachine,
+        login: async (jobId, profileId): Promise<MessengerSeedLoginResult> =>
+          loginAdapter(jobId, profileId),
+        extractTokens: async (page) =>
+          createTokenExtractor({
+            fetchHtml: async () => page.content?.() ?? '',
+            onSelectorMiss: () => undefined
+          }).extract(),
+        actionTokenClient,
+        contentTemplates: contentTemplateRepo,
+        actionExecutor: { executeMessengerSeed },
+        jobActions: jobActionRepo,
+        render: renderContentTemplate,
+        navigate: async (page, target) => {
+          if (!page.goto) throw new Error('Messenger page cannot navigate')
+          await page.goto(target, { timeout: 30_000, waitUntil: 'domcontentloaded' })
+        },
+        sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+        rng: Math.random,
+        now: nowIso,
+        nowMs: () => Date.now(),
+        delayRangeMs: { min: 1_000, max: 3_000 }
+      })
   const automation = {
     orchestrator,
+    messengerOrchestrator,
     stateMachine
   }
   const workers = {
@@ -606,6 +680,13 @@ export async function bootstrapApplication(): Promise<void> {
   registerContentTemplateHandlers(ipcMain, deps.repos.contentTemplate)
   registerAutomationHandlers(ipcMain, {
     orchestrator: deps.automation.orchestrator,
+    stateMachine: deps.automation.stateMachine,
+    jobRepo: deps.repos.automationJob,
+    jobActions: deps.repos.jobAction
+  })
+  registerMessengerHandlers(ipcMain, {
+    orchestrator: deps.automation.messengerOrchestrator,
+    batch: runMessengerSeedBatch,
     stateMachine: deps.automation.stateMachine,
     jobRepo: deps.repos.automationJob,
     jobActions: deps.repos.jobAction

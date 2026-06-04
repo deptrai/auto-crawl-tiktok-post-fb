@@ -219,6 +219,78 @@ button,
   justify-content: flex-end;
 }
 
+.messenger-seeding-view {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.messenger-placeholder-warning {
+  margin: 0;
+}
+
+.messenger-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(260px, 0.8fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.messenger-targets-field,
+.messenger-profile-picker,
+.messenger-job-list {
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+}
+
+.messenger-targets-input {
+  min-height: 220px;
+}
+
+.messenger-profile-picker {
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-4);
+  background: var(--surface);
+}
+
+.messenger-profile-option,
+.messenger-job-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  padding: var(--sp-3);
+  background: var(--surface-2);
+}
+
+.messenger-profile-option span,
+.messenger-job-row strong {
+  font-weight: 900;
+}
+
+.messenger-profile-option small {
+  margin-left: auto;
+  color: var(--text-muted);
+}
+
+.messenger-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  align-items: center;
+}
+
+.messenger-job-row {
+  justify-content: space-between;
+}
+
+.messenger-job-row > div {
+  min-width: 0;
+}
+
 .status-counter-item {
   display: inline-flex;
   align-items: center;

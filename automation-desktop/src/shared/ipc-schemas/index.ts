@@ -105,6 +105,16 @@ import {
   type AutomationStatusRequest,
   type AutomationStatusResponse
 } from './automation'
+import {
+  MessengerStartRequestSchema,
+  MessengerStartResponseSchema,
+  MessengerStatusRequestSchema,
+  MessengerStatusResponseSchema,
+  type MessengerStartRequest,
+  type MessengerStartResponse,
+  type MessengerStatusRequest,
+  type MessengerStatusResponse
+} from './messenger'
 
 export type Phase3ChannelName = `phase3:${string}:${string}`
 
@@ -233,7 +243,17 @@ export const channelRegistry = [
     channel: 'phase3:automation:status',
     requestSchema: AutomationStatusRequestSchema,
     responseSchema: AutomationStatusResponseSchema
-  } satisfies ChannelRegistryEntry<AutomationStatusRequest, AutomationStatusResponse>
+  } satisfies ChannelRegistryEntry<AutomationStatusRequest, AutomationStatusResponse>,
+  {
+    channel: 'phase3:messenger:start',
+    requestSchema: MessengerStartRequestSchema,
+    responseSchema: MessengerStartResponseSchema
+  } satisfies ChannelRegistryEntry<MessengerStartRequest, MessengerStartResponse>,
+  {
+    channel: 'phase3:messenger:status',
+    requestSchema: MessengerStatusRequestSchema,
+    responseSchema: MessengerStatusResponseSchema
+  } satisfies ChannelRegistryEntry<MessengerStatusRequest, MessengerStatusResponse>
 ] as const satisfies ReadonlyArray<ChannelRegistryEntry>
 
 export * from './common'
@@ -244,3 +264,4 @@ export * from './profile'
 export * from './proxy'
 export * from './content-template'
 export * from './automation'
+export * from './messenger'
