@@ -10,7 +10,8 @@ import {
   type LoginService,
   type LoginState,
   type PageLike,
-  type SessionHandle
+  type SessionHandle,
+  type SolveResult
 } from '../../src/main/automation'
 
 test('[P0] captcha markup is treated as checkpoint for manual intervention', async () => {
@@ -100,6 +101,7 @@ function createService(options: {
   checkpoints?: Array<{ profileId: string; kind: string }>
   transitionResult?: ReturnType<AutomationStateMachine['transition']>
   transitionErrors?: Array<{ jobId: string; to: string; code: AutomationTransitionErrorCode }>
+  solveCheckpoint?: () => Promise<SolveResult>
 }): {
   service: LoginService
   session: SessionHandle & { submittedCodes?: string[]; closed?: boolean }
@@ -135,7 +137,8 @@ function createService(options: {
     fingerprintService: createFingerprintService(),
     nowMs: () => 59_000,
     onCheckpoint: (profileId, kind) => checkpoints.push({ profileId, kind }),
-    onTransitionError: (jobId, to, code) => transitionErrors.push({ jobId, to, code })
+    onTransitionError: (jobId, to, code) => transitionErrors.push({ jobId, to, code }),
+    ...(options.solveCheckpoint ? { solveCheckpoint: options.solveCheckpoint } : {})
   })
   return { service, session, stateMachine, checkpoints, launched }
 }
@@ -163,6 +166,50 @@ test('[P0] checkpoint transitions to CHECKPOINT_BLOCKED, invokes hook, and keeps
   })
 
   expect(stateMachine.transitions).toEqual([{ jobId: 'job-1', to: 'CHECKPOINT_BLOCKED' }])
+  expect(checkpoints).toEqual([{ profileId: 'profile-1', kind: 'checkpoint' }])
+  expect(session.closed).toBe(false)
+})
+
+test('[P0] checkpoint solver success transitions through SOLVING_CHECKPOINT to WARMING_UP', async () => {
+  const { service, session, stateMachine, checkpoints } = createService({
+    states: ['CHECKPOINT'],
+    solveCheckpoint: async () => ({
+      ok: true,
+      type: 'FUNCAPTCHA',
+      provider: 'capsolver',
+      durationMs: 42
+    })
+  })
+
+  await expect(service.login('job-1', 'profile-1')).resolves.toEqual({
+    ok: true,
+    state: 'LOGGED_IN'
+  })
+
+  expect(stateMachine.transitions).toEqual([
+    { jobId: 'job-1', to: 'SOLVING_CHECKPOINT' },
+    { jobId: 'job-1', to: 'WARMING_UP' }
+  ])
+  expect(checkpoints).toEqual([])
+  expect(session.closed).toBe(true)
+})
+
+test('[P0] checkpoint solver failure falls back to CHECKPOINT_BLOCKED', async () => {
+  const { service, session, stateMachine, checkpoints } = createService({
+    states: ['CHECKPOINT'],
+    solveCheckpoint: async () => ({ ok: false, code: 'STILL_BLOCKED', durationMs: 42 })
+  })
+
+  await expect(service.login('job-1', 'profile-1')).resolves.toEqual({
+    ok: true,
+    state: 'CHECKPOINT',
+    keepSessionOpen: true
+  })
+
+  expect(stateMachine.transitions).toEqual([
+    { jobId: 'job-1', to: 'SOLVING_CHECKPOINT' },
+    { jobId: 'job-1', to: 'CHECKPOINT_BLOCKED' }
+  ])
   expect(checkpoints).toEqual([{ profileId: 'profile-1', kind: 'checkpoint' }])
   expect(session.closed).toBe(false)
 })

@@ -97,3 +97,4 @@ export {
   type MessengerSeedBatchInput,
   type MessengerSeedBatchResult
 } from './messenger-seed-batch'
+export * from './checkpoint'

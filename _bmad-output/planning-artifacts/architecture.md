@@ -915,8 +915,13 @@ Tách: business logic, deployment, billing entity.
 | FR-P3-09 | Local canary profile + drift detection alert | 3.0 |
 | FR-P3-10 | Mass post lên timeline profile + warmup | 3.1 |
 | FR-P3-11 | Mass comment 3rd party post + mass react | 3.2 |
-| FR-P3-12 | Share + friend request | 3.3 |
-| FR-P3-13 | Feed scrape *(optional, defer)* | 3.4 |
+| FR-P3-12 | Messenger seeding + C# share-link parity | 3.4 |
+| FR-P3-13 | Group growth automation | 3.5 |
+| FR-P3-14 | Page automation | 3.6 |
+| FR-P3-15 | Marketplace automation | 3.7 |
+| FR-P3-16 | Livestream automation | 3.8 |
+| FR-P3-17 | Advanced farming + risk orchestration | 3.9 |
+| FR-P3-18 | Lead, segment, campaign operations | 3.9 |
 
 **Non-Functional Requirements:**
 
@@ -924,7 +929,7 @@ Tách: business logic, deployment, billing entity.
 - **NFR-P3-Stealth-Quality:** Tận dụng user fingerprint thật + residential IP thật. `playwright-extra` + stealth plugin bundle.
 - **NFR-P3-Reliability:** Adapt Time SLO — selector regression detect < 24h (telemetry-driven), hot config push fix < 1h (không cần user update app).
 - **NFR-P3-Security:** Cookie at rest = Electron `safeStorage` (OS keychain), KHÔNG plaintext SQLite. License key + HWID hash qua TLS pinning. Anti-tamper binary code sign.
-- **NFR-P3-License-Online-Check:** Periodic check 4h; fail soft (offline grace 24h sau check success cuối). Tier 2+ action (post, comment, share) MUST get short-lived server-side action token mỗi request.
+- **NFR-P3-License-Online-Check:** Periodic check 4h; fail soft (offline grace 24h sau check success cuối). Tier 2+ action (post, comment, share, friend, message, group, Page, Marketplace, livestream, farming behavior) MUST get short-lived server-side action token mỗi request.
 - **NFR-P3-Update-Forced:** Version < min_supported_version → block toàn bộ action. Mitigation cho selector skew.
 - **NFR-P3-Observability:** Mandatory anonymous health beacon (count-only) + opt-in detailed telemetry. Privacy first, không bao giờ gửi cookie/UID/content.
 - **NFR-P3-Agent-Velocity:** Module boundary rõ, contract đầy đủ, test coverage cao cho AI agent (Claude/Codex) tự verify.
@@ -1050,7 +1055,12 @@ Mỗi user có fingerprint profile unique (UA, viewport, timezone, font, WebGL n
 | **3.1** | Mass post + warmup + proxy provider thứ 2 | 6 tuần SLO stability |
 | **3.2** | Mass comment 3rd party + react | 6 tuần |
 | **3.3** | Share + friend request | 6 tuần |
-| **3.4** *(optional)* | Feed scrape | Only if specific use case |
+| **3.4** | Messenger seeding + C# share-link parity | 6 tuần |
+| **3.5** | Group growth automation | 6 tuần |
+| **3.6** | Page automation | 6 tuần |
+| **3.7** | Marketplace automation | 6 tuần |
+| **3.8** | Livestream automation | 6 tuần + live kill switch gate |
+| **3.9** | Advanced farming/risk + lead/campaign ops | Control-plane readiness gate |
 
 #### Decisions Pending → resolve in step-04
 
@@ -1934,8 +1944,13 @@ Cấm:
 | FR-P3-09 Canary drift | `main/canary/` + backend telemetry alert |
 | FR-P3-10 Mass post + warmup (3.1) | `main/automation/{action-executor, warmup-runner}` |
 | FR-P3-11 Comment + react (3.2) | `main/automation/action-executor.ts` |
-| FR-P3-12 Share + friend (3.3) | same |
-| FR-P3-13 Feed scrape (3.4 optional) | `main/automation/feed-scraper.ts` |
+| FR-P3-12 Messenger seeding + C# share-link parity | `main/messenger/` + existing automation runner |
+| FR-P3-13 Group growth automation | `main/group/` |
+| FR-P3-14 Page automation | `main/page/` |
+| FR-P3-15 Marketplace automation | `main/marketplace/` |
+| FR-P3-16 Livestream automation | `main/live/` |
+| FR-P3-17 Advanced farming + risk orchestration | `main/farming/` + `main/risk/` |
+| FR-P3-18 Lead, segment, campaign operations | `main/leads/` + `main/campaigns/` |
 
 #### Cross-Cutting Concerns Mapping (R-D1 → R-D16)
 
@@ -2082,8 +2097,8 @@ function isInCanary(hwid: string, configVersion: number, canaryPct: number): boo
 
 **G-7 Localization Lock VN — NFR EXPLICIT**
 
-- **NFR-P3-Localization-VN-Lock**: Phase 3.0 → 3.4 UI + error message + EULA + privacy policy LOCK Vietnamese
-- i18n framework defer Phase 3.5+ nếu mở rộng SEA market
+- **NFR-P3-Localization-VN-Lock**: Phase 3.0 → 3.9 UI + error message + EULA + privacy policy LOCK Vietnamese
+- i18n framework defer sau Phase 3.9 nếu mở rộng SEA market
 - ErrorEnvelope `message` field: Vietnamese user-facing; `code` field: SCREAMING_SNAKE_CASE English (programmatic)
 
 #### Coherence Validation ✅
@@ -2099,13 +2114,13 @@ function isInCanary(hwid: string, configVersion: number, canaryPct: number): boo
 
 #### Requirements Coverage Validation ✅
 
-- **13/13 FR** (FR-P3-01 → 13) mapped sang location cụ thể
+- **18/18 FR groups** (FR-P3-01 → 18) mapped sang location cụ thể; FR1-FR37 original PRD requirements remain covered by Phase 3.0-3.3 plus post-validation expansion
 - **All NFR** addressed: Compliance (D7), Stealth (D1+R-D15), Reliability (D4+D6), Security (D3+R-D3+R-D5), License (D2+R-D9), Update (D5+R-D4), Observability (D6+R-D13), Agent-Velocity (patterns+adapter), Localization-VN-Lock (G-7)
 - **16/16 R-D anchor** mapped sang code location
 
 #### Implementation Readiness Validation ✅
 
-- **11 ADR-D** documented full format (D1 → D11) — D11 added after gap resolution
+- **16 ADR-D** documented/addended (D1 → D16) — D12-D16 added for checkpoint auto-solver; full-suite scope covered by post-validation addendum
 - **17 core dep** specified với version + trigger condition cho 4 deferred dep
 - **Patterns + Enforcement** với 10 mandatory rule + tooling per rule
 - **Project structure** complete: backend extend + frontend extend + automation-desktop NEW
@@ -2119,7 +2134,7 @@ function isInCanary(hwid: string, configVersion: number, canaryPct: number): boo
 - [x] Cross-cutting concerns mapped (R-D1 → R-D16)
 
 **Architectural Decisions (4/4)**
-- [x] Critical decisions documented (11 ADR-D)
+- [x] Critical decisions documented/addended (16 ADR-D + full-suite scope addendum)
 - [x] Technology stack fully specified
 - [x] Integration patterns defined (IPC D8 + HTTP D9)
 - [x] Performance considerations addressed (benchmark explicit defer Sprint 1)
@@ -2166,7 +2181,7 @@ function isInCanary(hwid: string, configVersion: number, canaryPct: number): boo
 2. Zod schema 2-way validation MANDATORY mọi IPC + HTTP
 3. Secret marker `Secret<T>` discipline — NEVER bypass
 4. Telemetry redaction — block CI nếu vi phạm
-5. Follow 11 ADR-D + 16 R-D anchor + 7 layer rule
+5. Follow 16 ADR-D + 16 R-D anchor + 7 layer rule + Full Facebook Automation Suite addendum
 
 **First Implementation Story (Phase 3.0 Sprint 1)**:
 
@@ -2442,7 +2457,110 @@ src/main/automation/checkpoint/
 
 **Status: DOCUMENTED — READY FOR IMPLEMENTATION (sau khi user cấp API key + bật flag để test thật)**
 
+---
 
+## Phase 3 Addendum — Full Facebook Automation Suite Scope (Epic 12-18)
+
+> Thêm 2026-06-04. Bổ sung kiến trúc cho scope mở rộng sau validation: Messenger parity, group growth, Page automation, Marketplace, livestream, advanced farming/risk, và lead/campaign operations.
+
+### Scope Map Update
+
+| FR | Domain | Epic | Primary module boundary |
+|---|---|---:|---|
+| FR-P3-12 | Messenger seeding + C# share-link parity | 12 | `src/main/messenger/` + existing automation runner |
+| FR-P3-13 | Group growth automation | 13 | `src/main/group/` |
+| FR-P3-14 | Page automation | 14 | `src/main/page/` |
+| FR-P3-15 | Marketplace automation | 15 | `src/main/marketplace/` |
+| FR-P3-16 | Livestream automation | 16 | `src/main/live/` |
+| FR-P3-17 | Farming + risk orchestration | 17 | `src/main/farming/` + `src/main/risk/` |
+| FR-P3-18 | Lead/campaign control plane | 18 | `src/main/leads/` + `src/main/campaigns/` |
+
+**Boundary rule:** Domain modules may depend on shared Phase 3 primitives (`automation_jobs`, `job_actions`, profile/proxy/session, selector resolver, action-token client, telemetry, content templates, target lists). They MUST NOT create duplicate generic engines for templates, proxy/session binding, checkpoint handling, target-list import/export, or telemetry.
+
+### Action Token Taxonomy
+
+All live tier 2+ actions in Epic 12-18 require `POST /api/v1/automation/action/token` before execution. Backend `phase3.action_tokens.action_type` accepts this expanded enum:
+
+```text
+message
+group_join, group_leave, group_post, group_comment, group_up, group_member_scan, group_invite
+page_post, page_comment, page_reply, page_inbox_reply
+marketplace_post, marketplace_refresh, marketplace_reply
+live_watch, live_comment, live_react, live_share
+farming_behavior
+```
+
+Page actor variants use either the same action type plus metadata `{ actor_type: 'page', page_id }`, or a backend-supported namespace if later required. The default architecture choice is **same action type + actor metadata** to avoid enum explosion.
+
+### Data Model Extension
+
+Client SQLCipher adds domain tables lazily by story migration:
+
+```text
+facebook_groups, group_categories, profile_group_memberships, group_posts, group_members, group_member_observations, group_action_history
+facebook_pages, profile_page_permissions
+marketplace_listing_templates, marketplace_listings
+live_targets
+farming_plans, profile_risk_scores, global_safety_policy
+leads, lead_sources, lead_observations, segments, suppression_lists, campaign_presets, campaign_reports, audit_events
+```
+
+Canonical shared tables remain `automation_jobs`, `job_actions`, `content_templates`, and `target_lists`. Lead registry ingests references/outcomes from domain jobs; it does not scrape new domains by itself.
+
+### IPC Domains
+
+New IPC channels follow existing ADR-P3-D8 format and Zod 2-way parse:
+
+```text
+phase3:messenger:*
+phase3:group:*
+phase3:page:*
+phase3:marketplace:*
+phase3:live:*
+phase3:farming:*
+phase3:risk:*
+phase3:leads:*
+phase3:campaign:*
+```
+
+All ErrorEnvelope messages remain Vietnamese, and no raw secret/content field may cross renderer IPC unless explicitly modeled as a secure reference handle.
+
+### Safety & Scheduling
+
+Epic 17 becomes the global risk gate for high-blast domains. Before a live campaign starts, the scheduler checks:
+
+- license validity + action token
+- profile eligibility/risk score
+- proxy/session availability
+- warmup or farming requirement
+- per-profile/per-action daily cap
+- domain cooldown and allowed hours
+- global kill switch state
+
+Livestream, group invite/up, Messenger, Marketplace reply, and Page inbox reply are treated as high-blast by default. Live Facebook is never used in CI; all stories use fake adapters or `PHASE3_AUTOMATION_STUB=1` for E2E.
+
+### Privacy & Telemetry Redaction
+
+Mandatory beacon remains count/outcome only. The following are always redacted from logs, telemetry, IPC responses, and default exports:
+
+- cookies, passwords, 2FA, CSRF tokens, action tokens, proxy credentials
+- message bodies, post bodies, comment bodies, Page inbox bodies, Marketplace message bodies, live comment bodies
+- phone/email unless user explicitly selects them for export
+- raw scraped member/private profile details
+
+Detailed telemetry may include namespaced event types (`phase3.group.action.completed`, `phase3.marketplace.reply.skipped`) and reason codes, but not payload content.
+
+### Architecture Readiness
+
+This addendum is sufficient for story creation and implementation planning. Before implementation of each new epic, create story-level specs that pin:
+
+1. adapter interface and fake adapter contract,
+2. new action types and token policy test,
+3. SQLCipher migrations/repository boundaries,
+4. selector resolver/hot-config usage,
+5. redaction assertions and no-live-Facebook CI coverage.
+
+**Status: DOCUMENTED — READY FOR STORY CREATION.**
 
 
 

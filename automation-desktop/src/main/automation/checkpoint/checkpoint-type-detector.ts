@@ -15,7 +15,8 @@ export async function detectCheckpointType(page: CheckpointPageLike): Promise<Ch
   if (FUNCAPTCHA_MARKERS.some((re) => re.test(html))) return 'FUNCAPTCHA'
   if (RECAPTCHA_MARKERS.some((re) => re.test(html))) return 'RECAPTCHA_V2'
   if (OTP_MARKERS.some((re) => re.test(html))) return 'OTP'
-  if (IDENTITY_MARKERS.some((re) => re.test(html)) || /\/id\b|identity/i.test(url)) return 'IDENTITY'
+  if (IDENTITY_MARKERS.some((re) => re.test(html)) || /\/id\b|identity/i.test(url))
+    return 'IDENTITY'
 
   return 'UNKNOWN'
 }

@@ -7,6 +7,7 @@ import { parseCookieHeader } from './cookie'
 import { detectLoginState, submitTwoFa, type LoginState } from './checkpoint-handler'
 import { generateTotp } from './totp'
 import type { PlaywrightProxyConfig, PlaywrightRunner } from './playwright-runner'
+import type { CheckpointSolver, SolveResult } from './checkpoint'
 
 export type LoginCheckpointKind = 'checkpoint' | 'two_fa_no_seed' | 'two_fa_failed'
 
@@ -31,6 +32,7 @@ export interface LoginServiceDeps {
     code: AutomationTransitionErrorCode
   ) => void
   proxy?: PlaywrightProxyConfig
+  solveCheckpoint?: CheckpointSolver['solveCheckpoint']
 }
 
 function secretKey(profileId: string, field: 'cookie' | 'twofa'): string {
@@ -104,13 +106,27 @@ export function createLoginService(deps: LoginServiceDeps): LoginService {
           return { ok: true, state }
         }
 
-        if (state === 'CHECKPOINT' || state === 'TWO_FA_REQUIRED') {
-          transitionToCheckpointBlocked(
-            deps,
-            jobId,
-            profileId,
-            state === 'CHECKPOINT' ? 'checkpoint' : 'two_fa_failed'
-          )
+        if (state === 'CHECKPOINT') {
+          if (deps.solveCheckpoint) {
+            transitionJob(deps, jobId, 'SOLVING_CHECKPOINT')
+            const solved: SolveResult = await deps.solveCheckpoint(session.page, {
+              profileId,
+              jobId,
+              ...(deps.proxy ? { proxy: deps.proxy } : {})
+            })
+            if (solved.ok) {
+              transitionJob(deps, jobId, 'WARMING_UP')
+              return { ok: true, state: 'LOGGED_IN' }
+            }
+          }
+
+          transitionToCheckpointBlocked(deps, jobId, profileId, 'checkpoint')
+          keepSessionOpen = true
+          return { ok: true, state, keepSessionOpen }
+        }
+
+        if (state === 'TWO_FA_REQUIRED') {
+          transitionToCheckpointBlocked(deps, jobId, profileId, 'two_fa_failed')
           keepSessionOpen = true
           return { ok: true, state, keepSessionOpen }
         }

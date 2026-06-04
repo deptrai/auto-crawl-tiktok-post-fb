@@ -6,12 +6,7 @@
  * human and must fall back to CHECKPOINT_BLOCKED.
  */
 
-export type CheckpointType =
-  | 'FUNCAPTCHA'
-  | 'RECAPTCHA_V2'
-  | 'OTP'
-  | 'IDENTITY'
-  | 'UNKNOWN'
+export type CheckpointType = 'FUNCAPTCHA' | 'RECAPTCHA_V2' | 'OTP' | 'IDENTITY' | 'UNKNOWN'
 
 /** Checkpoint types that an external CAPTCHA solver can attempt. */
 export const SOLVABLE_CHECKPOINT_TYPES: ReadonlySet<CheckpointType> = new Set<CheckpointType>([
@@ -33,6 +28,7 @@ export interface FunCaptchaParams {
   subdomain?: string
   /** Optional data blob passed to the Arkose enforcement iframe. */
   blob?: string
+  proxy?: CaptchaSolverProxy
 }
 
 export interface RecaptchaV2Params {
@@ -42,6 +38,7 @@ export interface RecaptchaV2Params {
   websiteUrl: string
   /** True when the widget is the invisible variant. */
   invisible?: boolean
+  proxy?: CaptchaSolverProxy
 }
 
 export type CaptchaParams = FunCaptchaParams | RecaptchaV2Params
@@ -58,12 +55,26 @@ export type SolveErrorCode =
   | 'PARAMS_NOT_FOUND'
   | 'PROVIDER_ERROR'
   | 'SOLVE_TIMEOUT'
+  | 'BUDGET_EXHAUSTED'
+  | 'BREAKER_OPEN'
   | 'INJECT_FAILED'
   | 'STILL_BLOCKED'
 
 export type SolveResult =
-  | { ok: true; type: CheckpointType }
-  | { ok: false; code: SolveErrorCode; message: string }
+  | { ok: true; type: CheckpointType; provider: string; durationMs: number }
+  | {
+      ok: false
+      type?: CheckpointType
+      code: SolveErrorCode
+      provider?: string
+      durationMs: number
+    }
+
+export interface CaptchaSolverProxy {
+  server: string
+  username?: string
+  password?: string
+}
 
 /**
  * A CAPTCHA-solving provider (CapSolver, 2captcha, ...). Implementations submit
@@ -83,4 +94,14 @@ export interface CheckpointPageLike {
   content(): Promise<string>
   waitForTimeout?: (ms: number) => Promise<void>
   evaluate?: <T>(fn: (token: string) => T, arg: string) => Promise<T>
+}
+
+export class CaptchaSolveError extends Error {
+  constructor(
+    readonly code: SolveErrorCode,
+    message = code
+  ) {
+    super(message)
+    this.name = 'CaptchaSolveError'
+  }
 }

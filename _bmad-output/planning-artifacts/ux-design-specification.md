@@ -36,7 +36,7 @@ automation-desktop là **operator console** giúp một người vận hành t�
 1. **Mật độ thông tin cao trên desktop** — nhiều acc × nhiều thuộc tính cùng lúc (layout card `min(780px)` căn giữa hiện tại chống lại điều này).
 2. **Bulk action là mặc định, không phải ngoại lệ** — multi-select cho chạy / gán proxy là yêu cầu cốt lõi (metric: ≥10 profile song song; time-to-first-action < 15 phút).
 3. **Trạng thái real-time đa cấp** — profile status (idle/running/checkpoint/error) + 10 job state (PENDING→DONE) phải scan được, không đọc text dài.
-4. **Ràng buộc cứng**: lock tiếng Việt (NFR28, Phase 3.0→3.4), giữ `data-testid` cho E2E, plain CSS (KHÔNG Tailwind dù context ghi vậy), tuân 25 rule trong `automation-desktop/CLAUDE.md` (đặc biệt rule #16 loading-shell, #17 disable-on-click).
+4. **Ràng buộc cứng**: lock tiếng Việt (NFR28, Phase 3.0→3.9), giữ `data-testid` cho E2E, plain CSS (KHÔNG Tailwind dù context ghi vậy), tuân 25 rule trong `automation-desktop/CLAUDE.md` (đặc biệt rule #16 loading-shell, #17 disable-on-click).
 5. **IA mở rộng được** cho Phase 3.1–3.3 (mass post/comment/share), backup/recovery, telemetry settings, notification phục hồi selector.
 
 ### Design Opportunities
@@ -447,3 +447,88 @@ Bản đồ thay đổi theo file để implement (khi sang phase code). Mọi `
 **Tham chiếu visual:** `ux-design-directions.html` (mockup tương tác — accent indigo, mật độ vừa).
 
 **Ràng buộc khi implement:** tuân 25 rule `automation-desktop/CLAUDE.md` (đặc biệt #15 error tiếng Việt, #16 loading riêng, #17 disable-on-click); không thêm dependency; không vỡ E2E (`data-testid` giữ nguyên + thêm test cho DataTable/BulkBar theo #18).
+
+## Phase 3.4-3.9 UX Addendum — Full Suite Operations
+
+Addendum này mở rộng UX operator console từ Phase 3.0 sang full Facebook automation suite. Mục tiêu là dùng chung shell/pattern hiện có, không tạo landing page hay surface marketing. Mọi text UI/error/toast/confirm tiếp tục bằng tiếng Việt đến hết Phase 3.9.
+
+### Information Architecture
+
+Sidebar chia nhóm rõ theo công việc:
+
+- **Core Ops:** Dashboard, Profiles, Templates, Target Lists, Proxy, Safety.
+- **Campaigns:** Messenger, Groups, Pages, Marketplace, Live.
+- **Planning:** Farming/Risk, Leads/Campaigns, Reports.
+- **Settings/Admin:** License, EULA, CAPTCHA Solver, Telemetry, Updates.
+
+Không nhồi tất cả vào Dashboard. Dashboard chỉ tổng hợp trạng thái, cảnh báo và entry point nhanh; mỗi domain có view riêng với table, filters, job progress và drawer chi tiết.
+
+### Shared Campaign Surface Pattern
+
+Messenger, Groups, Pages, Marketplace và Live dùng cùng layout cơ bản:
+
+- Header: tên domain, trạng thái safety, CTA chính `Tạo chiến dịch` hoặc `Chạy thử`.
+- Filter bar: profile segment, target list/category, status, thời gian, risk level.
+- Main table: target/campaign rows, status pill, last action, success/error count, next eligible time.
+- Bulk action bar: chỉ hiện khi có selection; mọi action destructive/high-blast phải có confirm.
+- Right detail drawer: target/campaign/job timeline, raw reason, retry controls, export shortcut.
+- Progress panel: job đang chạy, queue length, profile đang dùng, pause/resume/stop.
+
+`data-testid` phải ổn định theo domain (`messenger-*`, `groups-*`, `pages-*`, `marketplace-*`, `live-*`, `safety-*`, `leads-*`) để E2E không phụ thuộc text.
+
+### Safety UX Contract
+
+Mọi surface high-blast Phase 3.4-3.9 phải có safety bar cố định trong view:
+
+- Global kill switch visible trên Messenger/Groups/Pages/Marketplace/Live/Farming/Risk.
+- Risk banner hiển thị khi profile chưa warm, cap gần chạm, cooldown active, checkpoint/rate-limit hoặc token policy fail.
+- Dry-run preview bắt buộc trước action high-blast: số profile, số target, cap/ngày, cooldown, estimated duration, duplicate suppression, stop conditions.
+- Run button disabled nếu Story 12.0 policy fail; tooltip/error tiếng Việt nêu lý do cụ thể.
+- Stop/Pause luôn accessible bằng keyboard; stop ghi reason rõ trong job timeline.
+- CI/test mock không hiển thị claim "đã post thật" nếu không có read-back/live verification.
+
+### Messenger Surface
+
+View Messenger gồm target list selector, template selector, profile rotation preview, share-link parity mode và job progress theo từng UID. Operator phải thấy target UID, template resolved preview (`{uid}`, `{name}`), profile dùng, proxy status, outcome và retry eligibility. Error checkpoint/rate-limit không crash batch; row chuyển trạng thái và profile khác tiếp tục.
+
+### Groups Surface
+
+View Groups gồm category registry, semantic discovery results, join queue, post campaign, comment campaign, member UID scan/export và group admin mode. Discovery hiển thị score + lý do match semantic để user kiểm tra trước khi lưu group vào category. Join chạy tuần tự theo safety policy; UI phải cho thấy cooldown/next eligible time để tránh checkpoint. Comment/post vào group dùng template + preview + dry-run như Messenger.
+
+### Pages Surface
+
+View Pages gồm page identity registry, permission check, post campaign, comment/reply queue và inbox triage. Operator phải chọn identity rõ ràng trước khi chạy. Reply/inbox surface ưu tiên queue thao tác lặp lại: unread, assigned profile/page, suggested template, sent/failed status, manual override.
+
+### Marketplace Surface
+
+View Marketplace gồm listing template registry, inventory/status table, listing post workflow, renew/refresh controls và buyer/seller reply queue. Listing form cần preview ảnh/title/price/location/category trước khi submit. Renew/refresh là high-blast action nên phải đi qua safety bar + dry-run preview + cooldown.
+
+### Live Surface
+
+View Live gồm live target registry, watcher session queue, live comment/reaction engine, live share campaign và safety monitor. UI phải hiển thị duration, viewer/profile allocation, live status, per-profile action rate và emergency stop. Nếu live ended hoặc unreachable, job chuyển trạng thái rõ thay vì retry mù.
+
+### Farming/Risk Surface
+
+View Farming/Risk gồm farming plan templates, calendar, profile eligibility, risk score, policy planner, pause/resume và kill switch history. Risk score phải giải thích bằng factors dễ scan: warmup age, recent checkpoint, action volume, proxy health, cooldown. User không sửa trực tiếp counter runtime trong table; chỉ chỉnh policy qua modal/drawer có confirm.
+
+### Leads/Campaigns Surface
+
+View Leads/Campaigns gồm lead registry, segments, suppression list, campaign presets, attribution/report export và operator dashboard. Lead detail drawer hiển thị source, last touch, campaign history, suppression reason và export eligibility. Export phải có field selection + redaction option cho UID/PII nhạy cảm.
+
+### Reporting & Export Pattern
+
+Mọi domain export dùng chung pattern: chọn scope, chọn fields, bật/tắt redaction, preview số dòng, rồi export. Report không tự động lộ token/API key/proxy credential/cookie/2FA seed. Failure reason giữ nguyên enum kỹ thuật trong metadata nhưng text hiển thị phải là tiếng Việt dễ hiểu.
+
+### Addendum Implementation Order
+
+UX implementation nên theo thứ tự:
+
+1. Safety bar + kill switch controls shared component.
+2. Shared campaign table/filter/bulk action/detail drawer pattern.
+3. Messenger surface refinement.
+4. Groups surface.
+5. Pages + Marketplace surfaces.
+6. Live surface.
+7. Farming/Risk + Leads/Campaigns + Reports.
+
+Không build surface domain mới nếu chưa có safety bar/dry-run/kill-switch integration cho action high-blast tương ứng.

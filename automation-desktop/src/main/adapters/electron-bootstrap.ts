@@ -18,11 +18,14 @@ import {
   type JobActionRepository
 } from '../db/repositories/job-action-repo'
 import {
+  createCapSolverClient,
+  createCheckpointSolver,
   createFingerprintService,
   createMessengerSeedOrchestrator,
   createPlaywrightRunner,
   createSelfCommentOrchestrator,
   createStateMachine,
+  createTwoCaptchaClient,
   createTokenExtractor,
   detectLoginState,
   executeMessengerSeed,
@@ -33,6 +36,7 @@ import {
   resolveOwnPostTarget,
   runMessengerSeedBatch,
   submitTwoFa,
+  type CheckpointSolver,
   type MessengerSeedLoginResult,
   type MessengerSeedOrchestrator,
   type SelfCommentLoginResult,
@@ -51,6 +55,7 @@ import {
   createProxyPool,
   createProxyService,
   ProxyfbProvider,
+  toPlaywrightProxy,
   type ProxyPool,
   type ProxyService
 } from '../proxy'
@@ -124,6 +129,9 @@ function profileSecretKey(profileId: string, field: 'cookie' | 'twofa'): string 
 }
 
 const AUTOMATION_BROWSER_HEADLESS_SETTING = 'automation_browser_headless'
+const CAPTCHA_SOLVER_ENABLED_SETTING = 'captcha.solver.enabled'
+const CAPTCHA_CAPSOLVER_KEY = 'captcha.capsolver.api_key'
+const CAPTCHA_TWO_CAPTCHA_KEY = 'captcha.2captcha.api_key'
 let nextVisibleBrowserSlot = 0
 
 interface VisibleBrowserGeometry {
@@ -161,11 +169,23 @@ function createSelfCommentLoginAdapter(deps: {
   storage: ElectronSafeStorage
   profileRepo: ProfileRepository
   settings: SettingsRepository
+  proxyPool?: ProxyPool
+  isProxyConfigured?: () => Promise<boolean>
+  stateMachine?: ReturnType<typeof createStateMachine>
+  checkpointSolver?: CheckpointSolver
 }): (jobId: string, profileId: string) => Promise<SelfCommentLoginResult> {
   const runner = createPlaywrightRunner()
   const fingerprintService = createFingerprintService({ profileRepo: deps.profileRepo })
 
-  return async (_jobId, profileId) => {
+  async function hasCaptchaSolverKey(): Promise<boolean> {
+    const [capsolverKey, twoCaptchaKey] = await Promise.all([
+      deps.storage.get(CAPTCHA_CAPSOLVER_KEY),
+      deps.storage.get(CAPTCHA_TWO_CAPTCHA_KEY)
+    ])
+    return Boolean(capsolverKey?.trim() || twoCaptchaKey?.trim())
+  }
+
+  return async (jobId, profileId) => {
     const cookieKey = profileSecretKey(profileId, 'cookie')
     const rawCookie = await deps.storage.get(cookieKey)
     if (!rawCookie?.trim()) {
@@ -190,6 +210,17 @@ function createSelfCommentLoginAdapter(deps: {
       return { ok: false, code: 'LOGIN_FAILED', reason: 'FINGERPRINT_FAILED' }
     }
 
+    const proxyConfigured = deps.isProxyConfigured ? await deps.isProxyConfigured() : false
+    const assignedProxy =
+      proxyConfigured && deps.proxyPool ? await deps.proxyPool.acquire(profileId) : undefined
+    const playwrightProxy = assignedProxy ? toPlaywrightProxy(assignedProxy) : undefined
+    let proxyReleased = false
+    const releaseProxy = (): void => {
+      if (!assignedProxy || proxyReleased) return
+      proxyReleased = true
+      deps.proxyPool?.release(profileId)
+    }
+
     let sessionHandle: Awaited<ReturnType<typeof runner.launchSession>>
     try {
       const headless = deps.settings.getSetting(AUTOMATION_BROWSER_HEADLESS_SETTING) === 'true'
@@ -198,6 +229,7 @@ function createSelfCommentLoginAdapter(deps: {
       sessionHandle = await runner.launchSession({
         fingerprint,
         cookies,
+        ...(playwrightProxy ? { proxy: playwrightProxy } : {}),
         headless,
         mobile: true,
         windowPosition: geometry?.position,
@@ -206,12 +238,19 @@ function createSelfCommentLoginAdapter(deps: {
         ...(importedUserAgent ? { userAgent: importedUserAgent } : {})
       })
     } catch {
+      releaseProxy()
       return { ok: false, code: 'LOGIN_FAILED', reason: 'BROWSER_LAUNCH_FAILED' }
     }
 
     const session = {
       page: sessionHandle.page,
-      close: () => sessionHandle.close()
+      close: async () => {
+        try {
+          await sessionHandle.close()
+        } finally {
+          releaseProxy()
+        }
+      }
     }
 
     // Ensure the browser session is always closed if anything throws after launchSession.
@@ -240,8 +279,23 @@ function createSelfCommentLoginAdapter(deps: {
       }
 
       if (state === 'LOGGED_IN') return { ok: true, state, session }
-      if (state === 'CHECKPOINT')
+      if (state === 'CHECKPOINT') {
+        if (
+          deps.checkpointSolver &&
+          deps.stateMachine &&
+          deps.settings.getSetting(CAPTCHA_SOLVER_ENABLED_SETTING) === 'true' &&
+          (await hasCaptchaSolverKey())
+        ) {
+          deps.stateMachine.transition(jobId, 'SOLVING_CHECKPOINT')
+          const solved = await deps.checkpointSolver.solveCheckpoint(sessionHandle.page, {
+            profileId,
+            jobId,
+            ...(playwrightProxy ? { proxy: playwrightProxy } : {})
+          })
+          if (solved.ok) return { ok: true, state: 'LOGGED_IN', session }
+        }
         return { ok: true, state, session, reason: 'CHECKPOINT_BLOCKED', keepSessionOpen: true }
+      }
       if (state === 'TWO_FA_REQUIRED')
         return { ok: true, state, session, reason: 'TWO_FA_REQUIRED', keepSessionOpen: true }
       console.warn('[Phase3] Facebook login state failed', {
@@ -275,7 +329,7 @@ function createSelfCommentLoginAdapter(deps: {
       })
       return { ok: false, code: 'LOGIN_FAILED', session, reason: 'LOGIN_STATE_FAILED' }
     } catch (err) {
-      await sessionHandle.close().catch(() => undefined)
+      await session.close().catch(() => undefined)
       throw err
     }
   }
@@ -403,10 +457,28 @@ function initializeDeps(): BootstrapDeps {
     },
     generateHwid: smokeHwid ? async () => smokeHwid : undefined
   })
+  const checkpointSolver = createCheckpointSolver({
+    isEnabled: () => settings.getSetting(CAPTCHA_SOLVER_ENABLED_SETTING) === 'true',
+    getClients: async () => {
+      const [capsolverKey, twoCaptchaKey] = await Promise.all([
+        adapters.storage.get(CAPTCHA_CAPSOLVER_KEY),
+        adapters.storage.get(CAPTCHA_TWO_CAPTCHA_KEY)
+      ])
+      return [
+        ...(capsolverKey?.trim() ? [createCapSolverClient({ apiKey: capsolverKey })] : []),
+        ...(twoCaptchaKey?.trim() ? [createTwoCaptchaClient({ apiKey: twoCaptchaKey })] : [])
+      ]
+    },
+    nowMs: () => Date.now()
+  })
   const loginAdapter = createSelfCommentLoginAdapter({
     storage: adapters.storage,
     profileRepo,
-    settings
+    settings,
+    proxyPool: services.proxyPool,
+    isProxyConfigured: async () => (await services.proxy.configGet()).configured,
+    stateMachine,
+    checkpointSolver
   })
   const stubAutomation = !app.isPackaged && process.env['PHASE3_AUTOMATION_STUB'] === '1'
   const orchestrator = stubAutomation

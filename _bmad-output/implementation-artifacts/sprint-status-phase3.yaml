@@ -38,7 +38,7 @@
 #
 # PHASE 3 SUB-PHASE MAP:
 # ======================
-# Phase 3.0 (MVP): Epic 1-8 | Phase 3.1: Epic 9 | Phase 3.2: Epic 10 | Phase 3.3: Epic 11
+# Phase 3.0 (MVP): Epic 1-8 | Phase 3.1: Epic 9 | Phase 3.2: Epic 10 | Phase 3.3: Epic 11 | Phase 3.4: Epic 12 | Phase 3.5: Epic 13 | Phase 3.6: Epic 14 | Phase 3.7: Epic 15 | Phase 3.8: Epic 16 | Phase 3.9: Epic 17-18
 # 6-tuần SLO stability gate giữa mỗi sub-phase.
 
 generated: 2026-06-02
@@ -47,7 +47,7 @@ project: auto-crawl-tiktok-post-fb-phase3
 project_key: NOKEY
 tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
-last_updated: 2026-06-04 (Story 12.4 C# Messenger share-link parity created)
+last_updated: 2026-06-04 (Story 12.0 high-blast safety gate added; Story 5.5 checkpoint captcha solver ready for review)
 
 development_status:
   # ===== Phase 3.0 MVP =====
@@ -88,11 +88,14 @@ development_status:
   epic-4-retrospective: optional
 
   # Epic 5: Khả năng Tự phục hồi (Adaptive Resilience)
-  epic-5: backlog
+  epic-5: in-progress
   5-1-selector-resolver-4-tier: backlog
   5-2-pull-hot-config-verify-ed25519: backlog
   5-3-client-canary-cohort-5-rollback: backlog
   5-4-canary-profile-drift-detection: backlog
+  # 5.5/5.6 (checkpoint auto-solver) context trước 5.1-5.4 — ưu tiên user, độc lập selector resolver (2026-06-04)
+  5-5-tu-giai-checkpoint-captcha: review
+  5-6-cau-hinh-api-key-captcha-solver: ready-for-dev
   epic-5-retrospective: optional
 
   # Epic 6: Giám sát & Telemetry (Observability)
@@ -148,10 +151,80 @@ development_status:
 
   # Epic 12: Mass Messenger Seeding (bổ sung từ gap analysis C# app — 2026-06-03)
   epic-12: in-progress
+  12-0-high-blast-safety-primitives-global-kill-switch-foundation: backlog
   12-1-content-templates: done
   # 12.2 tách 12.2a (engine core headless) + 12.2b (surface IPC/UI) — mirror 4.6a/4.6b (2026-06-04)
   12-2a-messenger-seeding-engine-core: done
   12-2b-messenger-seeding-surface: done
-  12-3-target-list-management: backlog
+  12-3-target-list-management: ready-for-dev
   12-4-csharp-messenger-share-link-parity: ready-for-dev
   epic-12-retrospective: optional
+
+  # ===== Phase 3.5 Growth =====
+
+  # Epic 13: Facebook Group Growth Automation (AutoNuoi/FBGlobal parity — 2026-06-04)
+  epic-13: backlog
+  13-1-group-categories-target-registry: backlog
+  13-2-semantic-group-discovery-scoring: backlog
+  13-3-safe-sequential-group-join-scheduler: backlog
+  13-4-group-post-campaign-engine: backlog
+  13-5-group-comment-campaign-engine: backlog
+  13-6-group-automation-surface-progress-dashboard: backlog
+  13-7-autonuoi-safety-policy-campaign-planner: backlog
+  13-8-group-member-uid-scan-data-export: backlog
+  13-9-group-invite-leave-up-refresh-actions: backlog
+  13-10-pageadmin-group-automation-mode: backlog
+  epic-13-retrospective: optional
+
+  # ===== Phase 3.6 Growth =====
+
+  # Epic 14: Facebook Page Automation (Page marketing suite — 2026-06-04)
+  epic-14: backlog
+  14-1-page-identity-registry-permission-check: backlog
+  14-2-page-post-campaign-engine: backlog
+  14-3-page-comment-reply-engine: backlog
+  14-4-page-inbox-triage-auto-reply: backlog
+  14-5-page-automation-surface: backlog
+  epic-14-retrospective: optional
+
+  # ===== Phase 3.7 Growth =====
+
+  # Epic 15: Facebook Marketplace Automation (listing + buyer/seller workflow — 2026-06-04)
+  epic-15: backlog
+  15-1-marketplace-listing-template-registry: backlog
+  15-2-marketplace-listing-post-engine: backlog
+  15-3-marketplace-renew-refresh-inventory-status: backlog
+  15-4-marketplace-message-reply-workflow: backlog
+  15-5-marketplace-surface-listing-dashboard: backlog
+  epic-15-retrospective: optional
+
+  # ===== Phase 3.8 Growth =====
+
+  # Epic 16: Livestream Automation (live interaction + watcher campaigns — 2026-06-04)
+  epic-16: backlog
+  16-1-live-target-registry: backlog
+  16-2-live-watcher-session-engine: backlog
+  16-3-live-comment-reaction-engine: backlog
+  16-4-live-share-campaign: backlog
+  16-5-live-safety-monitor-kill-switch: backlog
+  epic-16-retrospective: optional
+
+  # ===== Phase 3.9 Product Ops =====
+
+  # Epic 17: Advanced Account Farming & Risk Orchestration (2026-06-04)
+  epic-17: backlog
+  17-1-farming-plan-templates: backlog
+  17-2-low-risk-behavior-runner: backlog
+  17-3-profile-risk-score-eligibility-gate: backlog
+  17-4-global-safety-policy-kill-switch: backlog
+  17-5-farming-calendar-progress-surface: backlog
+  epic-17-retrospective: optional
+
+  # Epic 18: Lead, Segment & Campaign Operations (control plane — 2026-06-04)
+  epic-18: backlog
+  18-1-unified-lead-registry: backlog
+  18-2-segments-suppression-lists: backlog
+  18-3-campaign-presets-runbook-builder: backlog
+  18-4-campaign-attribution-report-export: backlog
+  18-5-operator-dashboard-audit-log: backlog
+  epic-18-retrospective: optional

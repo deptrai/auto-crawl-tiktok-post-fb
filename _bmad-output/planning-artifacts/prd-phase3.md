@@ -25,7 +25,7 @@ classification:
 
 ## Executive Summary
 
-Phase 3 chuyển hóa công cụ Facebook automation `SST_TOOL_FB` (C# WinForms legacy, ~4.166 LOC, Windows-only) thành một **desktop application hiện đại đa nền tảng** (Electron, Mac/Windows), phân phối theo mô hình **license key tính theo ngày** (admin set số ngày). Sản phẩm cho phép user cá nhân — affiliate marketer, content creator — quản lý hàng loạt Facebook profile (UID, cookie, 2FA), tự động hóa các hành động (đăng bài, bình luận, react, share, kết bạn) thông qua cookie-based login + Playwright stealth, với proxy rotation và anti-detection.
+Phase 3 chuyển hóa công cụ Facebook automation `SST_TOOL_FB` (C# WinForms legacy, ~4.166 LOC, Windows-only) thành một **desktop application hiện đại đa nền tảng** (Electron, Mac/Windows), phân phối theo mô hình **license key tính theo ngày** (admin set số ngày). Sản phẩm cho phép user cá nhân — affiliate marketer, content creator — quản lý hàng loạt Facebook profile (UID, cookie, 2FA), tự động hóa các hành động (đăng bài, bình luận, react, share, kết bạn, Messenger, group, Page, Marketplace, livestream, lead/campaign ops) thông qua cookie-based login + Playwright stealth, với proxy rotation và anti-detection.
 
 Khác biệt cốt lõi về kiến trúc so với tool nguồn: thay vì "port một lần rồi cố giữ", Phase 3 được thiết kế xoay quanh **tốc độ thích nghi (adapt time)**. Khi Facebook thay đổi cấu trúc DOM hoặc siết anti-bot, hệ thống push **hot config selector đã ký Ed25519** xuống client trong dưới 1 giờ — user tự cập nhật mà không cần tải lại app. Telemetry beacon ẩn danh bắt buộc cung cấp tín hiệu drift để phát hiện sự cố trong dưới 24 giờ.
 
@@ -152,7 +152,7 @@ User cá nhân (affiliate/creator) cảm thấy tool "đáng tiền" khi:
 | J3 Admin | License CRUD, SLO dashboard, selector editor, Ed25519 sign, canary control, version console |
 | J4 Recovery | HWID rebind, self-service portal, backup export/import, passphrase recovery |
 
-→ Toàn bộ 13 FR + 16 R-D anchor đều được "kích hoạt" bởi ít nhất 1 journey. Không có FR mồ côi.
+→ Toàn bộ FR1-FR37 ban đầu và FR-P3-12→18 expansion đều được "kích hoạt" bởi ít nhất 1 journey hoặc post-validation product-scope addendum. Không có FR mồ côi.
 
 ## Domain-Specific Requirements
 
@@ -167,6 +167,7 @@ User cá nhân (affiliate/creator) cảm thấy tool "đáng tiền" khi:
 - **Fingerprint diversification (R-D15)**: Mỗi user fingerprint unique (UA, viewport, timezone, font, WebGL noise) tránh cohort detection. Constraint sống còn — bỏ qua = mass ban.
 - **Residential IP qua proxy**: Datacenter IP bị FB flag ngay. Bắt buộc residential proxy (proxyfb/tmproxy/shoplike).
 - **Behavioral mimicry (warmup)**: Action mô phỏng hành vi người thật (delay ngẫu nhiên, scroll). Bot-like timing = checkpoint.
+- **High-blast domain gating**: Messenger, group, Page, Marketplace, livestream, invite, and live watcher actions require caps/cooldown/warmup/risk scoring before live execution.
 - **Selector brittleness**: FB obfuscate CSS hash đổi mỗi build → 4-tier selector strategy + hot config (không hardcode).
 - **Session isolation**: 1 BrowserContext per profile, không share cookie/storage.
 
@@ -175,6 +176,7 @@ User cá nhân (affiliate/creator) cảm thấy tool "đáng tiền" khi:
 - **Secret at rest**: Cookie + 2FA seed CHỈ trong OS keychain (safeStorage), không plaintext SQLite/log (lỗi tool C# nguồn).
 - **Log redaction mandatory**: Mọi log qua middleware redact cookie/c_user/xs/datr/password/2FA/fb_dtsg.
 - **Telemetry anonymization**: Beacon chỉ count + outcome category, không UID/content/cookie.
+- **Content/lead redaction**: Message body, post/comment body, Page inbox body, Marketplace message body, live comment body, phone/email, member private data, and raw scraped profile details are never sent in mandatory telemetry and are redacted by default in logs/exports.
 - **Backup encryption**: `.p3backup` AES-256-GCM với passphrase user-chosen.
 
 ### Integration Requirements
@@ -192,6 +194,9 @@ User cá nhân (affiliate/creator) cảm thấy tool "đáng tiền" khi:
 | FB detection wave → mass checkpoint | Aged canary + drift detect < 24h + fingerprint diversification | R-D1, R-D15 |
 | Selector break → tool "hỏng" | 4-tier fallback + hot config < 1h | R-D2, R-D11 |
 | Cookie leak → user data breach | safeStorage + log redaction + `Secret<T>` marker | R-D3 |
+| High-blast growth action burns profiles | Warmup + per-profile caps + risk score + global kill switch | FR-P3-17 |
+| Lead/member data over-collection | Explicit export fields + suppression lists + telemetry redaction | FR-P3-18 |
+| Livestream action wave causes mass checkpoint | Live safety monitor + kill switch + no live FB in CI | FR-P3-16 |
 | License crack → revenue loss | Server-side per-action token + HWID bind | R-D9 |
 | Liability spillover → mất FB App Phase 1+2 | Tool vendor EULA + billing entity tách | R-D7 |
 | Proxy provider MITM | Cert pinning với FB endpoints | NFR-Security |
@@ -320,9 +325,19 @@ Electron desktop app distributed qua license-by-days, target cá nhân, cross-pl
 
 **Phase 3.2 (Expand reach)**: FR-P3-11 Mass comment 3rd party + react; proxy provider thứ 3 (shoplike).
 
-**Phase 3.3 (Power users)**: FR-P3-12 Share + friend request.
+**Phase 3.3 (Power users)**: FR16 Share + friend request.
 
-**Phase 3.4 (Optional, deferred)**: FR-P3-13 Feed scrape (chỉ khi có use case cụ thể).
+**Phase 3.4 (Messenger parity)**: FR-P3-12 Messenger seeding + C# share-link parity.
+
+**Phase 3.5 (Group growth)**: FR-P3-13 Semantic group discovery, group join/post/comment, member UID scan, invite/leave/up, PageAdmin group mode.
+
+**Phase 3.6 (Page marketing)**: FR-P3-14 Page identities, Page post, Page comment/reply, Page inbox auto-reply.
+
+**Phase 3.7 (Marketplace)**: FR-P3-15 Marketplace listing templates, listing post, renew/refresh, buyer/seller reply.
+
+**Phase 3.8 (Livestream)**: FR-P3-16 Live watcher, live comment/react/share, live safety kill switch.
+
+**Phase 3.9 (Product ops)**: FR-P3-17 Advanced account farming/risk + FR-P3-18 unified lead/segment/campaign ops.
 
 ### Risk Mitigation Strategy
 
@@ -334,7 +349,7 @@ Electron desktop app distributed qua license-by-days, target cá nhân, cross-pl
 
 ## Functional Requirements
 
-> **CAPABILITY CONTRACT** — 37 FR binding. Tính năng không có ở đây sẽ KHÔNG tồn tại trừ khi thêm vào explicitly.
+> **CAPABILITY CONTRACT** — FR1-FR37 binding for Phase 3.0-3.3, plus FR-P3-12→18 post-validation expansion for full Facebook automation suite scope. Tính năng không có ở đây sẽ KHÔNG tồn tại trừ khi thêm vào explicitly.
 
 ### Profile Management
 
@@ -362,6 +377,16 @@ Electron desktop app distributed qua license-by-days, target cá nhân, cross-pl
 - FR16: User có thể chạy share và friend request *(Phase 3.3)*
 - FR17: Hệ thống thực hiện warmup behavior (mô phỏng người dùng) trước action thật *(Phase 3.1)*
 - FR18: Hệ thống quản lý job automation qua state machine với checkpoint/resume
+
+### Post-Validation Facebook Automation Expansion
+
+- FR-P3-12: User có thể chạy Messenger seeding tới target UID/list và C# Messenger share-link parity mode *(Phase 3.4)*
+- FR-P3-13: User có thể tìm/lưu/join/post/comment group, quét UID thành viên, mời/rời/up nhóm, và chạy PageAdmin group mode *(Phase 3.5)*
+- FR-P3-14: User có thể quản lý Page identity, đăng Page, comment/reply bằng Page, và auto-reply Page inbox *(Phase 3.6)*
+- FR-P3-15: User có thể tạo Marketplace listing template, đăng listing, renew/refresh listing, và reply buyer/seller message *(Phase 3.7)*
+- FR-P3-16: User có thể chạy live watcher, live comment/react/share, và dừng campaign live qua safety kill switch *(Phase 3.8)*
+- FR-P3-17: User có thể tạo lịch nuôi nick dài ngày, low-risk behavior runner, risk score, eligibility gate, và global safety policy *(Phase 3.9)*
+- FR-P3-18: User có thể gom lead đa nguồn, segment/suppression, campaign presets, attribution report, và operator dashboard *(Phase 3.9)*
 
 ### Anti-Detection & Resilience
 
@@ -446,7 +471,7 @@ Electron desktop app distributed qua license-by-days, target cá nhân, cross-pl
 
 ### Localization
 
-- NFR28: Phase 3.0 → 3.4 UI + error message + EULA + privacy policy lock tiếng Việt (i18n defer Phase 3.5+)
+- NFR28: Phase 3.0 → 3.9 UI + error message + EULA + privacy policy lock tiếng Việt (i18n defer sau Phase 3.9)
 
 ### Compatibility
 
@@ -481,7 +506,7 @@ Các điểm cần Luisphan quyết/validate trước hoặc trong quá trình i
 
 ## References
 
-- **Architecture**: `architecture.md` § Phase 3 Architecture Addendum (11 ADR-D, 16 R-D anchor, status READY_FOR_IMPLEMENTATION)
+- **Architecture**: `architecture.md` § Phase 3 Architecture Addendum + Full Facebook Automation Suite Addendum (16 ADR-D, 16 R-D anchor, status READY_FOR_IMPLEMENTATION / READY_FOR_STORY_CREATION)
 - **Source tool**: `automation-facebook/SST_TOOL_FB/` (C# WinForms) + `automation-facebook/docs/`
 - **POC**: `automation-facebook/poc-nodejs/` (Playwright + stealth verified)
 - **Parent PRD**: `prd.md` (Phase 1+2 SaaS, độc lập)
