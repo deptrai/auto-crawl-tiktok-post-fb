@@ -135,6 +135,11 @@ export function registerMessengerHandlers(
             runProfile: (jobId, profileId, slice) =>
               deps.orchestrator.runMessengerSeed(jobId, profileId, { targets: slice })
           })
+          .finally(() => {
+            if (!parsedRequest.data.targetListId) return
+            const now = new Date().toISOString()
+            for (const jobId of jobIds) deps.targetLists?.applyJobOutcomes(jobId, now)
+          })
           .catch(() => undefined)
 
         return MessengerStartResponseSchema.parse({ ok: true, jobIds })

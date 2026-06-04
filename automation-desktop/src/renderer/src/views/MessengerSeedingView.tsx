@@ -215,6 +215,32 @@ export function MessengerSeedingView(): React.JSX.Element {
     }
   }, [jobs])
 
+  useEffect(() => {
+    if (sourceMode !== 'target-list' || !selectedTargetListId || jobs.length === 0) return undefined
+    if (!jobs.every((job) => TERMINAL_STATES.has(job.state))) return undefined
+
+    let cancelled = false
+    void Promise.resolve().then(async () => {
+      setTargetListEntriesLoading(true)
+      try {
+        const entries = await listTargetEntries({
+          listId: selectedTargetListId,
+          filter: targetListFilter
+        })
+        if (!cancelled) setTargetListEntries(entries)
+      } catch (err) {
+        if (!cancelled) {
+          setFormError(err instanceof Error ? err.message : 'Không thể tải target từ list.')
+        }
+      } finally {
+        if (!cancelled) setTargetListEntriesLoading(false)
+      }
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [jobs, selectedTargetListId, sourceMode, targetListFilter])
+
   function toggleProfile(profileId: string, selected: boolean): void {
     setSelectedIds((current) => {
       const next = new Set(current)
@@ -243,6 +269,7 @@ export function MessengerSeedingView(): React.JSX.Element {
     setStarting(true)
     setFormError(null)
     try {
+      const submittedTargetUids = new Set(activeTargets.map((target) => target.uid))
       const response = await startMessengerSeeding({
         profileIds: selectedProfiles.map((profile) => profile.id),
         targets: activeTargets,
@@ -260,6 +287,11 @@ export function MessengerSeedingView(): React.JSX.Element {
         }
       })
       setJobs(nextJobs)
+      if (sourceMode === 'target-list') {
+        setTargetListEntries((current) =>
+          current.filter((entry) => !submittedTargetUids.has(entry.uid))
+        )
+      }
     } catch (err) {
       setFormError(err instanceof Error ? err.message : 'Không thể bắt đầu Messenger seeding.')
     } finally {

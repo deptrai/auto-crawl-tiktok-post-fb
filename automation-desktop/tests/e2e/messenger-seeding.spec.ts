@@ -156,6 +156,8 @@ test('[P0] messenger seeding uses target list and marks entries sent after stub 
     await expect(window.getByTestId('messenger-job-row-uid_msg_list_1')).toContainText('Hoàn tất', {
       timeout: 10_000
     })
+    await expect(window.getByText('0 target hợp lệ')).toBeVisible({ timeout: 10_000 })
+    await expect(window.getByTestId('messenger-start-button')).toBeDisabled()
 
     await window.getByTestId('nav-targets').click()
     await expect(window.getByTestId('target-lists-view')).toBeVisible({ timeout: 10_000 })

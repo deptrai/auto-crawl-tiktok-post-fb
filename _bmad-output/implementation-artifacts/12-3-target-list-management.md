@@ -1,6 +1,6 @@
 # Story 12.3: Target List Management — Messenger target lists + sent/error filters
 
-Status: review
+Status: done
 
 Epic: 12 — Mass Messenger Seeding (Phase 3.4 Growth) · Story: 12.3 · ID: 12.3
 
@@ -51,6 +51,10 @@ So that tôi tổ chức chiến dịch seeding theo từng nhóm mục tiêu, t
 - [x] **T12** — E2E `tests/e2e/target-lists.spec.ts`: active license → open Target Lists → create list → paste `123\n456|Bob\n123` → import → counts show created/skipped → filters show unsent entries. Use stub/no Chromium. (AC4/AC6/AC7)
 - [x] **T13** — Extend `tests/e2e/messenger-seeding.spec.ts` or add focused test: create/import target list → Messenger source `Target List` with filter `unsent` → select profile → trigger stub batch → progress done → revisit Target Lists and assert entries are `sent` / absent from `unsent`. Existing paste-only test must remain. (AC5/AC7)
 - [x] **V** — Run `cd automation-desktop && npm run typecheck && npm run lint && npx playwright test tests/unit tests/integration tests/e2e --reporter=line`. Also run targeted specs while developing: `target-list-repo`, `target-list-ipc-handlers`, `target-lists.e2e`, `messenger-seeding.e2e`. (AC7)
+
+### Review Findings
+
+- [x] [Review][Patch] Messenger Target List mode can resend stale sent/error entries after terminal status [automation-desktop/src/renderer/src/views/MessengerSeedingView.tsx:187]
 
 > **D1 (defer):** scraper/import UID từ Facebook post reactions/comments/shares; CSV/XLSX import; list rename; bulk delete entries; per-campaign scheduling; warmup enforcement; backend `action_type='message'`; template set tách self-comment vs seeding; adaptive rate-limit throttle.
 
