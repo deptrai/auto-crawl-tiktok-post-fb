@@ -70,9 +70,20 @@ interface RowContextMenuState {
   y: number
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
+function isInteractiveTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false
-  return Boolean(target.closest('input, textarea, select, [contenteditable="true"]'))
+  return Boolean(
+    target.closest(
+      'input, textarea, select, [contenteditable="true"], button, a[href], [role="menuitem"]'
+    )
+  )
+}
+
+function getEnabledMenuItems(menu: HTMLDivElement | null): HTMLButtonElement[] {
+  if (!menu) return []
+  return Array.from(menu.querySelectorAll<HTMLButtonElement>('button[role="menuitem"]')).filter(
+    (item) => !item.disabled
+  )
 }
 
 function getStatusBadge(status: string): { label: string; variant: StatusPillVariant } {
@@ -164,6 +175,7 @@ export function ProfilesView({
   const [bulkToast, setBulkToast] = useState<ToastState | null>(null)
   const [contextMenu, setContextMenu] = useState<RowContextMenuState | null>(null)
   const tableWrapRef = useRef<HTMLDivElement | null>(null)
+  const contextMenuRef = useRef<HTMLDivElement | null>(null)
   const listInFlightRef = useRef(false)
   const listCancelledRef = useRef(false)
   const pendingRefreshRef = useRef(false)
@@ -563,7 +575,7 @@ export function ProfilesView({
     if (activeView !== 'profiles') return undefined
 
     function handleKeyDown(event: KeyboardEvent): void {
-      if (isEditableTarget(event.target)) return
+      if (isInteractiveTarget(event.target)) return
 
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'a') {
         const activeElement = document.activeElement
@@ -605,6 +617,23 @@ export function ProfilesView({
     selectedIds,
     toggleSelectAll
   ])
+
+  useEffect(() => {
+    if (!contextMenu?.profileId) return undefined
+    const frame = window.requestAnimationFrame(() => {
+      getEnabledMenuItems(contextMenuRef.current)[0]?.focus()
+    })
+    return () => window.cancelAnimationFrame(frame)
+  }, [contextMenu?.profileId])
+
+  useEffect(() => {
+    if (!contextMenu) return undefined
+    const stillExists = profiles.some((profile) => profile.id === contextMenu.profileId)
+    if (activeView === 'profiles' && stillExists) return undefined
+
+    const timer = window.setTimeout(() => setContextMenu(null), 0)
+    return () => window.clearTimeout(timer)
+  }, [activeView, contextMenu, profiles])
 
   useEffect(() => {
     if (!contextMenu) return undefined
@@ -1139,10 +1168,35 @@ export function ProfilesView({
             </table>
             {contextMenuProfile ? (
               <div
+                ref={contextMenuRef}
                 className="profile-context-menu"
                 data-testid="profile-context-menu"
                 role="menu"
                 style={{ left: contextMenu?.x ?? 0, top: contextMenu?.y ?? 0 }}
+                onKeyDown={(event) => {
+                  const items = getEnabledMenuItems(contextMenuRef.current)
+                  if (items.length === 0) return
+
+                  const currentIndex = items.findIndex((item) => item === document.activeElement)
+                  const focusItem = (index: number): void => {
+                    event.preventDefault()
+                    items[index]?.focus()
+                  }
+
+                  if (event.key === 'ArrowDown') {
+                    focusItem(currentIndex >= 0 ? (currentIndex + 1) % items.length : 0)
+                  } else if (event.key === 'ArrowUp') {
+                    focusItem(
+                      currentIndex >= 0
+                        ? (currentIndex - 1 + items.length) % items.length
+                        : items.length - 1
+                    )
+                  } else if (event.key === 'Home') {
+                    focusItem(0)
+                  } else if (event.key === 'End') {
+                    focusItem(items.length - 1)
+                  }
+                }}
                 onPointerDown={(event) => event.stopPropagation()}
               >
                 {(() => {

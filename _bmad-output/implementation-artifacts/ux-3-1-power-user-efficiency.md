@@ -59,6 +59,32 @@ so that tôi thao tác lặp nhanh hơn, ít rời bàn phím và chuột.
 - [x] [Review][Patch] Một số label Settings mới thêm vẫn dùng tiếng Anh, vi phạm khóa tiếng Việt [automation-desktop/src/renderer/src/App.tsx:166]
 - [x] [Review][Patch] Sidebar toggle ở breakpoint mobile vẫn có thể bị console content che khi click/touch; test hiện chỉ dùng keyboard nên không bắt lỗi pointer [automation-desktop/src/renderer/src/assets/main.css:1240]
 
+#### Review run 2026-06-04 (baseline 1358625 → 7e7632e — Blind/Edge/Auditor)
+
+> 0 BLOCKER · 1 decision · 4 patch · 6 defer · 5 dismiss.
+
+**Decision-needed (resolved → patch, chọn hướng 1: full WAI-ARIA):**
+
+- [x] [Review][Patch] Context menu keyboard navigation chuẩn WAI-ARIA — focus menuitem đầu khi mở + ↑/↓ roving focus + Home/End + giữ Esc. (Quyết định: hướng 1, làm đầy đủ.) [ProfilesView.tsx:~1140] [blind+edge MEDIUM]
+
+**Patch:**
+
+- [x] [Review][Patch] Enter/Ctrl+A/`/` hijack khi focus trên control tương tác — `isEditableTarget` không chặn `<button>`/`[role=menuitem]`/`a`; capture-phase keydown + preventDefault nuốt Enter-activate nút "Lưu"/"Hủy"/confirm-Xóa/menuitem → bulk-run chạy nhầm. Fix: mở rộng guard thành interactive selector. [automation-desktop/src/renderer/src/views/ProfilesView.tsx:64,507] [auditor F1 HIGH + edge EC-24]
+- [x] [Review][Patch] `settingsError` stale hiển thị nhầm tab — state share ở MainShell render cả ở `settings-error` và `automation-settings-error`; lỗi phát ở Settings rồi sang Profiles → banner ma. Fix: clear `settingsError` khi đổi `activeView`. [automation-desktop/src/renderer/src/App.tsx:46] [blind+edge MEDIUM]
+- [x] [Review][Patch] Context menu state không clear khi đổi tab / profile bị xóa giữa chừng — `contextMenu` + Esc listener không guard `activeView`. Fix: clear khi `activeView !== 'profiles'` và khi target profile rời list. [automation-desktop/src/renderer/src/views/ProfilesView.tsx:609] [auditor F2/F4 + edge EC-6]
+- [x] [Review][Patch] Thiếu E2E negative-guard cho Enter — chỉ phủ happy path; AC1.2 hứa không trigger khi gõ trong input/(sau fix) focus nút nhưng không có test bảo vệ. Fix: thêm assertion. [automation-desktop/tests/e2e/profiles.spec.ts] [auditor F3]
+
+**Deferred (xem deferred-work.md):**
+
+- [x] [Review][Defer] Settings toggle đổi headless khi automation đang chạy — inconsistent disable vs row toggle; fix cần lift `automationBusyId` (architectural). [edge EC-19] — deferred
+- [x] [Review][Defer] Enter chạy bulk khi headless save in-flight → main đọc persisted cũ (race hẹp, server-read). [edge EC-5] — deferred
+- [x] [Review][Defer] Ctrl+A no-op khi table chưa focus / list rỗng — đúng spec AC1.1. [blind+edge EC-2] — deferred, matches AC
+- [x] [Review][Defer] Context menu clamp magic numbers (220/230). [blind] — deferred, cosmetic
+- [x] [Review][Defer] `.data-table-wrap` tabIndex=0 thiếu role. [blind] — deferred, minor a11y
+- [x] [Review][Defer] Checkbox Settings chưa disable-on-click trực tiếp (rule #17) — pre-existing. [auditor F7] — deferred, pre-existing
+
+**Dismissed (5):** Blind "pointerdown BLOCKER" (tự rút lại); Blind "handleBulkSelfComment stale HIGH" (verified false-positive — body chỉ dùng `startSelfComment`, deps đủ, lint exhaustive-deps pass); Blind "getTargetValidationMessage dep" (pure fn); Edge "`/` với 0 profiles" (by design); Auditor F5 "E2E IPC evaluate" (consistent pattern).
+
 ## Dev Notes
 
 ### Trạng thái hiện tại đã verify
@@ -137,3 +163,4 @@ GPT-5 Codex
 
 - 2026-06-04: Implemented UX-3.1 power-user shortcuts, row context menu, Settings sync, sidebar a11y and E2E coverage.
 - 2026-06-04: Addressed code review findings: Settings labels fully Vietnamese and sidebar toggle pointer click fixed on mobile breakpoint.
+- 2026-06-04: Applied 5 review patches (WAI-ARIA menu nav, interactive shortcut guard, settingsError clear-on-tab, context menu lifecycle, E2E negative-guard).

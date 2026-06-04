@@ -382,6 +382,19 @@ test('[P0] power-user shortcuts context menu and settings stay in sync', async (
     await window.keyboard.press('/')
     await expect(window.getByTestId('bulk-target-input')).toBeFocused()
     await window.getByTestId('bulk-target-input').fill('https://www.facebook.com/me/posts/power')
+
+    await window.getByTestId('import-textarea').focus()
+    await window.keyboard.press('Enter')
+    await expect(window.getByTestId('bulk-action-bar')).toBeVisible()
+    await expect(window.getByTestId('profile-automation-status-uid_power_1')).toHaveCount(0)
+
+    await window.getByTestId('profile-edit-uid_power_1').focus()
+    await window.keyboard.press('Enter')
+    await expect(window.getByTestId('profile-edit-input-uid_power_1')).toBeVisible()
+    await expect(window.getByTestId('bulk-action-bar')).toBeVisible()
+    await expect(window.getByTestId('profile-automation-status-uid_power_1')).toHaveCount(0)
+    await window.getByTestId('profile-edit-cancel-uid_power_1').click()
+
     await window.locator('.data-table-wrap').focus()
     await window.keyboard.press('Enter')
     await expect(window.getByTestId('bulk-action-bar')).toHaveCount(0, { timeout: 10_000 })
@@ -393,6 +406,9 @@ test('[P0] power-user shortcuts context menu and settings stay in sync', async (
     await window.getByTestId('profile-row-uid_power_1').click({ button: 'right' })
     await expect(window.getByTestId('profile-context-menu')).toBeVisible()
     await expect(window.getByRole('menuitem', { name: 'Thả proxy' })).toBeDisabled()
+    await expect(window.getByRole('menuitem', { name: 'Gán proxy' })).toBeFocused()
+    await window.keyboard.press('ArrowDown')
+    await expect(window.getByRole('menuitem', { name: 'Sửa' })).toBeFocused()
     await window.keyboard.press('Escape')
     await expect(window.getByTestId('profile-context-menu')).toHaveCount(0)
 

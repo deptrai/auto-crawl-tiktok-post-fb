@@ -77,6 +77,11 @@ function MainShell({
     }
   }
 
+  function handleNavigate(view: ConsoleView): void {
+    setSettingsError(null)
+    setActiveView(view)
+  }
+
   // Các view phụ render có điều kiện. ProfilesView KHÔNG render ở đây — nó được giữ
   // mounted liên tục (ẩn bằng `hidden`) để job polling + selection không mất khi đổi tab.
   function renderSecondaryView(): React.JSX.Element | null {
@@ -95,7 +100,7 @@ function MainShell({
                 action={{
                   label: 'Mở Proxy',
                   testId: 'dashboard-proxy-cta',
-                  onClick: () => setActiveView('proxy')
+                  onClick: () => handleNavigate('proxy')
                 }}
               />
               <EmptyState
@@ -106,7 +111,7 @@ function MainShell({
                 action={{
                   label: 'Mở Profiles',
                   testId: 'dashboard-import-cta',
-                  onClick: () => setActiveView('profiles')
+                  onClick: () => handleNavigate('profiles')
                 }}
               />
               <EmptyState
@@ -197,7 +202,7 @@ function MainShell({
       counts={profileCounts}
       licenseStatus={licenseStatus}
       offlineGrace={offlineGrace}
-      onNavigate={setActiveView}
+      onNavigate={handleNavigate}
     >
       {offlineGrace ? (
         <p className="warning-banner" data-testid="offline-grace-banner">

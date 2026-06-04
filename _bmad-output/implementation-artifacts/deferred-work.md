@@ -167,3 +167,12 @@
 - `selectedTemplate` dead state đến khi mở rộng IPC `phase3:automation:start` nhận templateId; ProfilesView target input lẻ thiếu `type="url"` (BulkActionBar đã có).
 - StatusCounter bỏ hẳn `aria-live` (thay `aria-label`) → screen reader không announce thay đổi count; cân nhắc live region concise.
 - LicenseView input license key cân nhắc `type="password"` (pre-existing, ngoài rule #10 secret list nhưng nên xem xét).
+
+## Deferred from: code review of ux-3-1-power-user-efficiency (2026-06-04)
+
+- **Settings toggle đổi headless khi automation đang chạy** — Settings headless toggle (App.tsx) chỉ `disabled={automationBrowserModeSaving}`, trong khi row toggle (ProfilesView) `disabled={modeSaving || Boolean(automationBusyId)}`. Inconsistent: Settings cho phép đổi headless giữa lúc 1 automation đang chạy. Fix đúng cần lift `automationBusyId` (hoặc trạng thái "đang chạy") lên App-level — architectural, defer. [edge EC-19]
+- **Enter chạy bulk khi headless save in-flight** — toggle headless optimistic, save IPC đang bay; nếu nhấn Enter chạy bulk ngay thì main process đọc persisted value CŨ (vì bulk đọc setting server-side). Race window hẹp, headless không gây crash. Defer. [edge EC-5]
+- **Ctrl+A no-op khi table chưa được focus / list rỗng** — AC1.1 cố ý giới hạn "focus trong vùng table"; behavior khớp spec. Chỉ là gap UX (tooltip không nhắc phải focus table trước). Defer — matches AC. [blind+edge EC-2]
+- **Context menu clamp magic numbers (220/230)** — `Math.min(clientX, innerWidth-220)` / `innerHeight-230` hardcode; với label dài hoặc cửa sổ rất nhỏ vẫn có thể tràn nhẹ. Cosmetic, defer. [blind]
+- **`.data-table-wrap` tabIndex=0 thiếu role** — div focus-target cho shortcut có `tabIndex=0` + `aria-label` nhưng không `role` → screen reader đọc generic, thêm 1 tab-stop. Minor a11y, defer. [blind]
+- **Checkbox Settings chưa disable-on-click trực tiếp (rule #17)** — `onChange` async chỉ dựa `setState(saving)`, không set `disabled` DOM ngay. Pattern pre-existing (đã có ở ProfilesView trước diff), không do UX-3.1 tạo. Defer. [auditor F7]
