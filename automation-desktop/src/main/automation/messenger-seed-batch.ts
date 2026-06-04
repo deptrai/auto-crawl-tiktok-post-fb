@@ -35,8 +35,9 @@ function assignRoundRobin(
 }
 
 function isCheckpointResult(result: MessengerSeedResult): boolean {
+  const checkpointStopReasons = new Set(['CHECKPOINT', 'TWO_FA_REQUIRED', 'RATE_LIMITED'])
   return (
-    result.stoppedReason === 'CHECKPOINT' ||
+    (result.stoppedReason ? checkpointStopReasons.has(result.stoppedReason) : false) ||
     result.perTarget.some((target) => target.outcome === 'checkpoint')
   )
 }
@@ -44,6 +45,15 @@ function isCheckpointResult(result: MessengerSeedResult): boolean {
 export async function runMessengerSeedBatch(
   input: MessengerSeedBatchInput
 ): Promise<MessengerSeedBatchResult> {
+  if (input.profiles.length === 0) {
+    return {
+      perProfile: [],
+      totalSent: 0,
+      totalFailed: input.targets.length,
+      totalCheckpoint: 0
+    }
+  }
+
   const assignment = assignRoundRobin(input.profiles, input.targets)
   const perProfile: MessengerSeedResult[] = []
 

@@ -1,6 +1,6 @@
 # Story 12.2a: Messenger Seeding Engine — Core (headless, không IPC/UI)
 
-Status: review
+Status: done
 
 Epic: 12 — Mass Messenger Seeding (Phase 3.4 Growth) · Story: 12.2a (tách từ 12.2) · ID: 12.2a
 
@@ -45,6 +45,13 @@ So that 12.2b chỉ cần wire IPC + UI lên engine sẵn có (mirror cách 4.6b
 ### Wiring exports + verify
 - [x] **T7** — `src/main/automation/index.ts`: export `executeMessengerSeed`, `MESSENGER_SEED_SELECTORS`, `createMessengerSeedOrchestrator`, `runMessengerSeedBatch` + types. (KHÔNG đụng export cũ.)
 - [x] **V** — `cd automation-desktop && npm run typecheck` + `npm run lint` (0 errors kể cả test mới) + `npx playwright test tests/unit tests/integration tests/e2e --reporter=line` (≥ baseline). Pre-commit secret guard.
+
+### Review Findings
+- [x] [Review][Patch] Messenger checkpoint/empty-target terminal transitions are invalid and ignored [automation-desktop/src/main/automation/messenger-seed-orchestrator.ts:185]
+- [x] [Review][Patch] Default checkpoint selector is not parseable by Playwright, so checkpoint text detection is disabled [automation-desktop/src/main/automation/messenger-seed-executor.ts:27]
+- [x] [Review][Patch] Default readback can report success from unsent composer draft text [automation-desktop/src/main/automation/messenger-seed-executor.ts:48]
+- [x] [Review][Patch] Batch checkpoint aggregate misses pre-target checkpoint/2FA/rate-limit stops [automation-desktop/src/main/automation/messenger-seed-batch.ts:37]
+- [x] [Review][Patch] Batch with targets but no profiles reports zero failures [automation-desktop/src/main/automation/messenger-seed-batch.ts:29]
 
 > **D1 (defer → 12.2b):** IPC `phase3:messenger:start|status` + schemas + channelRegistry; UI nhập/paste target UID + chọn template + nút trigger + progress poll; `electron-bootstrap` wire orchestrator+batch + proxy/playwright adapter thật + action type 'message' backend. **→ Epic khác:** warmup enforcement (Epic 9.1); 4-tier Messenger selector (Epic 5); Target List CRUD + filter đã-gửi/chưa-gửi (12.3); rate-limit adaptive throttle (Epic 9/10).
 
@@ -159,21 +166,30 @@ Codex GPT-5 (2026-06-04)
 - 2026-06-04: `npm run lint` → pass exit code 0; còn 1 warning cũ `src/main/adapters/electron-bootstrap.ts:231 no-direct-logger` không thuộc story.
 - 2026-06-04: Full regression: `npx playwright test tests/unit tests/integration tests/e2e --reporter=line` → `263 passed`.
 - 2026-06-04: Secret grep guard trên source Messenger mới không phát hiện token/cookie/body render trong production source; secret markers chỉ nằm trong test fixtures/assertions.
+- 2026-06-04: Code-review patches applied: valid terminal transitions for no-target/checkpoint paths, parseable Messenger checkpoint selector, draft-safe readback, checkpoint aggregate for pre-target stops, and no-profile batch failure accounting.
+- 2026-06-04: Post-review targeted regression: `npx playwright test tests/unit/messenger-seed-executor.spec.ts tests/unit/messenger-seed-orchestrator.spec.ts tests/unit/messenger-seed-batch.spec.ts tests/unit/state-machine.spec.ts --reporter=line` → `23 passed`.
+- 2026-06-04: Post-review `npm run typecheck` → pass.
+- 2026-06-04: Post-review full regression: `npx playwright test tests/unit tests/integration tests/e2e --reporter=line` → `267 passed`.
+- 2026-06-04: Post-review `npm run lint` → pass exit code 0; còn 1 warning cũ `src/main/adapters/electron-bootstrap.ts:231 no-direct-logger` không thuộc story.
+- 2026-06-04: Final targeted regression after format cleanup: `npx playwright test tests/unit/messenger-seed-executor.spec.ts tests/unit/messenger-seed-batch.spec.ts tests/unit/state-machine.spec.ts --reporter=line` → `18 passed`.
 
 ### Completion Notes List
 - Implemented headless Messenger seed executor with bundled fragile selectors, checkpoint detection, fill/send/readback verification, and no Electron import.
 - Implemented per-profile Messenger seed orchestrator with DI-only login/navigation/sleep/render/token/action recording, per-target personalization via `renderContentTemplate`, checkpoint stop behavior, warmup soft-gate, and safe terminal result JSON.
 - Implemented pure batch coordinator with round-robin target distribution, per-profile try/catch isolation, and sent/failed/checkpoint aggregation.
 - Added unit coverage for executor outcomes, orchestrator happy/checkpoint/login-fail/not-warmed/secret-hygiene flows, and batch rotation/isolation/aggregate flows.
+- Resolved review findings with regression coverage for real Playwright checkpoint selector parsing, draft-safe readback, checkpoint aggregate edge cases, no-profile batches, and state-machine terminal transitions used by Messenger seeding.
 - Exported all new core symbols and types from `src/main/automation/index.ts`; IPC/UI/bootstrap wiring intentionally deferred to 12.2b.
 
 ### File List
 - `automation-desktop/src/main/automation/messenger-seed-executor.ts`
 - `automation-desktop/src/main/automation/messenger-seed-orchestrator.ts`
 - `automation-desktop/src/main/automation/messenger-seed-batch.ts`
+- `automation-desktop/src/main/automation/state-machine.ts`
 - `automation-desktop/src/main/automation/index.ts`
 - `automation-desktop/tests/unit/messenger-seed-executor.spec.ts`
 - `automation-desktop/tests/unit/messenger-seed-orchestrator.spec.ts`
 - `automation-desktop/tests/unit/messenger-seed-batch.spec.ts`
+- `automation-desktop/tests/unit/state-machine.spec.ts`
 - `_bmad-output/implementation-artifacts/12-2a-messenger-seeding-engine-core.md`
 - `_bmad-output/implementation-artifacts/sprint-status-phase3.yaml`

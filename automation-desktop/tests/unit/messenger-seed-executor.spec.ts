@@ -10,7 +10,10 @@ class FakeLocator implements LocatorLike {
   filled: string[] = []
   clicked = 0
 
-  constructor(private readonly present = true) {}
+  constructor(
+    private readonly present = true,
+    private readonly text = ''
+  ) {}
 
   first(): LocatorLike {
     return this
@@ -27,9 +30,16 @@ class FakeLocator implements LocatorLike {
   async click(): Promise<void> {
     this.clicked += 1
   }
+
+  async textContent(): Promise<string | null> {
+    return this.text
+  }
 }
 
-function fakePage(locators: Record<string, FakeLocator>): {
+function fakePage(
+  locators: Record<string, FakeLocator>,
+  html = '<html></html>'
+): {
   locator: (selector: string) => LocatorLike
   waitForTimeout: (ms: number) => Promise<void>
   content: () => Promise<string>
@@ -39,7 +49,7 @@ function fakePage(locators: Record<string, FakeLocator>): {
       return locators[selector] ?? new FakeLocator(false)
     },
     waitForTimeout: async () => undefined,
-    content: async () => '<html></html>'
+    content: async () => html
   }
 }
 
@@ -86,6 +96,35 @@ test('[P0] messenger seed executor returns checkpoint when checkpoint selector i
   await expect(
     executeMessengerSeed({ page, content: 'Không gửi khi checkpoint', selectors })
   ).resolves.toBe('checkpoint')
+})
+
+test('[P0] messenger seed default checkpoint selector is parseable by Playwright', async ({
+  page
+}) => {
+  await page.setContent('<main><div>temporarily blocked</div></main>')
+
+  await expect(page.locator(MESSENGER_SEED_SELECTORS.checkpointMarker).count()).resolves.toBe(1)
+})
+
+test('[P0] messenger seed default readback does not treat unsent composer draft as success', async () => {
+  const box = new FakeLocator()
+  const send = new FakeLocator()
+  const page = fakePage(
+    {
+      [MESSENGER_SEED_SELECTORS.msgBox]: box,
+      [MESSENGER_SEED_SELECTORS.sendButton]: send
+    },
+    '<html><main>DRAFT_ONLY_CONTENT</main></html>'
+  )
+
+  const outcome = await executeMessengerSeed({
+    page,
+    content: 'DRAFT_ONLY_CONTENT'
+  })
+
+  expect(outcome).toBe('selector_miss')
+  expect(box.filled).toEqual(['DRAFT_ONLY_CONTENT'])
+  expect(send.clicked).toBe(1)
 })
 
 test('[P0] messenger seed executor maps locator errors to error without leaking content', async () => {

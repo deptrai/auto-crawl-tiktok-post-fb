@@ -96,6 +96,9 @@ test('[P0] transition table allows the full happy path and terminal branches', (
     expect(canTransition(state, 'FAILED')).toBe(true)
     expect(canTransition(state, 'CANCELLED')).toBe(true)
   }
+
+  expect(canTransition('PENDING', 'DONE')).toBe(true)
+  expect(canTransition('EXECUTING', 'CHECKPOINT_BLOCKED')).toBe(true)
 })
 
 test('[P0] invalid transition returns typed error and does not persist', () => {

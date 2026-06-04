@@ -28,7 +28,10 @@ export const MESSENGER_SEED_SELECTORS: MessengerSeedSelectors = {
     '[data-testid="checkpoint"]',
     '[aria-label*="checkpoint"]',
     '[aria-label*="xác minh"]',
-    'text=/checkpoint|temporarily blocked|verify your identity|xác minh danh tính/i'
+    'body:has-text("checkpoint")',
+    'body:has-text("temporarily blocked")',
+    'body:has-text("verify your identity")',
+    'body:has-text("xác minh danh tính")'
   ].join(', ')
 }
 
@@ -46,9 +49,6 @@ async function defaultReadBack(
   selectors: MessengerSeedSelectors
 ): Promise<boolean> {
   await page.waitForTimeout?.(1_500)
-  const html = await page.content?.().catch(() => '')
-  if (typeof html === 'string' && html.includes(content)) return true
-
   const thread = page.locator(selectors.sentMarker).first()
   if (!(await exists(thread))) return false
   const text = await thread.textContent?.()

@@ -87,3 +87,35 @@ test('[P0] messenger seed batch aggregates sent failed and checkpoint counts', a
   expect(result.totalFailed).toBe(1)
   expect(result.totalCheckpoint).toBe(1)
 })
+
+test('[P0] messenger seed batch counts pre-target checkpoint stops in aggregate', async () => {
+  const result = await runMessengerSeedBatch({
+    profiles: ['p1', 'p2'],
+    targets: [{ uid: '1001' }, { uid: '1002' }],
+    createJobId: (profileId) => `job-${profileId}`,
+    runProfile: async (_jobId, profileId): Promise<MessengerSeedResult> => ({
+      profileId,
+      sent: 0,
+      failed: 1,
+      stoppedReason: profileId === 'p1' ? 'TWO_FA_REQUIRED' : 'RATE_LIMITED',
+      perTarget: []
+    })
+  })
+
+  expect(result.totalSent).toBe(0)
+  expect(result.totalFailed).toBe(2)
+  expect(result.totalCheckpoint).toBe(2)
+})
+
+test('[P0] messenger seed batch marks all targets failed when no profiles are available', async () => {
+  const result = await runMessengerSeedBatch({
+    profiles: [],
+    targets: [{ uid: '1001' }, { uid: '1002' }],
+    createJobId: (profileId) => `job-${profileId}`,
+    runProfile: async (): Promise<MessengerSeedResult> => {
+      throw new Error('runProfile should not be called without profiles')
+    }
+  })
+
+  expect(result).toEqual({ perProfile: [], totalSent: 0, totalFailed: 2, totalCheckpoint: 0 })
+})
